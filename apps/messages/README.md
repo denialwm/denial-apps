@@ -24,7 +24,7 @@ cargo run --release
 ```
 
 For the Ace 3, cross-built against its sysroot in
-`/mnt/development/denial-ace3/cross/sysroot`:
+`/mnt/development/cross/sysroot`:
 
 ```sh
 ./build-aston.sh

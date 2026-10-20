@@ -3,7 +3,7 @@
 # phone-matched sysroot so no newer glibc symbols from the host leak in.
 set -eu
 cd "$(dirname "$0")"
-sysroot=/mnt/development/denial-ace3/cross/sysroot
+sysroot=/mnt/development/cross/sysroot
 target=aarch64-unknown-linux-gnu
 
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
