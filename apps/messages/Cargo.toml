@@ -1,0 +1,15 @@
+[package]
+name = "sms-sample"
+version = "0.1.0"
+edition = "2024"
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+denial-look = { path = "../../libraries/denial-look" }
+unicode-segmentation = "1"
+# zed-industries/zed#64079 (Wayland touch) at AevaOnline/zed-editor 5353557025,
+# plus branch denial/touch-fling-end of denialwm/gpui-touch (flings end when
+# the content stops; wl_touch.cancel reaches the window), pinned.
+gpui = { git = "https://github.com/denialwm/gpui-touch", rev = "0651ed8ab551c800c5892c0baa4324cc09de584d" }
+gpui_platform = { git = "https://github.com/denialwm/gpui-touch", rev = "0651ed8ab551c800c5892c0baa4324cc09de584d", features = ["wayland"] }

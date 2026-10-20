@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Messages sample
+Comment=GPUI SMS sample for Denial
+Exec=/home/logix/.local/bin/sms-sample
+Icon=internet-mail
+Terminal=false
+Categories=Network;
