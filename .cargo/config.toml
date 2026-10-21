@@ -1,0 +1,3 @@
+[build]
+# Leave two logical CPUs free for the user's own work.
+jobs = -2
