@@ -1,0 +1,12 @@
+[package]
+name = "denial-contacts"
+version = "0.1.0"
+edition = "2024"
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-io = "2.6"
+base64 = "0.22"
+futures-lite = "2.6"
+libc = "0.2"

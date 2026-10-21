@@ -1,0 +1,11 @@
+[package]
+name = "denial-look-gpui"
+version = "0.1.0"
+edition = "2024"
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+denial-look = { path = "../denial-look" }
+# The apps' GPUI, gpui-touch; see apps/messages/Cargo.toml for the pin.
+gpui = { path = "../../../gpui-touch/crates/gpui" }
