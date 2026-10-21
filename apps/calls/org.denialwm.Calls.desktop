@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Calls
+Comment=Calls and contacts for Denial phones
+Exec=/home/logix/.local/bin/calls
+Icon=call-start
+Terminal=false
+Categories=Network;Telephony;ContactManagement;

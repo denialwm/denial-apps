@@ -22,6 +22,7 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 | Name | Purpose |
 |---|---|
 | [`messages`](apps/messages) | SMS app, on Phonewave's dmail, and its notifier |
+| [`calls`](apps/calls) | Phone and contacts app; calls are mocked until dmail's Voice1 works |
 
 ## Libraries
 
@@ -29,7 +30,7 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 |---|---|
 | [`denial-contacts`](libraries/denial-contacts) | The contacts folder of vCard files, number matching as dmail does, inotify following |
 | [`denial-look`](libraries/denial-look) | Denial's application look: dark and light palettes, floors, radii, motion, mobile layout tokens, live settings |
-| [`denial-look-gpui`](libraries/denial-look-gpui) | The mobile materials as GPUI elements: island, glass group, chip, scroll fade, shared icons |
+| [`denial-look-gpui`](libraries/denial-look-gpui) | The mobile materials as GPUI elements: island, glass group, chip, the text field, shared icons |
 
 ## Build
 

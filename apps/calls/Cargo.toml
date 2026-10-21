@@ -1,0 +1,19 @@
+[package]
+name = "calls"
+version = "0.1.0"
+edition = "2024"
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel = "2.5"
+denial-contacts = { path = "../../libraries/denial-contacts" }
+denial-look = { path = "../../libraries/denial-look" }
+denial-look-gpui = { path = "../../libraries/denial-look-gpui" }
+futures-lite = "2.6"
+libc = "0.2"
+zbus = "5.19"
+# The local gpui-touch checkout, as Messages builds against; see
+# apps/messages/Cargo.toml for what it carries beyond the pinned branch.
+gpui = { path = "../../../gpui-touch/crates/gpui" }
+gpui_platform = { path = "../../../gpui-touch/crates/gpui_platform", features = ["wayland"] }
