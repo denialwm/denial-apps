@@ -1,15 +1,26 @@
 [package]
-name = "sms-sample"
+name = "messages"
 version = "0.1.0"
 edition = "2024"
+default-run = "messages"
 license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
+async-channel = "2.5"
+denial-contacts = { path = "../../libraries/denial-contacts" }
 denial-look = { path = "../../libraries/denial-look" }
+denial-look-gpui = { path = "../../libraries/denial-look-gpui" }
+futures-lite = "2.6"
+libc = "0.2"
 unicode-segmentation = "1"
+zbus = "5.19"
 # zed-industries/zed#64079 (Wayland touch) at AevaOnline/zed-editor 5353557025,
 # plus branch denial/touch-fling-end of denialwm/gpui-touch (flings end when
-# the content stops; wl_touch.cancel reaches the window), pinned.
-gpui = { git = "https://github.com/denialwm/gpui-touch", rev = "0651ed8ab551c800c5892c0baa4324cc09de584d" }
-gpui_platform = { git = "https://github.com/denialwm/gpui-touch", rev = "0651ed8ab551c800c5892c0baa4324cc09de584d", features = ["wayland"] }
+# the content stops; wl_touch.cancel reaches the window). The local checkout
+# at 0651ed8ab551c800c5892c0baa4324cc09de584d carries uncommitted patches:
+# Window::activate_window_with_token, and colour emoji through a font's
+# fallbacks (a fallback needs no 'm'; VS16 prefers a fallback); back to `git`
+# and `rev` once they are pushed.
+gpui = { path = "../../../gpui-touch/crates/gpui" }
+gpui_platform = { path = "../../../gpui-touch/crates/gpui_platform", features = ["wayland"] }

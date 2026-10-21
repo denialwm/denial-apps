@@ -1,0 +1,12 @@
+[Unit]
+Description=Messages: notifications for new SMS
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/messages-notifier
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,226 +1,317 @@
-//! Sample conversations for the demo. Nothing here talks to a modem.
+//! Conversations as dmail keeps them, how their peers and times read.
 
+use std::ops::Range;
+
+use ::messages::dmail::{ConversationRow, MessageRow};
 use denial_look::Tween;
 
+use crate::detect::{self, Span};
+
 pub struct Message {
+    pub id: u64,
     pub text: String,
     pub outgoing: bool,
-    pub time: &'static str,
+    /// Unix time.
+    pub time: i64,
+    /// received; or sending, sent, failed, delivered, undelivered or expired.
+    pub state: String,
+    /// What in the text can be tapped.
+    pub spans: Vec<Span>,
     /// Set for messages added while the app runs, so they animate in.
     pub appear: Option<Tween>,
 }
 
+/// How far a message's state has come: a later state never gives way to an
+/// earlier one.
+fn rank(state: &str) -> u8 {
+    match state {
+        "sending" => 0,
+        "sent" => 1,
+        _ => 2,
+    }
+}
+
+impl Message {
+    pub fn from_row((id, outgoing, text, time, state): MessageRow) -> Self {
+        Self {
+            id,
+            spans: detect::spans(&text),
+            text,
+            outgoing,
+            time,
+            state,
+            appear: None,
+        }
+    }
+
+    /// Takes dmail's state for the message. States only move on, sending to
+    /// sent to delivered, so a reread that raced MessageChanged never takes
+    /// one back.
+    pub fn settle(&mut self, state: String) {
+        if rank(&state) >= rank(&self.state) {
+            self.state = state;
+        }
+    }
+
+    pub fn failed(&self) -> bool {
+        self.outgoing && self.state == "failed"
+    }
+
+    /// Sent, but the network reported it did not arrive.
+    pub fn undelivered(&self) -> bool {
+        self.outgoing && matches!(self.state.as_str(), "undelivered" | "expired")
+    }
+
+    /// The label under the last bubble of a run: what happened to a message
+    /// going out, else its time. Errors are marked so they read as errors.
+    pub fn label(&self) -> (String, bool) {
+        let time = clock(self.time);
+        match self.state.as_str() {
+            "sending" if self.outgoing => ("Sending…".into(), false),
+            "failed" if self.outgoing => ("Not sent. Tap to try again".into(), true),
+            "delivered" if self.outgoing => (format!("{time} · Delivered"), false),
+            _ if self.undelivered() => ("Not delivered".into(), true),
+            _ => (time, false),
+        }
+    }
+
+    /// The full time and state, shown while the message is held.
+    pub fn details(&self, now: i64) -> String {
+        let state = match self.state.as_str() {
+            _ if !self.outgoing => "Received",
+            "sending" => "Sending",
+            "failed" => "Not sent",
+            "delivered" => "Delivered",
+            "undelivered" => "Not delivered",
+            "expired" => "Expired",
+            _ => "Sent",
+        };
+        format!("{} · {state}", full_time(self.time, now))
+    }
+}
+
 pub struct Conversation {
-    pub name: &'static str,
-    pub avatar: u32,
-    pub unread: bool,
-    /// Fades the unread dot after the conversation is opened.
-    pub read_fade: Option<Tween>,
+    /// The number or sender name dmail files the conversation under.
+    pub peer: String,
+    pub last_text: String,
+    pub last_time: i64,
+    pub last_outgoing: bool,
+    /// Unread messages, as dmail counts them.
+    pub unread: u32,
+    pub archived: bool,
+    /// Fades the count that was unread after the conversation is opened.
+    pub read_fade: Option<(Tween, u32)>,
+    /// Oldest first; read from dmail a page at a time, newest page first.
     pub messages: Vec<Message>,
-    replies: &'static [&'static str],
-    next_reply: usize,
+    /// `messages` reaches back to the first message.
+    pub complete: bool,
+    /// An older page is being read.
+    pub loading: bool,
+    /// dmail has no message with this peer: a conversation being written, or
+    /// one left with only a draft.
+    pub local: bool,
+    /// One of the made-up conversations of `samples`, which dmail never sees.
+    pub sample: bool,
 }
 
 impl Conversation {
-    pub fn initials(&self) -> String {
-        self.name
-            .split_whitespace()
-            .filter_map(|word| word.chars().next())
-            .take(2)
-            .collect()
+    pub fn from_row(
+        (peer, last_text, last_time, last_outgoing, unread): ConversationRow,
+        archived: bool,
+    ) -> Self {
+        Self {
+            peer,
+            last_text,
+            last_time,
+            last_outgoing,
+            unread,
+            archived,
+            read_fade: None,
+            messages: Vec::new(),
+            complete: false,
+            loading: false,
+            local: false,
+            sample: false,
+        }
     }
 
-    pub fn last(&self) -> &Message {
-        self.messages.last().expect("conversation without messages")
-    }
-
-    pub fn next_reply(&mut self) -> &'static str {
-        let reply = self.replies[self.next_reply % self.replies.len()];
-        self.next_reply += 1;
-        reply
+    pub fn new(peer: String) -> Self {
+        Self {
+            local: true,
+            ..Self::from_row((peer, String::new(), now(), true, 0), false)
+        }
     }
 }
 
-fn thread(lines: &[(bool, &'static str, &'static str)]) -> Vec<Message> {
-    lines
-        .iter()
-        .map(|&(outgoing, time, text)| Message {
-            text: text.to_owned(),
-            outgoing,
-            time,
-            appear: None,
-        })
+/// A sender name's initials; a number has none.
+pub fn initials(peer: &str) -> String {
+    if !peer.chars().any(char::is_alphabetic) {
+        return "#".into();
+    }
+    peer.split_whitespace()
+        .filter_map(|word| word.chars().next())
+        .take(2)
         .collect()
 }
 
-fn conversation(
-    name: &'static str,
-    avatar: u32,
-    unread: bool,
-    lines: &[(bool, &'static str, &'static str)],
-    replies: &'static [&'static str],
-) -> Conversation {
-    Conversation {
-        name,
-        avatar,
-        unread,
-        read_fade: None,
-        messages: thread(lines),
-        replies,
-        next_reply: 0,
+/// Whether dmail can send to `peer`: a number as dmail takes it. Sender
+/// names such as a carrier's take no replies.
+pub fn replyable(peer: &str) -> bool {
+    denial_contacts::dialable(peer).is_some_and(|number| number == peer)
+}
+
+/// Where each word of `query` starts a word of `text`, case ignored, as
+/// dmail's search matches: the parts to mark in a hit.
+pub fn matches(text: &str, query: &str) -> Vec<Range<usize>> {
+    let words: Vec<Vec<char>> = query
+        .split_whitespace()
+        .map(|word| word.chars().flat_map(char::to_lowercase).collect())
+        .collect();
+    let mut found = Vec::new();
+    let mut previous = None;
+    for (start, c) in text.char_indices() {
+        let starts_word = c.is_alphanumeric() && !previous.is_some_and(char::is_alphanumeric);
+        previous = Some(c);
+        if !starts_word {
+            continue;
+        }
+        let rest = &text[start..];
+        let longest = words
+            .iter()
+            .filter_map(|word| prefix_length(rest, word))
+            .max();
+        if let Some(length) = longest {
+            found.push(start..start + length);
+        }
+    }
+    found
+}
+
+/// The bytes of `text` that `word`, lower case, starts it with, if it does.
+fn prefix_length(text: &str, word: &[char]) -> Option<usize> {
+    let mut wanted = word.iter();
+    let mut length = 0;
+    for c in text.chars() {
+        let mut lower = c.to_lowercase();
+        let all = lower.all(|l| wanted.next() == Some(&l));
+        if !all {
+            return None;
+        }
+        length += c.len_utf8();
+        if wanted.as_slice().is_empty() {
+            return Some(length);
+        }
+    }
+    None
+}
+
+/// A Unix time in the phone's time zone.
+struct Local {
+    /// Days since 1970-01-01 in local time.
+    day: i64,
+    weekday: usize,
+    month: usize,
+    month_day: i32,
+    year: i32,
+    hour: i32,
+    minute: i32,
+}
+
+fn local(time: i64) -> Local {
+    // SAFETY: localtime_r only writes the tm it is given.
+    let tm = unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&(time as libc::time_t), &mut tm);
+        tm
+    };
+    Local {
+        day: (time + tm.tm_gmtoff).div_euclid(86_400),
+        weekday: tm.tm_wday.clamp(0, 6) as usize,
+        month: tm.tm_mon.clamp(0, 11) as usize,
+        month_day: tm.tm_mday,
+        year: tm.tm_year + 1900,
+        hour: tm.tm_hour,
+        minute: tm.tm_min,
     }
 }
 
-const IN: bool = false;
-const OUT: bool = true;
-
-pub fn sample() -> Vec<Conversation> {
-    vec![
-        conversation(
-            "Giulia Romano",
-            0x6E5A8A,
-            true,
-            &[
-                (OUT, "18:02", "Are we still on for dinner tomorrow?"),
-                (IN, "18:10", "Yes! 20:00 at the usual place"),
-                (IN, "18:10", "I booked a table outside"),
-                (OUT, "18:12", "Perfect, see you there"),
-                (IN, "18:13", "Can you pick up Sara on the way?"),
-                (OUT, "18:15", "Sure, what time?"),
-                (IN, "18:15", "19:30 at the station"),
-                (OUT, "18:16", "Ok"),
-                (IN, "19:02", "Also, did you finish the slides for Thursday?"),
-                (OUT, "19:20", "Almost. Two more pages"),
-                (IN, "19:21", "You said that last week"),
-                (OUT, "19:21", "This time it's true"),
-                (IN, "19:40", "Ahah sure"),
-                (
-                    OUT,
-                    "20:05",
-                    "The tablet finally drives an external monitor",
-                ),
-                (IN, "20:06", "Over USB-C?"),
-                (OUT, "20:06", "Yes, DisplayPort alt mode"),
-                (IN, "20:07", "That's huge"),
-                (OUT, "20:09", "And the phone runs the same desktop now"),
-                (IN, "20:10", "Wait, the Ace 3 too?"),
-                (OUT, "20:11", "Touch, keyboard, everything"),
-                (IN, "20:12", "You have to show me"),
-                (OUT, "21:30", "I'm writing a messages app for it right now"),
-                (IN, "21:31", "In Flutter?"),
-                (OUT, "21:31", "Rust. It's very light"),
-                (
-                    IN,
-                    "21:47",
-                    "Bring the tablet, I want to see Denial running on it",
-                ),
-            ],
-            &["Ahah ok", "It looks so smooth", "Send me a video later?"],
-        ),
-        conversation(
-            "Marco",
-            0x4F7A8C,
-            true,
-            &[
-                (IN, "20:15", "Did the new kernel boot?"),
-                (
-                    OUT,
-                    "20:31",
-                    "First try. Touch, display and USB-C video out",
-                ),
-                (IN, "20:33", "No way. Battery?"),
-            ],
-            &["Nice", "Which release is that?", "I want one too"],
-        ),
-        conversation(
-            "Mamma",
-            0x7C6A4E,
-            false,
-            &[
-                (IN, "12:04", "Are you eating properly?"),
-                (OUT, "12:20", "Yes mamma"),
-                (IN, "12:21", "Come on Sunday, I'm making lasagna"),
-                (OUT, "12:22", "I'll be there"),
-            ],
-            &["Bravo", "Bring your sister", "Call me tonight"],
-        ),
-        conversation(
-            "Lab group",
-            0x5B7F62,
-            false,
-            &[
-                (IN, "Yesterday", "Who left the soldering iron on?"),
-                (OUT, "Yesterday", "Not me this time"),
-                (IN, "Yesterday", "Sure..."),
-            ],
-            &[
-                "We'll check the logs",
-                "Fine, fine",
-                "Next time it's coffee for everyone",
-            ],
-        ),
-        conversation(
-            "Courier",
-            0x8A5560,
-            false,
-            &[(
-                IN,
-                "Mon",
-                "Your parcel will arrive today between 14:00 and 16:00",
-            )],
-            &["Thanks, we'll keep you posted"],
-        ),
-        conversation(
-            "Sara Bianchi",
-            0x4E6585,
-            false,
-            &[
-                (OUT, "Sun", "Thanks for the photos!"),
-                (IN, "Sun", "Anytime. The mountain was beautiful"),
-            ],
-            &["Next trip in November?", "I'll send the rest tonight"],
-        ),
-        quiet("Luca Ferri", 0x6A7B4F, "Sat", "Football on Wednesday?"),
-        quiet(
-            "Dentist",
-            0x7A5E78,
-            "Sat",
-            "Reminder: appointment on Tuesday at 9:30",
-        ),
-        quiet("Elena", 0x8C6B4A, "Fri", "I left the keys under the plant"),
-        quiet(
-            "Pietro Galli",
-            0x4D7470,
-            "Fri",
-            "Thanks for the help with the router",
-        ),
-        quiet(
-            "Bank",
-            0x5E6B8A,
-            "Thu",
-            "Your card ending 4412 was used online",
-        ),
-        quiet(
-            "Chiara",
-            0x8A6474,
-            "Thu",
-            "Movie night at mine, bring snacks",
-        ),
-        quiet("Nonna", 0x7D7350, "Wed", "Call me when you can"),
-        quiet("Davide Conti", 0x55708A, "Wed", "The PR is merged"),
-        quiet("Gym", 0x6B5A4E, "Tue", "Your membership renews next week"),
-        quiet("Francesca", 0x5F7D5B, "Mon", "Happy birthday!!"),
-        quiet("Andrea", 0x7A5560, "12 Oct", "See you at the conference"),
-        quiet(
-            "Building admin",
-            0x5A6470,
-            "10 Oct",
-            "Water is off on Friday morning",
-        ),
-    ]
+const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
-/// A short, already read conversation to fill the list.
-fn quiet(name: &'static str, avatar: u32, time: &'static str, text: &'static str) -> Conversation {
-    conversation(name, avatar, false, &[(IN, time, text)], &["Ok", "Thanks"])
+/// "18:02".
+pub fn clock(time: i64) -> String {
+    let t = local(time);
+    format!("{:02}:{:02}", t.hour, t.minute)
+}
+
+/// Today, Yesterday, a weekday within the week, else the date.
+pub fn day(time: i64, now: i64) -> String {
+    let (t, today) = (local(time), local(now));
+    match today.day - t.day {
+        0 => "Today".into(),
+        1 => "Yesterday".into(),
+        2..=6 => WEEKDAYS[t.weekday].into(),
+        _ if t.year == today.year => format!("{} {}", t.month_day, MONTHS[t.month]),
+        _ => format!("{} {} {}", t.month_day, MONTHS[t.month], t.year),
+    }
+}
+
+pub fn same_day(a: i64, b: i64) -> bool {
+    local(a).day == local(b).day
+}
+
+/// "Today 18:02", or "21 Oct 2026, 18:02" beyond the week.
+pub fn full_time(time: i64, now: i64) -> String {
+    let t = local(time);
+    if local(now).day - t.day <= 6 {
+        return format!("{} {:02}:{:02}", day(time, now), t.hour, t.minute);
+    }
+    format!(
+        "{} {} {}, {:02}:{:02}",
+        t.month_day, MONTHS[t.month], t.year, t.hour, t.minute
+    )
+}
+
+/// The clock for today, the day otherwise.
+pub fn list_time(time: i64, now: i64) -> String {
+    if same_day(time, now) {
+        clock(time)
+    } else {
+        day(time, now)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marks_words_the_query_starts() {
+        let text = "I'm bringing the Tiramisù, tirami-sù";
+        let marked: Vec<&str> = matches(text, "tirami BRING")
+            .into_iter()
+            .map(|range| &text[range])
+            .collect();
+        assert_eq!(marked, ["bring", "Tirami", "tirami"]);
+        assert!(matches("untiramisù", "tirami").is_empty());
+        assert!(matches("anything", "").is_empty());
+    }
+
+    #[test]
+    fn states_only_move_on() {
+        let mut message = Message::from_row((1, true, "hi".into(), 0, "sending".into()));
+        message.settle("delivered".into());
+        message.settle("sent".into());
+        assert_eq!(message.state, "delivered");
+        message.settle("undelivered".into());
+        assert!(message.undelivered());
+        assert_eq!(message.label(), ("Not delivered".into(), true));
+    }
 }
