@@ -14,6 +14,8 @@ sync the folder with a CardDAV server later. Read-only for now.
   rule, the one dmail files conversations by: the last 9 digits match, or the
   whole numbers when either has fewer than 7. `dialable` turns a written
   number into the form dmail takes.
+- `Contacts::extend` adds cards that are in no file, such as an app's
+  samples, in name order with the rest.
 - `Watch` follows the folder and its collections with inotify, their creation
   and removal too, and wakes once per burst of changes, so a sync rereads the
   folder once.

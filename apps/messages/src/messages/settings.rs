@@ -4,14 +4,13 @@
 
 use std::time::Instant;
 
-use denial_look::mobile::AVATAR;
+use denial_look::mobile::{AVATAR, content_top};
 use denial_look::{INSET, MIN_RADIUS};
 use denial_look_gpui::{
     Icon, chip, color, control_fill, control_radius, dp, icon, island, island_run, lifted, solid,
 };
 use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 
-use super::list::PADDING;
 use super::parts::{Face, Fill, ICON, place};
 use super::{Held, Layer, Messages, Screen};
 use crate::data;
@@ -123,8 +122,8 @@ impl Messages {
             .size_full()
             .overflow_y_scroll()
             .px(px(INSET))
-            .pt(px(PADDING))
-            .pb(px(PADDING))
+            .pt(px(content_top()))
+            .pb(px(self.list_bottom(Instant::now())))
             .flex()
             .flex_col()
             .gap(px(INSET))
@@ -154,7 +153,7 @@ impl Messages {
             );
             return div()
                 .px(px(INSET))
-                .pt(px(PADDING))
+                .pt(px(content_top()))
                 .child(place(island, self.item_motion(layer, 0, false, now)))
                 .into_any_element();
         }
@@ -217,8 +216,8 @@ impl Messages {
             .size_full()
             .overflow_y_scroll()
             .px(px(INSET))
-            .pt(px(PADDING - INSET))
-            .pb(px(PADDING))
+            .pt(px(content_top() - INSET))
+            .pb(px(self.list_bottom(Instant::now())))
             .children(items)
             .into_any_element()
     }

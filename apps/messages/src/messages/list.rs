@@ -6,7 +6,7 @@ use std::ops::Range;
 use std::time::Instant;
 
 use denial_contacts::dialable;
-use denial_look::mobile::{AVATAR, GROUP_HEIGHT, SCROLL_UNDERLAP, TOUCH};
+use denial_look::mobile::{AVATAR, GROUP_HEIGHT, TOUCH, content_top};
 use denial_look::{CONTROL_FILL, INSET, MIN_RADIUS, floating};
 use denial_look_gpui::{
     Icon, chip, color, control_radius, dp, glass_group, icon, island_edge, island_fill, island_run,
@@ -20,10 +20,8 @@ use gpui::{
 use super::parts::{CHIP_ICON, Face, Fill, ICON, place};
 use super::{Back, Candidate, Found, Held, Layer, Link, Messages, Overlay, Screen};
 use crate::data;
-use crate::input::TextInput;
+use denial_look_gpui::input::TextInput;
 
-/// Content padding above the first island and below the last.
-pub(super) const PADDING: f32 = SCROLL_UNDERLAP + INSET;
 /// A row's padding from its island's edge, in dp.
 const ROW_PAD: f32 = 16.0;
 /// A row's avatar, in dp.
@@ -143,8 +141,10 @@ impl Messages {
                 place(
                     div()
                         .px(px(INSET))
-                        .when(ix == 0, |item| item.pt(px(PADDING - INSET)))
-                        .when(ix + 1 == shown.len(), |item| item.pb(px(PADDING)))
+                        .when(ix == 0, |item| item.pt(px(content_top() - INSET)))
+                        .when(ix + 1 == shown.len(), |item| {
+                            item.pb(px(this.list_bottom(Instant::now())))
+                        })
                         .child(
                             this.conversation_row(
                                 index, None, segment, label, layer, lift, now, cx,
@@ -206,7 +206,7 @@ impl Messages {
         };
         div()
             .px(px(INSET))
-            .pt(px(PADDING))
+            .pt(px(content_top()))
             .child(place(island, self.item_motion(layer, 0, false, now)))
             .into_any_element()
     }
@@ -573,8 +573,10 @@ impl Messages {
                 place(
                     div()
                         .px(px(INSET))
-                        .when(ix == 0, |item| item.pt(px(PADDING - INSET)))
-                        .when(ix + 1 == count, |item| item.pb(px(PADDING)))
+                        .when(ix == 0, |item| item.pt(px(content_top() - INSET)))
+                        .when(ix + 1 == count, |item| {
+                            item.pb(px(this.list_bottom(Instant::now())))
+                        })
                         .child(item),
                     motion,
                 )
@@ -653,8 +655,10 @@ impl Messages {
                 place(
                     div()
                         .px(px(INSET))
-                        .when(ix == 0, |item| item.pt(px(PADDING - INSET)))
-                        .when(ix + 1 >= count, |item| item.pb(px(PADDING)))
+                        .when(ix == 0, |item| item.pt(px(content_top() - INSET)))
+                        .when(ix + 1 >= count, |item| {
+                            item.pb(px(this.list_bottom(Instant::now())))
+                        })
                         .child(item),
                     motion,
                 )
@@ -889,7 +893,7 @@ impl Messages {
         Some(
             div()
                 .absolute()
-                .top(px(INSET * 2.) + dp(GROUP_HEIGHT))
+                .top(px(INSET * 2. - self.top_away.away()) + dp(GROUP_HEIGHT))
                 .right(px(INSET))
                 .opacity(self.dim(now))
                 .child(

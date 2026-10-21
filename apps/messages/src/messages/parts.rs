@@ -7,7 +7,7 @@ use std::time::Instant;
 use denial_look::mobile::{AVATAR, TOUCH};
 use denial_look::{INSET, PRESSED_FILL, lerp_rgb, motion, on, palette};
 use denial_look_gpui::{
-    Faded, Icon, color, control_fill, control_radius, dp, faded, glass_group, icon, island, solid,
+    Icon, color, control_fill, control_radius, dp, glass_group, icon, island, solid,
 };
 use gpui::{
     Context, Div, FontWeight, HitboxBehavior, LongPressEvent, MouseButton, ObjectFit, Stateful,
@@ -378,16 +378,14 @@ impl Messages {
     }
 }
 
-/// Places a content island as `motion` says; it fades as it scrolls under
-/// the groups.
-pub(super) fn place(element: impl IntoElement, motion: Motion) -> Faded {
-    faded(
-        div()
-            .relative()
-            .top(px(motion.offset))
-            .opacity(motion.opacity)
-            .child(element),
-    )
+/// Places a content island as `motion` says. It scrolls under the groups,
+/// the gesture zone and the keyboard as it is, never faded.
+pub(super) fn place(element: impl IntoElement, motion: Motion) -> Div {
+    div()
+        .relative()
+        .top(px(motion.offset))
+        .opacity(motion.opacity)
+        .child(element)
 }
 
 /// Text on `fill`: the accent's own, else readable on it.

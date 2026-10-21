@@ -7,5 +7,6 @@ publish.workspace = true
 
 [dependencies]
 denial-look = { path = "../denial-look" }
+unicode-segmentation = "1"
 # The apps' GPUI, gpui-touch; see apps/messages/Cargo.toml for the pin.
 gpui = { path = "../../../gpui-touch/crates/gpui" }

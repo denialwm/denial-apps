@@ -2,12 +2,12 @@
 //! scrolls inside itself. It registers an IME input handler while focused,
 //! which enables Wayland text-input-v3 and so Denial's on-screen keyboard.
 //!
-//! Adapted from zed's crates/gpui/examples/input.rs (Apache-2.0).
+//! Adapted from zed's crates/gpui/examples/input.rs (Apache-2.0). An app binds
+//! its keys once, with `bind_keys`.
 
 use std::ops::Range;
 
 use denial_look::Look;
-use denial_look_gpui::{color, dp, solid};
 use gpui::{
     App, AvailableSpace, Bounds, ClipboardItem, Context, CursorStyle, ElementId,
     ElementInputHandler, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId,
@@ -16,6 +16,8 @@ use gpui::{
     Window, WrappedLine, actions, div, fill, point, prelude::*, px, relative, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::{color, dp, solid};
 
 actions!(
     text_input,

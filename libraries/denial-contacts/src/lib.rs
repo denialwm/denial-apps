@@ -125,6 +125,14 @@ impl Contacts {
         &self.list
     }
 
+    /// Adds `more` to the contacts, such as made-up ones to try an app with,
+    /// in name order with the rest.
+    pub fn extend(&mut self, more: impl IntoIterator<Item = Contact>) {
+        let mut list = std::mem::take(&mut self.list);
+        list.extend(more);
+        *self = Self::new(list);
+    }
+
     /// The contact with `number`, as an index into `all()`. A sender name
     /// finds no one.
     pub fn find(&self, number: &str) -> Option<usize> {

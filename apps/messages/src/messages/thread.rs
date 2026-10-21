@@ -3,20 +3,19 @@
 
 use std::time::Instant;
 
-use denial_look::mobile::{AVATAR_SMALL, COMPOSER_HEIGHT, TOUCH, dp as dp_lp};
+use denial_look::mobile::{AVATAR_SMALL, COMPOSER_HEIGHT, TOUCH, content_top, dp as dp_lp};
 use denial_look::{INSET, MIN_RADIUS, ease_out_cubic, motion};
-use denial_look_gpui::{Icon, chip, dp, icon, island_run, lifted, solid};
+use denial_look_gpui::{Icon, chip, dp, glass_island, icon, island_run, lifted, solid};
 use gpui::{
     AnyElement, ClickEvent, Context, Div, Focusable, FontWeight, HighlightStyle, MouseButton,
     StyledText, UnderlineStyle, div, list, prelude::*, px, relative,
 };
 
-use super::list::PADDING;
 use super::parts::{Face, Fill, ICON, place};
 use super::{Confirm, Held, Layer, Link, Messages, Motion, Overlay};
 use crate::data::{self, Message};
-use crate::input;
 use crate::segments;
+use denial_look_gpui::input;
 
 /// Space beside the bubbles.
 const SIDE: f32 = 16.0;
@@ -82,8 +81,8 @@ impl Messages {
                 place(
                     div()
                         .px(px(SIDE))
-                        .when(ix == 0, |item| item.pt(px(PADDING)))
-                        .when(ix + 1 == count, |item| item.pb(px(PADDING)))
+                        .when(ix == 0, |item| item.pt(px(content_top())))
+                        .when(ix + 1 == count, |item| item.pb(px(this.thread_bottom(now))))
                         .child(item),
                     Motion::STILL,
                 )
@@ -324,7 +323,7 @@ impl Messages {
         });
         let palette = &self.look.palette;
         let composer = self.composer.clone();
-        let mut field = island_run(&self.look)
+        let mut field = glass_island(&self.look)
             .id("composer")
             .flex_1()
             .min_w_0()
@@ -359,7 +358,7 @@ impl Messages {
                 |this, _, cx| this.send(cx),
             )
         } else {
-            island_run(&self.look)
+            glass_island(&self.look)
                 .id("send")
                 .text_color(solid(palette.secondary))
                 .child(icon(Icon::Send, dp(ICON), solid(palette.secondary)))

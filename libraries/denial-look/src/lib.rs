@@ -94,6 +94,10 @@ pub mod palette {
     /// the end-call button. Nothing else is red.
     pub const DESTRUCTIVE: u32 = 0xD2453B;
 
+    /// Fill of the button that places or answers a call. Nothing else is
+    /// green.
+    pub const CALL: u32 = 0x3E9B5B;
+
     /// Avatar fills for people without a photo, mid-tones under light
     /// initials in either appearance.
     const AVATARS: [u32; 8] = [
@@ -120,6 +124,9 @@ pub mod floating {
     pub const LIFT_SHADOW_ALPHA: f32 = 0.35;
     pub const LIFT_SHADOW_BLUR: f32 = 30.0;
     pub const LIFT_SHADOW_OFFSET_Y: f32 = 10.0;
+    /// Radius of the blur under glass groups and text fields: two standard
+    /// deviations, so what scrolls under them reads as shapes, not words.
+    pub const BACKDROP_BLUR: f32 = 40.0;
 }
 
 /// Durations in milliseconds, on Denial's duration scale through
@@ -146,6 +153,9 @@ pub mod motion {
     /// it, lp; they arrive `BOTTOM_DELAY` into the switch.
     pub const BOTTOM_TRAVEL: f32 = 40.0;
     pub const BOTTOM_DELAY: u64 = 120;
+    /// Between tabs the screens slide side by side, the way the tabs are
+    /// ordered, on the decelerate curve; nothing fades.
+    pub const SLIDE: u64 = 300;
     /// Glass group contents cross-fade: out over `GROUP_OUT`, in over
     /// `GROUP_IN` from `GROUP_IN_DELAY`.
     pub const GROUP_OUT: u64 = 100;
@@ -191,6 +201,10 @@ pub mod mobile {
     pub const TOUCH: f32 = 48.0;
     /// Height of the top and of the bottom glass group, dp.
     pub const GROUP_HEIGHT: f32 = 56.0;
+    /// Height of a tab bar's tabs, dp. The bar is anchored: opaque, the
+    /// window's full width, from the bottom edge up, the gesture zone under
+    /// its tabs.
+    pub const TAB_BAR: f32 = 52.0;
     /// Height of the composer field and its Send island, dp.
     pub const COMPOSER_HEIGHT: f32 = 48.0;
     /// Avatar in a list row, and in the top group, dp.
@@ -198,54 +212,78 @@ pub mod mobile {
     pub const AVATAR_SMALL: f32 = 36.0;
     /// Text on a chip, dp.
     pub const CHIP_TEXT: f32 = 12.0;
-    /// A scroll viewport reaches this far under the groups above and below
-    /// it, and its content is padded by `SCROLL_FADE`.
-    pub const SCROLL_UNDERLAP: f32 = 16.0;
-    /// Content fades in over this much at each end of a scroll viewport.
-    pub const SCROLL_FADE: f32 = 24.0;
 
     pub fn dp(value: f32) -> f32 {
         value * DP
     }
 
-    /// What a phone app keeps clear at its bottom while the keyboard is
-    /// `keyboard` lp tall, 0 when it is down: the gesture zone, or the keyboard
-    /// and the gap above it.
+    /// Where what rides on the on-screen keyboard sits, lp above the
+    /// window's bottom edge while the keyboard is `keyboard` lp tall, 0 when
+    /// it is down: on the gesture zone, or a gap above the keys. Only text
+    /// fields ride on the keys; everything else stays where it is, under the
+    /// keyboard's glass.
     pub fn bottom_inset(keyboard: f32) -> f32 {
         (keyboard + KEYBOARD_GAP).max(GESTURE_INSET)
+    }
+
+    /// Padding above the first island of a scroll viewport, which starts at
+    /// the top group's upper edge: the group and the gutter under it.
+    pub fn content_top() -> f32 {
+        dp(GROUP_HEIGHT) + super::INSET
+    }
+
+    /// Padding under the last island of a scroll viewport, which runs to the
+    /// window's bottom edge, under the gesture zone and the keyboard: the
+    /// gutter clear of everything at the bottom. `fixed` lp stay on the
+    /// gesture zone (a tab bar, a call bar) and are under the keyboard while
+    /// it is up; `riding` lp ride on the keys (a composer).
+    pub fn content_bottom(keyboard: f32, fixed: f32, riding: f32) -> f32 {
+        let keys = if riding > 0.0 {
+            bottom_inset(keyboard) + riding
+        } else {
+            keyboard
+        };
+        (GESTURE_INSET + fixed).max(keys) + super::INSET
+    }
+
+    /// The top of a scrolling screen that leaves as its content scrolls on
+    /// and comes back as soon as it scrolls back, wherever it is: how far it
+    /// is up and away, lp, out of `range`.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct ScrollAway {
+        /// The content's scroll offset when last followed.
+        last: f32,
+        away: f32,
+    }
+
+    impl ScrollAway {
+        /// Starts over shown, the content at `offset`.
+        pub fn shown(offset: f32) -> Self {
+            Self {
+                last: offset,
+                away: 0.0,
+            }
+        }
+
+        /// Follows the content to `offset`, lp scrolled from its start, and
+        /// says how far up the top is now. It moves with the content, up to
+        /// `range` away, and never further than the content has scrolled, so
+        /// at the start it is all there.
+        pub fn follow(&mut self, offset: f32, range: f32) -> f32 {
+            let offset = offset.max(0.0);
+            self.away = (self.away + offset - self.last).clamp(0.0, range.min(offset));
+            self.last = offset;
+            self.away
+        }
+
+        pub fn away(&self) -> f32 {
+            self.away
+        }
     }
 
     /// How far the shell lifts a view `height` tall for the keyboard.
     pub fn keyboard_lift(height: f32) -> f32 {
         (0.3 * height).min(KEYBOARD_LIFT)
-    }
-
-    /// The opacity of an item from `top` to `bottom` in a scroll viewport from
-    /// `view_top` to `view_bottom`: the mean, over the item's height, of a
-    /// mask that ramps from 0 to 1 over the viewport's first and last
-    /// `SCROLL_FADE`. An item is drawn at one opacity, so a tall one passing
-    /// an edge fades as a whole.
-    pub fn scroll_fade(top: f32, bottom: f32, view_top: f32, view_bottom: f32) -> f32 {
-        // The integral of a ramp that starts at `start`, from far before up to `y`.
-        let ramp = |start: f32, y: f32| {
-            let into = (y - start).max(0.0);
-            if into < SCROLL_FADE {
-                into * into / (2.0 * SCROLL_FADE)
-            } else {
-                into - SCROLL_FADE / 2.0
-            }
-        };
-        let height = bottom - top;
-        if height <= 0.0 {
-            let mask = ((top - view_top) / SCROLL_FADE).min((view_bottom - top) / SCROLL_FADE);
-            return mask.clamp(0.0, 1.0);
-        }
-        let rising = ramp(view_top, bottom) - ramp(view_top, top);
-        // The falling ramp is the rising one mirrored.
-        let falling = ramp(-view_bottom, -top) - ramp(-view_bottom, -bottom);
-        // Where one ramp is below 1 the other is 1, so the smaller of the two
-        // is their sum less 1.
-        ((rising + falling - height) / height).clamp(0.0, 1.0)
     }
 }
 
@@ -615,6 +653,7 @@ mod tests {
             }
         }
         assert!(contrast(on(palette::DESTRUCTIVE), palette::DESTRUCTIVE) >= 3.0);
+        assert!(contrast(on(palette::CALL), palette::CALL) >= 3.0);
     }
 
     #[test]
@@ -663,19 +702,29 @@ mod tests {
     }
 
     #[test]
-    fn content_fades_at_the_viewport_ends() {
-        use mobile::{SCROLL_FADE, scroll_fade};
-        let (top, bottom) = (100.0, 900.0);
-        // Resting a fade's width from the edge, and in the middle.
-        assert_eq!(scroll_fade(top + SCROLL_FADE, top + 80.0, top, bottom), 1.0);
-        assert_eq!(scroll_fade(400.0, 480.0, top, bottom), 1.0);
-        // Out of the viewport, and half through the band.
-        assert_eq!(scroll_fade(0.0, 90.0, top, bottom), 0.0);
-        assert_eq!(scroll_fade(910.0, 990.0, top, bottom), 0.0);
-        let half = scroll_fade(top, top + SCROLL_FADE, top, bottom);
-        assert!((half - 0.5).abs() < 1e-4);
-        let mirrored = scroll_fade(bottom - SCROLL_FADE, bottom, top, bottom);
-        assert!((mirrored - 0.5).abs() < 1e-4);
+    fn content_clears_what_is_at_the_bottom() {
+        use mobile::{GESTURE_INSET, content_bottom};
+        // Nothing at the bottom: a gutter over the gesture zone, or over the
+        // keys while they are up.
+        assert_eq!(content_bottom(0.0, 0.0, 0.0), GESTURE_INSET + INSET);
+        assert_eq!(content_bottom(600.0, 0.0, 0.0), 600.0 + INSET);
+        // A tab bar stays under the keyboard; a composer rides on it.
+        assert_eq!(content_bottom(0.0, 80.0, 0.0), GESTURE_INSET + 80.0 + INSET);
+        assert_eq!(content_bottom(600.0, 80.0, 0.0), 600.0 + INSET);
+        assert_eq!(content_bottom(600.0, 0.0, 70.0), 600.0 + 2.0 * INSET + 70.0);
+    }
+
+    #[test]
+    fn the_top_scrolls_away_and_back_from_anywhere() {
+        let mut top = mobile::ScrollAway::shown(0.0);
+        assert_eq!(top.follow(30.0, 100.0), 30.0);
+        assert_eq!(top.follow(900.0, 100.0), 100.0);
+        // Back a little, far from the start: it comes back as much.
+        assert_eq!(top.follow(860.0, 100.0), 60.0);
+        assert_eq!(top.follow(700.0, 100.0), 0.0);
+        // Down again, then back to the start, where it is all there.
+        assert_eq!(top.follow(780.0, 100.0), 80.0);
+        assert_eq!(top.follow(20.0, 100.0), 0.0);
     }
 
     #[test]

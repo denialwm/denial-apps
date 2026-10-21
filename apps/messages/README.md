@@ -8,10 +8,11 @@ on the system bus (`src/dmail.rs`), follows its signals and the modem state in
 It is drawn to Denial's mobile materials, Islands
 (denial/docs/MOBILE_APP_MATERIALS.md): bubbles, conversations and rows are
 opaque islands, navigation sits in glass groups, short labels are chips, and
-every text field is in the bottom zone (`Messages::bottom_zone`), the one
-place that follows the on-screen keyboard. Messages takes Denial's keyboard
-inset, so the shell does not lift the window: the bottom zone moves onto the
-keys with the keyboard and the content above it shrinks. The screens: the
+the composer, in the bottom zone (`Messages::bottom_zone`), is the one thing
+that rides on the on-screen keyboard. Messages takes Denial's keyboard inset,
+so the shell does not lift the window: the composer moves onto the keys, and
+the thread and the lists go on scrolling under them, under the groups and
+under the gesture zone, never faded. The screens: the
 conversation list (Pinned, Today, Yesterday, then months; an Unread filter),
 search through dmail's `Search`, New conversation, the thread, the archive,
 settings (delivery reports, the SIM dmail uses, blocked numbers) and the
@@ -52,7 +53,7 @@ starts it with the graphical session.
   on the phone, for `org.dmail.Messages1`.
 - `libraries/denial-look`: Denial's application look (palettes, floors,
   motion and layout tokens, from `~/.config/denial/settings.json`).
-- `libraries/denial-look-gpui`: islands, glass groups, chips, the scroll fade
+- `libraries/denial-look-gpui`: islands, glass groups, chips, the text field
   and the icons, as GPUI elements.
 - `libraries/denial-contacts`: the contacts folder, and the number matching
   dmail uses.
@@ -61,12 +62,13 @@ starts it with the graphical session.
   `denial/touch-fling-end`: zed's GPUI with Wayland touch
   (zed-industries/zed#64079) plus Denial's touch fixes. Pinned by commit;
   push the fork before bumping `rev` here. For now Messages builds against
-  the local checkout, `../gpui-touch`, whose uncommitted patches it needs:
-  activating a window with another program's token, colour emoji through a
-  font's fallbacks (an emoji font may be a fallback though it has no Latin
-  letters; a character followed by VS16 takes a fallback that has it), and
-  the keyboard inset of Denial's insets protocol version 2 (branch
-  `denial/keyboard-inset`).
+  the local checkout, `../gpui-touch`, whose unpushed commits it needs (up
+  to 1f756d9): activating a window with another program's token, colour
+  emoji through a font's fallbacks (an emoji font may be a fallback though it
+  has no Latin letters; a character followed by VS16 takes a fallback that
+  has it), the keyboard inset of Denial's insets protocol version 2, and the
+  backdrop blur under glass groups, the composer and Send
+  (`Styled::backdrop_blur`, drawn by the wgpu renderer).
 
 Denial sends touch only as `wl_touch`, so upstream GPUI cannot be used on
 devices.

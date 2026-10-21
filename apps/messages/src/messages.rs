@@ -8,15 +8,19 @@ mod parts;
 mod settings;
 mod thread;
 
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::pin::pin;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use ::messages::dmail::{
     BlockedRow, ConversationRow, FoundRow, MessageRow, Messages1Proxy, Modem1Proxy,
 };
 use denial_contacts::{Contacts, Watch, dialable, same_number};
-use denial_look::mobile::{GROUP_HEIGHT, SCROLL_UNDERLAP, bottom_inset, dp as dp_lp};
+use denial_look::mobile::{
+    COMPOSER_HEIGHT, GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom, dp as dp_lp,
+};
 use denial_look::{
     INSET, Look, SettingsWatch, Tween, decelerate, ease_in_cubic, ease_out_cubic, motion, stagger,
 };
@@ -25,14 +29,14 @@ use futures_lite::{Stream, StreamExt};
 use gpui::{
     AnyElement, App, AsyncApp, ClipboardItem, Context, Div, Entity, FocusHandle, Focusable, Font,
     FontFallbacks, KeyboardInset, ListAlignment, ListOffset, ListState, SharedString, Subscription,
-    Task, WeakEntity, Window, actions, div, prelude::*, px,
+    Task, WeakEntity, Window, actions, canvas, div, prelude::*, px,
 };
 
 use crate::data::{self, Conversation, Message};
 use crate::detect::Kind;
-use crate::input::{Submitted, TextInput};
 use crate::local::{Drafts, Flag, Peers};
 use crate::people::People;
+use denial_look_gpui::input::{Submitted, TextInput};
 
 actions!(messages, [Back]);
 
@@ -312,13 +316,19 @@ pub struct Messages {
     samples: Flag,
     /// The list's top group holds the search field.
     searching: bool,
+    /// The top group leaves as the conversations scroll on, and comes back
+    /// as they scroll back.
+    top_away: ScrollAway,
     overlay: Option<(Overlay, Tween)>,
     /// A short note above the bottom zone, until its task hides it.
     notice: Option<(SharedString, Tween, Task<()>)>,
     screen: Screen,
     arrival: Arrival,
-    /// The on-screen keyboard, which the window is laid out around.
+    /// The on-screen keyboard, which the composer rides on.
     keyboard: Keyboard,
+    /// How tall the thread's composer was last drawn, lp, for the thread to
+    /// end above it.
+    composer_height: Rc<Cell<f32>>,
     rows: ListState,
     archive: ListState,
     found: ListState,
@@ -427,11 +437,13 @@ impl Messages {
             marked: Peers::load("unread"),
             samples,
             searching: false,
+            top_away: ScrollAway::default(),
             overlay: None,
             notice: None,
             screen,
             arrival,
             keyboard,
+            composer_height: Rc::new(Cell::new(dp_lp(COMPOSER_HEIGHT))),
             rows: ListState::new(0, ListAlignment::Top, dp(600.)),
             archive: ListState::new(0, ListAlignment::Top, dp(600.)),
             found: ListState::new(0, ListAlignment::Bottom, dp(600.)),
@@ -1212,6 +1224,7 @@ impl Messages {
         self.keep_draft(cx);
         self.overlay = None;
         let leaving = std::mem::replace(&mut self.screen, screen.clone());
+        self.top_away = ScrollAway::shown(self.scrolled(&screen).unwrap_or(0.0));
         // One thread to another shares the thread's list: it changes at once.
         let threads = matches!((&leaving, &screen), (Screen::Thread(_), Screen::Thread(_)));
         self.arrival = Arrival {
@@ -1764,19 +1777,17 @@ impl Messages {
             })
             .absolute()
             .inset_0()
-            .flex()
-            .flex_col()
-            // The viewport starts under the top group's lower edge.
+            // The content scrolls from the top group's upper edge to the
+            // window's lower one, under the groups, the gesture zone and the
+            // keyboard. Above the top group the gutter stays on the backing,
+            // which Denial paints the status strip with.
             .child(
                 div()
-                    .flex_none()
-                    .h(px(INSET - SCROLL_UNDERLAP) + dp(GROUP_HEIGHT)),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .mb(px(-SCROLL_UNDERLAP))
+                    .absolute()
+                    .top(px(INSET))
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
                     .child(content),
             )
             .child(self.bottom_zone(screen, layer, bottom, now, cx));
@@ -1788,8 +1799,8 @@ impl Messages {
 
     /// Everything above the gesture zone or the on-screen keyboard at the
     /// bottom: the thread's composer, the chips over it, and a confirmation
-    /// in its place. The one place that follows the
-    /// keyboard: it sits on the keys and the content above it shrinks.
+    /// in its place. The composer is the one thing that rides on the
+    /// keyboard; the thread goes on under it and the keys.
     fn bottom_zone(
         &self,
         screen: &Screen,
@@ -1831,15 +1842,69 @@ impl Messages {
                     .opacity(fade.progress(now))
                     .child(denial_look_gpui::chip(&self.look).child(note.clone()))
             });
+        // The composer's height, measured as it is drawn, for the thread's
+        // last bubble to clear it.
+        let measured = matches!(screen, Screen::Thread(_)) && layer.live() && confirm.is_none();
+        let content = content.map(|content| {
+            let height = self.composer_height.clone();
+            div().relative().child(content).when(measured, |zone| {
+                zone.child(
+                    canvas(
+                        move |bounds, window, _| {
+                            let drawn = f32::from(bounds.size.height);
+                            if height.replace(drawn) != drawn {
+                                window.refresh();
+                            }
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
+        });
         div()
-            .flex_none()
-            .relative()
+            .absolute()
+            .left_0()
+            .right_0()
+            .bottom(px(-motion.offset))
             .px(px(INSET))
             .pb(px(bottom_inset(self.keyboard.height(now))))
-            .top(px(motion.offset))
             .opacity(motion.opacity)
             .children(notice)
             .children(content)
+    }
+
+    /// Padding under the last island of a list: clear of the gesture zone,
+    /// or of the keyboard while it is up.
+    fn list_bottom(&self, now: Instant) -> f32 {
+        content_bottom(self.keyboard.height(now), 0.0, 0.0)
+    }
+
+    /// Padding under the thread's last bubble: clear of the composer, which
+    /// rides on the keyboard.
+    fn thread_bottom(&self, now: Instant) -> f32 {
+        content_bottom(self.keyboard.height(now), 0.0, self.composer_height.get())
+    }
+
+    /// How far `screen`'s conversations are scrolled, lp, on the lists.
+    fn scrolled(&self, screen: &Screen) -> Option<f32> {
+        let list = match screen {
+            Screen::List => &self.rows,
+            Screen::Archived => &self.archive,
+            _ => return None,
+        };
+        Some(-f32::from(list.scroll_px_offset_for_scrollbar().y))
+    }
+
+    /// Moves the top group with the list's scroll. It stays while searching.
+    fn follow_scroll(&mut self) {
+        match self.scrolled(&self.screen) {
+            Some(offset) if !self.searching => {
+                self.top_away.follow(offset, INSET + dp_lp(GROUP_HEIGHT));
+            }
+            offset => self.top_away = ScrollAway::shown(offset.unwrap_or(0.0)),
+        }
     }
 
     /// The top group: the shown screen's contents over the leaving one's.
@@ -1866,7 +1931,7 @@ impl Messages {
             });
         div()
             .absolute()
-            .top(px(INSET))
+            .top(px(INSET - self.top_away.away()))
             .left(px(INSET))
             .right(px(INSET))
             .h(dp(GROUP_HEIGHT))
@@ -1962,6 +2027,7 @@ impl Render for Messages {
             window.request_animation_frame();
         }
         self.take_items(cx);
+        self.follow_scroll();
         let leaving = self
             .arrival
             .leaving

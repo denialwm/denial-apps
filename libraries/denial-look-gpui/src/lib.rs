@@ -1,15 +1,14 @@
 //! Denial's mobile materials as GPUI elements: islands, glass groups and
 //! chips with the fills, edges and shadows of docs/MOBILE_APP_MATERIALS.md,
-//! the scroll fade, and the icons the apps share. The values come from
+//! the text field and the icons the apps share. The values come from
 //! `denial-look`; this crate only builds elements from them.
 
-mod fade;
 mod icons;
+pub mod input;
 
 use denial_look::{CONTROL_FILL, INSET, Look, floating, mobile, nested_radius};
 use gpui::{BoxShadow, Div, Hsla, Pixels, Styled, div, point, prelude::*, px, relative, rgba};
 
-pub use fade::{Faded, faded};
 pub use icons::{Assets, Icon, icon};
 
 /// `value` dp in logical pixels.
@@ -88,12 +87,20 @@ pub fn island(look: &Look) -> Div {
     island_run(look).shadow(shadow(look))
 }
 
+/// A run's island over the backdrop blur, for what stays in place while
+/// content scrolls under it: a text field, its Send, a bar.
+pub fn glass_island(look: &Look) -> Div {
+    island_run(look).backdrop_blur(px(floating::BACKDROP_BLUR))
+}
+
 /// A glass group for navigation and commands that stay in place: the glass
-/// tint, never below the group floor, with the floating edge and shadow. It
-/// takes the touches over content fading out under it.
+/// tint, never below the group floor, over the backdrop blur, with the
+/// floating edge and shadow. It takes the touches over content scrolling
+/// under it.
 pub fn glass_group(look: &Look) -> Div {
     div()
         .occlude()
+        .backdrop_blur(px(floating::BACKDROP_BLUR))
         .bg(color(look.palette.glass, look.group_alpha()))
         .rounded(px(look.group_radius()))
         .border(px(floating::EDGE_WIDTH))

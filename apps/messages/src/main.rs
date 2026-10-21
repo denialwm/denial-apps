@@ -1,6 +1,5 @@
 mod data;
 mod detect;
-mod input;
 mod local;
 mod messages;
 mod people;
@@ -50,7 +49,7 @@ fn main() {
     application()
         .with_assets(denial_look_gpui::Assets)
         .run(move |cx: &mut App| {
-            input::bind_keys(cx);
+            denial_look_gpui::input::bind_keys(cx);
             // Denial's Back gesture arrives as KEY_BACK, which GPUI names `back`.
             cx.bind_keys([
                 KeyBinding::new("back", Back, None),
