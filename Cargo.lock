@@ -4434,6 +4434,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "settings"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-io",
+ "denial-look",
+ "denial-look-gpui",
+ "futures-lite",
+ "gpui",
+ "gpui_platform",
+ "image",
+ "libc",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "sha1_smol"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

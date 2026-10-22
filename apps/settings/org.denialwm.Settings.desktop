@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Comment=Settings for Denial phones
+Exec=/home/logix/.local/bin/settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings;
