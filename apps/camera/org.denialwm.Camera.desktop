@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Camera
+Comment=Photos from the phone's cameras
+Exec=/home/logix/.local/bin/camera
+Icon=camera-photo
+Terminal=false
+Categories=Graphics;Photography;

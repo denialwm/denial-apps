@@ -673,6 +673,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "camera"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "denial-look",
+ "denial-look-gpui",
+ "gpui",
+ "gpui_platform",
+ "image",
+ "libc",
+]
+
+[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

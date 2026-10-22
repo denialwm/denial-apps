@@ -23,6 +23,7 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 |---|---|
 | [`messages`](apps/messages) | SMS app, on Phonewave's dmail, and its notifier |
 | [`calls`](apps/calls) | Phone and contacts app; calls are mocked until dmail's Voice1 works |
+| [`camera`](apps/camera) | Camera app: our own raw pipeline, burst photos, front and back cameras |
 
 ## Libraries
 

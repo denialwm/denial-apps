@@ -17,9 +17,12 @@ pub enum Icon {
     Copy,
     Delete,
     Delivered,
+    Flip,
+    Gridlines,
     HangUp,
     Hold,
     Incoming,
+    Info,
     Keypad,
     Lock,
     Message,
@@ -31,7 +34,9 @@ pub enum Icon {
     Outgoing,
     Person,
     Phone,
+    Photos,
     Pin,
+    Progress,
     Read,
     Recent,
     Retry,
@@ -43,11 +48,12 @@ pub enum Icon {
     Speaker,
     Star,
     Starred,
+    Timer,
     Unarchive,
     Unread,
 }
 
-const ALL: [Icon; 38] = [
+const ALL: [Icon; 44] = [
     Icon::Alert,
     Icon::Archive,
     Icon::Back,
@@ -58,9 +64,12 @@ const ALL: [Icon; 38] = [
     Icon::Copy,
     Icon::Delete,
     Icon::Delivered,
+    Icon::Flip,
+    Icon::Gridlines,
     Icon::HangUp,
     Icon::Hold,
     Icon::Incoming,
+    Icon::Info,
     Icon::Keypad,
     Icon::Lock,
     Icon::Message,
@@ -72,7 +81,9 @@ const ALL: [Icon; 38] = [
     Icon::Outgoing,
     Icon::Person,
     Icon::Phone,
+    Icon::Photos,
     Icon::Pin,
+    Icon::Progress,
     Icon::Read,
     Icon::Recent,
     Icon::Retry,
@@ -84,6 +95,7 @@ const ALL: [Icon; 38] = [
     Icon::Speaker,
     Icon::Star,
     Icon::Starred,
+    Icon::Timer,
     Icon::Unarchive,
     Icon::Unread,
 ];
@@ -101,9 +113,12 @@ impl Icon {
             Icon::Copy => "copy",
             Icon::Delete => "delete",
             Icon::Delivered => "delivered",
+            Icon::Flip => "flip",
+            Icon::Gridlines => "gridlines",
             Icon::HangUp => "hang-up",
             Icon::Hold => "hold",
             Icon::Incoming => "incoming",
+            Icon::Info => "info",
             Icon::Keypad => "keypad",
             Icon::Lock => "lock",
             Icon::Message => "message",
@@ -115,7 +130,9 @@ impl Icon {
             Icon::Outgoing => "outgoing",
             Icon::Person => "person",
             Icon::Phone => "phone",
+            Icon::Photos => "photos",
             Icon::Pin => "pin",
+            Icon::Progress => "progress",
             Icon::Read => "read",
             Icon::Recent => "recent",
             Icon::Retry => "retry",
@@ -127,6 +144,7 @@ impl Icon {
             Icon::Speaker => "speaker",
             Icon::Star => "star",
             Icon::Starred => "starred",
+            Icon::Timer => "timer",
             Icon::Unarchive => "unarchive",
             Icon::Unread => "unread",
         }
@@ -149,11 +167,16 @@ impl Icon {
             }
             Icon::Delete => r#"<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>"#,
             Icon::Delivered => r#"<circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/>"#,
+            Icon::Flip => {
+                r#"<path d="M19.5 10A8 8 0 0 0 5.7 7M4.5 14a8 8 0 0 0 13.8 3"/><path d="M5 3v4h4M19 21v-4h-4"/>"#
+            }
+            Icon::Gridlines => r#"<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/>"#,
             Icon::HangUp => {
                 r#"<path transform="rotate(135 12 12)" d="M6 3h3l2 5-2.5 1.5a11 11 0 006 6L16 13l5 2v3a2 2 0 01-2 2A16 16 0 014 5a2 2 0 012-2z"/>"#
             }
             Icon::Hold => r#"<path d="M9 5v14M15 5v14"/>"#,
             Icon::Incoming => r#"<path d="M17 7L7 17M7 9v8h8"/>"#,
+            Icon::Info => r#"<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>"#,
             Icon::Keypad => {
                 r#"<circle cx="6" cy="5" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="18" cy="5" r="1"/><circle cx="6" cy="11" r="1"/><circle cx="12" cy="11" r="1"/><circle cx="18" cy="11" r="1"/><circle cx="6" cy="17" r="1"/><circle cx="12" cy="17" r="1"/><circle cx="18" cy="17" r="1"/><circle cx="12" cy="22" r="1"/>"#
             }
@@ -175,7 +198,9 @@ impl Icon {
             Icon::Phone => {
                 r#"<path d="M6 3h3l2 5-2.5 1.5a11 11 0 006 6L16 13l5 2v3a2 2 0 01-2 2A16 16 0 014 5a2 2 0 012-2z"/>"#
             }
+            Icon::Photos => r#"<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>"#,
             Icon::Pin => r#"<path d="M9 4h6l-1 6 4 4H6l4-4z"/><path d="M12 14v6"/>"#,
+            Icon::Progress => r#"<path d="M12 3a9 9 0 1 1-9 9"/>"#,
             Icon::Read => r#"<path d="M4.5 12.5l5 5L20 7"/>"#,
             Icon::Recent => r#"<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>"#,
             Icon::Retry => r#"<path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5"/>"#,
@@ -197,6 +222,7 @@ impl Icon {
             Icon::Starred => {
                 r#"<path fill="black" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>"#
             }
+            Icon::Timer => r#"<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/>"#,
             Icon::Unarchive => {
                 r#"<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9M12 17v-5M9.5 14.5L12 12l2.5 2.5"/>"#
             }

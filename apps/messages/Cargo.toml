@@ -17,9 +17,10 @@ zbus = "5.19"
 # zed-industries/zed#64079 (Wayland touch) at AevaOnline/zed-editor 5353557025,
 # plus branch denial/touch-fling-end of denialwm/gpui-touch (flings end when
 # the content stops; wl_touch.cancel reaches the window). The local checkout
-# adds five commits on that branch, up to 1f756d9, not pushed yet:
+# adds six commits on that branch, up to d270195, not pushed yet:
 # Window::activate_window_with_token, colour emoji through a font's fallbacks
-# (a fallback needs no 'm'; VS16 prefers a fallback), Denial's keyboard inset
-# and Styled::backdrop_blur. Back to `git` and `rev` once they are pushed.
+# (a fallback needs no 'm'; VS16 prefers a fallback), Denial's keyboard inset,
+# Styled::backdrop_blur and taps on a claimed touch drag. Back to `git` and
+# `rev` once they are pushed.
 gpui = { path = "../../../gpui-touch/crates/gpui" }
 gpui_platform = { path = "../../../gpui-touch/crates/gpui_platform", features = ["wayland"] }
