@@ -7,6 +7,7 @@
 //! photo claims the touch as a free drag (GPUI's touch drag, which still
 //! reports taps), so it pans on both axes and keeps going after a fling.
 
+use denial_look::words::{fill, tr};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -449,7 +450,7 @@ impl Camera {
             return;
         };
         if let Err(error) = library::delete(&path) {
-            self.note(format!("Not deleted: {error}"));
+            self.note(fill("Not deleted: {error}", &[("error", &error.to_string())]));
             cx.notify();
             return;
         }
@@ -461,7 +462,7 @@ impl Camera {
         self.viewer.info = None;
         self.viewer.view = View::default();
         self.viewer.view_tween = None;
-        self.note("Photo deleted");
+        self.note(tr("Photo deleted"));
         if self.photos.is_empty() {
             self.viewer.from_grid = false;
             self.leave_viewer(window, cx);
@@ -609,8 +610,11 @@ impl Camera {
         let bars = (shown > 0.0).then(|| {
             let path = self.photos.get(viewer.index);
             let taken = path.and_then(|path| library::taken(path));
-            let title = taken.map_or_else(|| "Photo".to_string(), day);
-            let place = format!("{} of {}", viewer.index + 1, self.photos.len());
+            let title = taken.map_or_else(|| tr("Photo").to_string(), day);
+            let place = fill(
+                "{index} of {count}",
+                &[("index", &(viewer.index + 1).to_string()), ("count", &self.photos.len().to_string())],
+            );
             let detail = match taken {
                 Some([.., hour, minute]) => format!("{hour:02}:{minute:02} · {place}"),
                 None => place,
@@ -678,15 +682,18 @@ impl Camera {
             .flex()
             .flex_col()
             .gap(dp(12.))
-            .children(library::taken(path).map(|taken| row("Taken", long_date(taken))))
-            .child(row("Size", format!("{} × {} · {megapixels:.1} MP", info.width, info.height)))
-            .child(row("File", format!("{name} · {}", file_size(info.bytes))));
+            .children(library::taken(path).map(|taken| row(tr("Taken"), long_date(taken))))
+            .child(row(tr("Size"), format!("{} × {} · {megapixels:.1} MP", info.width, info.height)))
+            .child(row(tr("File"), format!("{name} · {}", file_size(info.bytes))));
         if let Some((sensor, micros, gain, digital)) = &info.exposure {
-            let mut exposure = format!("{sensor} · {} · gain {gain:.1}×", shutter_speed(*micros));
+            let mut exposure = fill(
+                "{sensor} · {speed} · gain {gain}×",
+                &[("sensor", sensor), ("speed", &shutter_speed(*micros)), ("gain", &format!("{gain:.1}"))],
+            );
             if *digital > 1.0 {
-                exposure.push_str(&format!(" · digital {digital:.1}×"));
+                exposure.push_str(&fill(" · digital {digital}×", &[("digital", &format!("{digital:.1}"))]));
             }
-            panel = panel.child(row("Exposure", exposure));
+            panel = panel.child(row(tr("Exposure"), exposure));
         }
         panel
     }
@@ -737,13 +744,13 @@ impl Camera {
                         div()
                             .text_size(dp(17.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Delete this photo?"),
+                            .child(tr("Delete this photo?")),
                     )
                     .child(
                         div()
                             .text_size(dp(14.))
                             .text_color(solid(look.palette.secondary))
-                            .child("It is removed from Pictures/Camera. This cannot be undone."),
+                            .child(tr("It is removed from Pictures/Camera. This cannot be undone.")),
                     )
                     .child(
                         div()
@@ -751,7 +758,7 @@ impl Camera {
                             .flex()
                             .gap(dp(8.))
                             .child(
-                                button("cancel", "Cancel")
+                                button("cancel", tr("Cancel"))
                                     .bg(solid(control))
                                     .text_color(solid(look.palette.foreground))
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -761,7 +768,7 @@ impl Camera {
                                     })),
                             )
                             .child(
-                                button("confirm-delete", "Delete")
+                                button("confirm-delete", tr("Delete"))
                                     .bg(solid(destructive))
                                     .text_color(solid(on(destructive)))
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -781,7 +788,7 @@ impl Camera {
         // Photos by the day they were taken, newest first.
         let mut days: Vec<(String, Vec<usize>)> = Vec::new();
         for (index, path) in self.photos.iter().enumerate() {
-            let label = library::taken(path).map_or_else(|| "Earlier".to_string(), day);
+            let label = library::taken(path).map_or_else(|| tr("Earlier").to_string(), day);
             match days.last_mut() {
                 Some((last, indices)) if *last == label => indices.push(index),
                 _ => days.push((label, vec![index])),
@@ -823,8 +830,8 @@ impl Camera {
                 .children(rows)
         });
         let count = match self.photos.len() {
-            1 => "1 photo".to_string(),
-            count => format!("{count} photos"),
+            1 => tr("1 photo").to_string(),
+            count => fill("{count} photos", &[("count", &count.to_string())]),
         };
         let content = div()
             .id("grid")
@@ -841,14 +848,14 @@ impl Camera {
                         .mt(dp(16.))
                         .p(dp(16.))
                         .text_size(dp(15.))
-                        .child("No photos yet. The ones you take appear here."),
+                        .child(tr("No photos yet. The ones you take appear here.")),
                 )
             });
         div()
             .size_full()
             .relative()
             .child(content)
-            .child(self.top_group("Photos".to_string(), count, cx))
+            .child(self.top_group(tr("Photos").to_string(), count, cx))
     }
 }
 
@@ -857,22 +864,29 @@ impl Camera {
 fn day([year, month, date, ..]: [u32; 5]) -> String {
     let now = unsafe { libc::time(std::ptr::null_mut()) };
     if local_date(now) == [year, month, date] {
-        return "Today".into();
+        return tr("Today").into();
     }
     if local_date(now - 24 * 60 * 60) == [year, month, date] {
-        return "Yesterday".into();
+        return tr("Yesterday").into();
     }
-    let name = MONTHS[(month as usize).clamp(1, 12) - 1];
-    if local_date(now)[0] == year {
-        format!("{date} {name}")
-    } else {
-        format!("{date} {name} {year}")
-    }
+    let name = tr(MONTHS[(month as usize).clamp(1, 12) - 1]);
+    let this_year = local_date(now)[0] == year;
+    let (date, year) = (date.to_string(), year.to_string());
+    let values = [("day", date.as_str()), ("month", name), ("year", year.as_str())];
+    if this_year { fill("{day} {month}", &values) } else { fill("{day} {month} {year}", &values) }
 }
 
 fn long_date([year, month, date, hour, minute]: [u32; 5]) -> String {
-    let name = MONTHS[(month as usize).clamp(1, 12) - 1];
-    format!("{date} {name} {year}, {hour:02}:{minute:02}")
+    let name = tr(MONTHS[(month as usize).clamp(1, 12) - 1]);
+    fill(
+        "{day} {month} {year}, {time}",
+        &[
+            ("day", &date.to_string()),
+            ("month", name),
+            ("year", &year.to_string()),
+            ("time", &format!("{hour:02}:{minute:02}")),
+        ],
+    )
 }
 
 fn local_date(time: libc::time_t) -> [u32; 3] {

@@ -6,8 +6,10 @@
 //! roundness and motion come from ~/.config/denial/settings.json, the
 //! accent taken from the wallpaper from Denial's
 //! ~/.local/state/denial/accent-color-v1, and `SettingsWatch` follows both.
+//! The language the apps' words are in comes from there too (`words`).
 
 mod watch;
+pub mod words;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -338,6 +340,14 @@ fn settings_path() -> Option<PathBuf> {
         .map(|dir| dir.join("denial/settings.json"))
 }
 
+/// Denial's settings document; Null when there is none to read.
+fn settings() -> Value {
+    settings_path()
+        .and_then(|path| std::fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null)
+}
+
 /// Where Denial keeps the accent it took from the wallpaper:
 /// `$XDG_STATE_HOME/denial/accent-color-v1`, else under `~/.local/state`.
 fn wallpaper_accent_path() -> Option<PathBuf> {
@@ -360,10 +370,8 @@ fn wallpaper_accent(bytes: &[u8]) -> Option<u32> {
 
 impl Look {
     pub fn load() -> Self {
-        let settings = settings_path()
-            .and_then(|path| std::fs::read(path).ok())
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or(Value::Null);
+        let settings = settings();
+        words::follow(&settings);
         let wallpaper = wallpaper_accent_path()
             .and_then(|path| std::fs::read(path).ok())
             .and_then(|bytes| wallpaper_accent(&bytes));

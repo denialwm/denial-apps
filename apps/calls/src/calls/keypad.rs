@@ -4,6 +4,7 @@
 //! round green Call, with backspace beside it. The digits find contacts by
 //! number and by name, spelled on the letters of the keys.
 
+use denial_look::words::tr;
 use std::ops::Range;
 
 use denial_contacts::same_number;
@@ -320,7 +321,7 @@ impl Calls {
             div()
                 .text_size(dp(18.))
                 .text_color(solid(palette.secondary))
-                .child("Enter a number")
+                .child(tr("Enter a number"))
         } else {
             let size = match self.typed.chars().count() {
                 0..=13 => 34.,
@@ -339,7 +340,7 @@ impl Calls {
             let kind = self
                 .people
                 .kind(number)
-                .map_or(String::new(), |kind| format!(" · {}", kind.label()));
+                .map_or(String::new(), |kind| format!(" · {}", tr(kind.label())));
             let mut owner = div()
                 .id("owner")
                 .max_w_full()
@@ -382,7 +383,7 @@ impl Calls {
         let mut island = div();
         for (ix, suggestion) in found.iter().enumerate() {
             let segment = Segment::of(ix, found.len(), |_| ());
-            let label = segment.first.then(|| "Suggestions".to_owned());
+            let label = segment.first.then(|| tr("Suggestions").to_owned());
             let number = suggestion.number.clone();
             let marked = |text: String, range: Option<Range<usize>>| {
                 StyledText::new(SharedString::from(text))
@@ -393,7 +394,7 @@ impl Calls {
                     let prefix = self
                         .people
                         .kind(&number)
-                        .map_or(String::new(), |kind| format!("{} · ", kind.label()));
+                        .map_or(String::new(), |kind| format!("{} · ", tr(kind.label())));
                     let digits = suggestion
                         .digits
                         .clone()
@@ -408,7 +409,7 @@ impl Calls {
                 }
                 None => (
                     marked(number.clone(), suggestion.digits.clone()),
-                    marked("Not in your contacts".into(), None),
+                    marked(tr("Not in your contacts").into(), None),
                 ),
             };
             let dial = number.clone();

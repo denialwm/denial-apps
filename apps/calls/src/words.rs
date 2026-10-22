@@ -1,0 +1,130 @@
+//! Phone's words in Simplified Chinese, by their English
+//! (`denial_look::words`).
+
+pub static CHINESE: &[(&str, &str)] = &[
+    // Tabs and screens.
+    ("Phone", "电话"),
+    ("Recents", "最近通话"),
+    ("Contacts", "联系人"),
+    ("Keypad", "拨号盘"),
+    ("Recent calls", "最近通话"),
+    ("Favourites", "收藏"),
+    ("Suggestions", "建议"),
+    ("Earlier", "更早"),
+    ("Contacts · {count}", "联系人 · {count}"),
+    ("Search contacts and numbers", "搜索联系人和号码"),
+    ("Open the keypad", "打开拨号盘"),
+    // Calls.
+    ("Call", "呼叫"),
+    ("Call {number}", "呼叫 {number}"),
+    ("Calling…", "正在呼叫…"),
+    ("Incoming call", "来电"),
+    ("Call ended", "通话已结束"),
+    ("Call ended · {clock}", "通话已结束 · {clock}"),
+    ("On hold · {clock}", "保持中 · {clock}"),
+    ("{clock} · Muted", "{clock} · 已静音"),
+    ("Already in a call", "已在通话中"),
+    ("Mock call", "模拟通话"),
+    ("Simulate an incoming call", "模拟来电"),
+    ("Hold", "保持"),
+    ("Mute", "静音"),
+    ("Speaker", "扬声器"),
+    ("Message", "发信息"),
+    ("Messages is not installed", "未安装“信息”"),
+    // The log.
+    ("Outgoing", "呼出"),
+    ("Incoming", "呼入"),
+    ("Missed", "未接"),
+    ("Declined", "已拒接"),
+    ("Missed call", "未接来电"),
+    ("Declined call", "已拒接来电"),
+    ("Outgoing call, not answered", "呼出，未接通"),
+    ("{direction} call, {length}", "{direction}通话，{length}"),
+    ("{seconds} s", "{seconds} 秒"),
+    ("{minutes} min", "{minutes} 分钟"),
+    ("{hours} h", "{hours} 小时"),
+    ("{hours} h {minutes} min", "{hours} 小时 {minutes} 分钟"),
+    ("No calls yet", "还没有通话"),
+    ("Delete this call?", "删除这条通话记录？"),
+    (
+        "It is removed from Recents on this phone.",
+        "它会从这部手机的最近通话中移除。",
+    ),
+    ("Last call {time}", "上次通话 {time}"),
+    // Contacts.
+    ("Details", "详情"),
+    ("Favourite", "收藏"),
+    ("Unfavourite", "取消收藏"),
+    ("Copy", "复制"),
+    ("Share", "分享"),
+    ("Delete", "删除"),
+    ("Deleted", "已删除"),
+    ("Cancel", "取消"),
+    ("Contact copied", "已复制联系人"),
+    ("Number copied", "已复制号码"),
+    ("No contacts", "没有联系人"),
+    ("No contact matches", "没有匹配的联系人"),
+    ("No number", "没有号码"),
+    ("No phone number", "没有电话号码"),
+    ("Not a phone number", "不是电话号码"),
+    ("Not in your contacts", "不在联系人中"),
+    ("Enter a number", "输入号码"),
+    ("This contact is gone", "这个联系人已不存在"),
+    (
+        "Its card was removed from the contacts folder.",
+        "它的名片已从联系人文件夹中移除。",
+    ),
+    (
+        "Contacts are read from the vCard files in ~/.local/share/contacts.",
+        "联系人读取自 ~/.local/share/contacts 中的 vCard 文件。",
+    ),
+    ("Show sample contacts", "显示示例联系人"),
+    ("Hide sample contacts", "隐藏示例联系人"),
+    // Numbers' kinds.
+    ("Mobile", "手机"),
+    ("Home", "住宅"),
+    ("Work", "工作"),
+    ("Main", "总机"),
+    ("Fax", "传真"),
+    ("Pager", "寻呼机"),
+    ("Other", "其他"),
+    // Dates.
+    ("Today", "今天"),
+    ("Yesterday", "昨天"),
+    ("Sun", "周日"),
+    ("Mon", "周一"),
+    ("Tue", "周二"),
+    ("Wed", "周三"),
+    ("Thu", "周四"),
+    ("Fri", "周五"),
+    ("Sat", "周六"),
+    ("Jan", "1月"),
+    ("Feb", "2月"),
+    ("Mar", "3月"),
+    ("Apr", "4月"),
+    ("May", "5月"),
+    ("Jun", "6月"),
+    ("Jul", "7月"),
+    ("Aug", "8月"),
+    ("Sep", "9月"),
+    ("Oct", "10月"),
+    ("Nov", "11月"),
+    ("Dec", "12月"),
+    ("{day} {month}", "{month}{day}日"),
+    ("{day} {month} {year}", "{year}年{month}{day}日"),
+    (
+        "{day} {month} {year}, {time}",
+        "{year}年{month}{day}日 {time}",
+    ),
+];
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn table_is_sound() {
+        assert_eq!(
+            denial_look::words::faults(super::CHINESE),
+            Vec::<String>::new()
+        );
+    }
+}

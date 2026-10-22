@@ -4,6 +4,7 @@
 //! neutral tint: a call never takes the caller's colour. Elsewhere a call
 //! going on shows as a bar on the gesture zone, over the tab bar on the tabs.
 
+use denial_look::words::{fill, tr};
 use std::time::Instant;
 
 use denial_look::INSET;
@@ -27,13 +28,13 @@ impl Calls {
     fn status(&self, live: &Live, now: Instant) -> String {
         let clock = data::timer(live.talked(now));
         match live.phase {
-            Phase::Ringing(_) if live.incoming => "Incoming call".into(),
-            Phase::Ringing(_) => "Calling…".into(),
-            Phase::Connected(_) if live.held => format!("On hold · {clock}"),
-            Phase::Connected(_) if live.muted => format!("{clock} · Muted"),
+            Phase::Ringing(_) if live.incoming => tr("Incoming call").into(),
+            Phase::Ringing(_) => tr("Calling…").into(),
+            Phase::Connected(_) if live.held => fill("On hold · {clock}", &[("clock", &clock)]),
+            Phase::Connected(_) if live.muted => fill("{clock} · Muted", &[("clock", &clock)]),
             Phase::Connected(_) => clock,
-            Phase::Ended(_, 0) => "Call ended".into(),
-            Phase::Ended(..) => format!("Call ended · {clock}"),
+            Phase::Ended(_, 0) => tr("Call ended").into(),
+            Phase::Ended(..) => fill("Call ended · {clock}", &[("clock", &clock)]),
         }
     }
 
@@ -45,7 +46,7 @@ impl Calls {
         let contact = self.people.find(&live.number);
         let detail = if live.tones.is_empty() {
             match self.people.kind(&live.number) {
-                Some(kind) => format!("{} · {}", kind.label(), live.number),
+                Some(kind) => format!("{} · {}", tr(kind.label()), live.number),
                 None => live.number.clone(),
             }
         } else {
@@ -165,13 +166,19 @@ impl Calls {
             .gap(dp(4.))
             .p(dp(8.))
             .child(row([
-                self.control("mute", Icon::Mute, "Mute", live.muted, active, cx, |live| {
-                    live.muted = !live.muted
-                }),
+                self.control(
+                    "mute",
+                    Icon::Mute,
+                    tr("Mute"),
+                    live.muted,
+                    active,
+                    cx,
+                    |live| live.muted = !live.muted,
+                ),
                 self.control(
                     "keypad",
                     Icon::Keypad,
-                    "Keypad",
+                    tr("Keypad"),
                     false,
                     active,
                     cx,
@@ -180,7 +187,7 @@ impl Calls {
                 self.control(
                     "speaker",
                     Icon::Speaker,
-                    "Speaker",
+                    tr("Speaker"),
                     live.speaker,
                     active,
                     cx,
@@ -191,7 +198,7 @@ impl Calls {
                 self.control(
                     "hold",
                     Icon::Hold,
-                    "Hold",
+                    tr("Hold"),
                     live.held,
                     active && connected,
                     cx,
@@ -200,7 +207,7 @@ impl Calls {
                 self.action_control(
                     "message",
                     Icon::Message,
-                    "Message",
+                    tr("Message"),
                     active,
                     cx,
                     move |this, _, cx| this.message(&number, cx),
@@ -208,7 +215,7 @@ impl Calls {
                 self.action_control(
                     "details",
                     Icon::Person,
-                    "Details",
+                    tr("Details"),
                     active,
                     cx,
                     move |this, window, cx| this.open(Screen::Person(who.clone()), window, cx),

@@ -2,6 +2,7 @@
 //! Conversations sit as rows in section islands: Pinned, Unread, then the
 //! rest, each with its label inside.
 
+use denial_look::words::{fill, tr};
 use std::ops::Range;
 use std::time::Instant;
 
@@ -82,22 +83,22 @@ impl Messages {
     /// The label of `section`'s island among `shown`.
     fn section_label(&self, section: Section, shown: &[usize]) -> String {
         match section {
-            Section::Pinned => "Pinned".into(),
+            Section::Pinned => tr("Pinned").into(),
             Section::Unread => {
                 let count = shown
                     .iter()
                     .filter(|&&i| self.section_of(i) == Section::Unread)
                     .count();
-                format!("Unread · {count}")
+                fill("Unread · {count}", &[("count", &count.to_string())])
             }
             Section::Earlier
                 if shown
                     .first()
                     .is_some_and(|&i| self.section_of(i) != section) =>
             {
-                "Earlier".into()
+                tr("Earlier").into()
             }
-            Section::Earlier => "Conversations".into(),
+            Section::Earlier => tr("Conversations").into(),
         }
     }
 
@@ -177,7 +178,7 @@ impl Messages {
                  can be shown or sent.",
                 Some(self.button(
                     "reconnect",
-                    Face::Both(Icon::Retry, "Try again"),
+                    Face::Both(Icon::Retry, tr("Try again")),
                     Fill::Accent,
                     live,
                     cx,
@@ -186,17 +187,17 @@ impl Messages {
             ),
             Link::Ready(_) if archived => self.state_island(
                 Icon::Archive,
-                "No archived conversations",
-                "An archived conversation comes back here when a new message arrives in it.",
+                tr("No archived conversations"),
+                tr("An archived conversation comes back here when a new message arrives in it."),
                 None,
             ),
             Link::Ready(_) => self.state_island(
                 Icon::Message,
-                "No messages yet",
-                "Texts you send and receive with this SIM appear here.",
+                tr("No messages yet"),
+                tr("Texts you send and receive with this SIM appear here."),
                 Some(self.button(
                     "first",
-                    Face::Both(Icon::New, "New message"),
+                    Face::Both(Icon::New, tr("New message")),
                     Fill::Accent,
                     live,
                     cx,
@@ -308,10 +309,10 @@ impl Messages {
         let marks = query.map_or_else(Vec::new, |query| data::matches(&name, query));
         let preview = match (&conversation.last_text, conversation.local) {
             (_, true) => match self.drafts.get(&peer) {
-                Some(draft) => format!("Draft: {draft}"),
-                None => "New conversation".into(),
+                Some(draft) => fill("Draft: {draft}", &[("draft", draft)]),
+                None => tr("New conversation").into(),
             },
-            (text, false) if conversation.last_outgoing => format!("You: {text}"),
+            (text, false) if conversation.last_outgoing => fill("You: {text}", &[("text", text)]),
             (text, false) => text.clone(),
         };
         let (preview, time) = (
@@ -435,7 +436,7 @@ impl Messages {
         let mut buttons = vec![
             self.button(
                 "pin",
-                Face::Both(Icon::Pin, if pinned { "Unpin" } else { "Pin" }),
+                Face::Both(Icon::Pin, if pinned { tr("Unpin") } else { tr("Pin") }),
                 Fill::Clear,
                 true,
                 cx,
@@ -447,9 +448,9 @@ impl Messages {
             self.button(
                 "unread",
                 if unread {
-                    Face::Both(Icon::Read, "Mark read")
+                    Face::Both(Icon::Read, tr("Mark read"))
                 } else {
-                    Face::Both(Icon::Unread, "Mark unread")
+                    Face::Both(Icon::Unread, tr("Mark unread"))
                 },
                 Fill::Clear,
                 true,
@@ -461,9 +462,9 @@ impl Messages {
             buttons.push(self.button(
                 "archive",
                 if archived {
-                    Face::Both(Icon::Unarchive, "Unarchive")
+                    Face::Both(Icon::Unarchive, tr("Unarchive"))
                 } else {
-                    Face::Both(Icon::Archive, "Archive")
+                    Face::Both(Icon::Archive, tr("Archive"))
                 },
                 Fill::Clear,
                 true,
@@ -474,7 +475,10 @@ impl Messages {
             ));
             buttons.push(self.button(
                 "block",
-                Face::Both(Icon::Block, if blocked { "Unblock" } else { "Block" }),
+                Face::Both(
+                    Icon::Block,
+                    if blocked { tr("Unblock") } else { tr("Block") },
+                ),
                 Fill::Clear,
                 true,
                 cx,
@@ -490,7 +494,7 @@ impl Messages {
         if !sample {
             buttons.push(self.button(
                 "delete",
-                Face::Both(Icon::Delete, "Delete"),
+                Face::Both(Icon::Delete, tr("Delete")),
                 Fill::Danger,
                 true,
                 cx,
@@ -515,7 +519,10 @@ impl Messages {
         let mut items = Vec::new();
         let hits = &self.hits.1;
         if self.hits.0.to_lowercase() == query && !hits.is_empty() {
-            items.push(Found::Chip(format!("Messages · {}", hits.len())));
+            items.push(Found::Chip(fill(
+                "Messages · {count}",
+                &[("count", &hits.len().to_string())],
+            )));
             items.extend((0..hits.len()).map(Found::Hit));
         }
         items.extend(
@@ -528,7 +535,7 @@ impl Messages {
                 .map(Found::Conversation),
         );
         if items.is_empty() {
-            items.push(Found::Chip("Nothing found".into()));
+            items.push(Found::Chip(tr("Nothing found").into()));
         }
         items
     }
@@ -555,7 +562,10 @@ impl Messages {
                                 .iter()
                                 .filter(|item| matches!(item, Found::Conversation(_)))
                                 .count();
-                            format!("Conversations · {matched}")
+                            fill(
+                                "Conversations · {count}",
+                                &[("count", &matched.to_string())],
+                            )
                         });
                         this.conversation_row(
                             index,
@@ -595,7 +605,7 @@ impl Messages {
         };
         let marks = data::matches(&text, &self.hits.0);
         let who = if outgoing {
-            "You".to_owned()
+            tr("You").to_owned()
         } else {
             self.people.name(&peer).to_owned()
         };
@@ -672,9 +682,9 @@ impl Messages {
     fn candidates_chip(&self, cx: &gpui::App) -> &'static str {
         let typed = self.recipient.read(cx).text().trim();
         if typed.chars().any(|c| c.is_ascii_digit()) && dialable(typed).is_none() {
-            "Not a phone number"
+            tr("Not a phone number")
         } else {
-            "No contact matches"
+            tr("No contact matches")
         }
     }
 
@@ -750,7 +760,7 @@ impl Messages {
                 this.start(peer.clone(), window, cx);
             }));
         }
-        let label = (segment.first && !*typed).then(|| "Contacts and recent".to_owned());
+        let label = (segment.first && !*typed).then(|| tr("Contacts and recent").to_owned());
         self.segment(segment, label, fill, None, row)
     }
 
@@ -837,7 +847,7 @@ impl Messages {
     pub(super) fn compose_top(&self, layer: Layer, cx: &mut Context<Self>) -> Div {
         self.top_row()
             .child(self.back_button(layer, cx))
-            .child(self.field("To", &self.recipient))
+            .child(self.field(tr("To"), &self.recipient))
     }
 
     /// The row inside a top group.
@@ -905,7 +915,7 @@ impl Messages {
                         .child(
                             self.button(
                                 "archived",
-                                Face::Both(Icon::Archive, "Archived"),
+                                Face::Both(Icon::Archive, tr("Archived")),
                                 Fill::Clear,
                                 true,
                                 cx,
@@ -921,7 +931,7 @@ impl Messages {
                         .child(
                             self.button(
                                 "settings",
-                                Face::Both(Icon::Settings, "Settings"),
+                                Face::Both(Icon::Settings, tr("Settings")),
                                 Fill::Clear,
                                 true,
                                 cx,

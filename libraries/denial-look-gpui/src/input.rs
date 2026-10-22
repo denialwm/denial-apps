@@ -431,7 +431,7 @@ impl TextInput {
     fn display(&self, window: &Window) -> (SharedString, Vec<TextRun>) {
         let style = window.text_style();
         let (text, text_color) = if self.content.is_empty() {
-            (self.placeholder.clone(), solid(self.placeholder_color))
+            (crate::say(self.placeholder.clone()), solid(self.placeholder_color))
         } else if self.secret {
             let dots: String = self.content.chars().map(|_| DOT).collect();
             (dots.into(), style.color)

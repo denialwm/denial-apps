@@ -2,6 +2,7 @@
 //! the letter inside it; the search bar at the top of Recents and Contacts;
 //! and the detail of a contact, or of a number no one has.
 
+use denial_look::words::{fill, tr};
 use std::ops::Range;
 use std::time::Instant;
 
@@ -53,7 +54,7 @@ impl Calls {
             let action = self.samples_hidden.on().then(|| {
                 self.button(
                     "show-samples",
-                    Face::Both(Icon::Person, "Show sample contacts"),
+                    Face::Both(Icon::Person, tr("Show sample contacts")),
                     Fill::Accent,
                     layer.live(),
                     cx,
@@ -62,8 +63,8 @@ impl Calls {
             });
             let island = self.state_island(
                 Icon::Person,
-                "No contacts",
-                "Contacts are read from the vCard files in ~/.local/share/contacts.",
+                tr("No contacts"),
+                tr("Contacts are read from the vCard files in ~/.local/share/contacts."),
                 action,
             );
             return div()
@@ -152,7 +153,13 @@ impl Calls {
             }
             tiles = tiles.child(tile);
         }
-        self.segment(Segment::ALONE, Some("Favourites".into()), None, None, tiles)
+        self.segment(
+            Segment::ALONE,
+            Some(tr("Favourites").into()),
+            None,
+            None,
+            tiles,
+        )
     }
 
     /// Contact `index` as a row of its letter's island. Tapped, it opens the
@@ -208,7 +215,7 @@ impl Calls {
             let (dial, write) = (phone.number.clone(), phone.number.clone());
             buttons.push(self.button(
                 "call",
-                Face::Both(Icon::Phone, "Call"),
+                Face::Both(Icon::Phone, tr("Call")),
                 Fill::Clear,
                 true,
                 cx,
@@ -216,7 +223,7 @@ impl Calls {
             ));
             buttons.push(self.button(
                 "message",
-                Face::Both(Icon::Message, "Message"),
+                Face::Both(Icon::Message, tr("Message")),
                 Fill::Clear,
                 true,
                 cx,
@@ -226,9 +233,9 @@ impl Calls {
         buttons.push(self.button(
             "favourite",
             if favourite {
-                Face::Both(Icon::Starred, "Unfavourite")
+                Face::Both(Icon::Starred, tr("Unfavourite"))
             } else {
-                Face::Both(Icon::Star, "Favourite")
+                Face::Both(Icon::Star, tr("Favourite"))
             },
             Fill::Clear,
             true,
@@ -321,7 +328,7 @@ impl Calls {
         }
         items.extend(matches.into_iter().map(Found::Contact));
         if items.is_empty() {
-            items.push(Found::Chip("No contact matches"));
+            items.push(Found::Chip(tr("No contact matches")));
         }
         items
     }
@@ -357,7 +364,7 @@ impl Calls {
                                 .iter()
                                 .filter(|item| matches!(item, Found::Contact(_)))
                                 .count();
-                            format!("Contacts · {matched}")
+                            fill("Contacts · {count}", &[("count", &matched.to_string())])
                         });
                         this.found_contact(index, segment, label, layer, cx)
                     }
@@ -406,13 +413,13 @@ impl Calls {
                         div()
                             .truncate()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(format!("Call {number}")),
+                            .child(fill("Call {number}", &[("number", &number)])),
                     )
                     .child(
                         div()
                             .text_size(dp(14.))
                             .opacity(0.8)
-                            .child("Not in your contacts"),
+                            .child(tr("Not in your contacts")),
                     ),
             );
         if layer.live() {
@@ -443,8 +450,8 @@ impl Calls {
             .find(|phone| !digits.is_empty() && data::digits(&phone.number).contains(&digits))
             .or(contact.phones.first());
         let detail = phone.map_or_else(
-            || "No number".to_owned(),
-            |phone| format!("{} · {}", phone.kind.label(), phone.number),
+            || tr("No number").to_owned(),
+            |phone| format!("{} · {}", tr(phone.kind.label()), phone.number),
         );
         let name = StyledText::new(contact.name.clone())
             .with_highlights(mark(&contact.name, &query).map(|range| (range, self.mark_style())));
@@ -511,14 +518,17 @@ impl Calls {
         match (who, contact) {
             (Who::Contact(_), None) => parts.push(self.state_island(
                 Icon::Person,
-                "This contact is gone",
-                "Its card was removed from the contacts folder.",
+                tr("This contact is gone"),
+                tr("Its card was removed from the contacts folder."),
                 None,
             )),
             (Who::Contact(_), Some(index)) => {
                 let detail = match history.first() {
-                    Some(call) => format!("Last call {}", data::full_time(call.time, data::now())),
-                    None => "No calls yet".into(),
+                    Some(call) => fill(
+                        "Last call {time}",
+                        &[("time", &data::full_time(call.time, data::now()))],
+                    ),
+                    None => tr("No calls yet").into(),
                 };
                 let name = self.people.all()[index].name.clone();
                 parts.push(self.name_island(Some(index), "", name, vec![self.secondary(detail)]));
@@ -531,13 +541,13 @@ impl Calls {
                     None,
                     number,
                     number.clone(),
-                    vec![self.secondary("Not in your contacts")],
+                    vec![self.secondary(tr("Not in your contacts"))],
                 ));
                 parts.push(self.commands(Some(number.clone()), None, live, cx));
             }
         }
         if !history.is_empty() {
-            let mut calls = island(&self.look).child(self.island_label("Recent calls"));
+            let mut calls = island(&self.look).child(self.island_label(tr("Recent calls")));
             for call in history {
                 let missed = call.direction == Direction::Missed;
                 let ink = if missed {
@@ -666,13 +676,13 @@ impl Calls {
     ) -> Div {
         let mut group = glass_group(&self.look).flex().p(dp(4.)).gap(dp(4.));
         if let Some(number) = number.clone() {
-            group = group.child(self.command("call", Icon::Phone, "Call", live, cx, {
+            group = group.child(self.command("call", Icon::Phone, tr("Call"), live, cx, {
                 move |this, window, cx| this.dial(number.clone(), window, cx)
             }));
         }
         if let Some(number) = number.clone() {
             group = group.child(
-                self.command("message", Icon::Message, "Message", live, cx, {
+                self.command("message", Icon::Message, tr("Message"), live, cx, {
                     move |this, _, cx| this.message(&number, cx)
                 }),
             );
@@ -681,7 +691,7 @@ impl Calls {
             (Some(index), _) => group.child(self.command(
                 "share",
                 Icon::Share,
-                "Share",
+                tr("Share"),
                 live,
                 cx,
                 move |this, _, cx| this.share(index, cx),
@@ -689,10 +699,10 @@ impl Calls {
             (None, Some(number)) => group.child(self.command(
                 "copy",
                 Icon::Copy,
-                "Copy",
+                tr("Copy"),
                 live,
                 cx,
-                move |this, _, cx| this.copy(number.clone(), "Number copied", cx),
+                move |this, _, cx| this.copy(number.clone(), tr("Number copied"), cx),
             )),
             (None, None) => group,
         };
@@ -740,7 +750,7 @@ impl Calls {
     fn numbers(&self, index: usize, live: bool, cx: &mut Context<Self>) -> Div {
         let contact = &self.people.all()[index];
         let palette = &self.look.palette;
-        let mut numbers = island(&self.look).child(self.island_label("Phone"));
+        let mut numbers = island(&self.look).child(self.island_label(tr("Phone")));
         if contact.phones.is_empty() {
             numbers = numbers.child(
                 div()
@@ -748,7 +758,7 @@ impl Calls {
                     .pt(dp(4.))
                     .pb(dp(14.))
                     .text_color(solid(palette.secondary))
-                    .child("No phone number"),
+                    .child(tr("No phone number")),
             );
         }
         let radius = px(self.look.group_radius());
@@ -783,7 +793,7 @@ impl Calls {
                             div()
                                 .text_size(dp(12.))
                                 .text_color(solid(palette.secondary))
-                                .child(phone.kind.label()),
+                                .child(tr(phone.kind.label())),
                         ),
                 )
                 .child(self.button(
@@ -804,7 +814,7 @@ impl Calls {
                 ));
             if live {
                 row = self.long_press(row, cx, move |this, cx| {
-                    this.copy(copy.clone(), "Number copied", cx)
+                    this.copy(copy.clone(), tr("Number copied"), cx)
                 });
             }
             numbers = numbers.child(row);

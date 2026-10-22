@@ -34,6 +34,7 @@ impl Opener {
 }
 
 fn main() {
+    denial_look::words::register_chinese(::messages::words::CHINESE);
     // A notification starts Messages with its conversation's peer.
     let peer = std::env::args().nth(1);
     let (opener, opens) = async_channel::unbounded();

@@ -4,6 +4,7 @@ mod instance;
 mod local;
 mod people;
 mod samples;
+mod words;
 
 use futures_lite::future;
 use gpui::{
@@ -17,6 +18,7 @@ use crate::calls::{Back, Calls};
 use crate::instance::{InstanceProxy, Open, Opener};
 
 fn main() {
+    denial_look::words::register_chinese(words::CHINESE);
     // `calls <number>` opens the keypad with the number on it.
     let number = std::env::args().nth(1);
     let (opener, opens) = async_channel::unbounded();

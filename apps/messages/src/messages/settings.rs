@@ -2,6 +2,7 @@
 //! numbers, the sample conversations, and the folder of messages from
 //! blocked senders.
 
+use denial_look::words::tr;
 use std::time::Instant;
 
 use denial_look::mobile::{AVATAR, content_top};
@@ -34,20 +35,20 @@ impl Messages {
         let sending = island(&self.look)
             .child(self.row(
                 Icon::Delivered,
-                "Delivery reports",
-                Some("Ask the network to confirm each message arrived".into()),
+                tr("Delivery reports"),
+                Some(tr("Ask the network to confirm each message arrived").into()),
                 report_toggle,
             ))
             .child(self.separator())
             .child(self.row(
                 Icon::Sim,
-                "SIM for messages",
+                tr("SIM for messages"),
                 None,
                 self.sim_choice(live, cx),
             ));
         let mut blocked = island(&self.look);
         if self.blocked.is_empty() {
-            blocked = blocked.child(self.row(Icon::Block, "No blocked numbers", None, div()));
+            blocked = blocked.child(self.row(Icon::Block, tr("No blocked numbers"), None, div()));
         }
         for (ix, number) in self.blocked.iter().enumerate() {
             let number = number.clone();
@@ -55,7 +56,7 @@ impl Messages {
             let detail = (name != number).then(|| number.clone().into());
             let unblock = self.button(
                 ("unblock", ix),
-                Face::Label("Unblock"),
+                Face::Label(tr("Unblock")),
                 Fill::Control,
                 live,
                 cx,
@@ -69,7 +70,7 @@ impl Messages {
         let mut folder = self
             .row(
                 Icon::Message,
-                "Blocked messages",
+                tr("Blocked messages"),
                 None,
                 div()
                     .flex()
@@ -105,16 +106,16 @@ impl Messages {
         }
         let samples = island(&self.look).child(self.row(
             Icon::Message,
-            "Sample conversations",
-            Some("Made-up chats to try the app. Nothing in them is sent".into()),
+            tr("Sample conversations"),
+            Some(tr("Made-up chats to try the app. Nothing in them is sent").into()),
             sample_toggle,
         ));
         let parts: [Div; 6] = [
-            self.chip_row("Sending"),
+            self.chip_row(tr("Sending")),
             sending,
-            self.chip_row("Blocked numbers"),
+            self.chip_row(tr("Blocked numbers")),
             blocked,
-            self.chip_row("Try it"),
+            self.chip_row(tr("Try it")),
             samples,
         ];
         div()
@@ -147,8 +148,8 @@ impl Messages {
         if self.blocked_messages.is_empty() {
             let island = self.state_island(
                 Icon::Block,
-                "No blocked messages",
-                "Messages from blocked numbers are kept here, without a notification.",
+                tr("No blocked messages"),
+                tr("Messages from blocked numbers are kept here, without a notification."),
                 None,
             );
             return div()

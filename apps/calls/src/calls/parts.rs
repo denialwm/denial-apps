@@ -2,6 +2,7 @@
 //! buttons, long presses, rows of section islands, blocking states, the
 //! action group under a lifted island, the top group's rows and the dialog.
 
+use denial_look::words::tr;
 use std::time::Instant;
 
 use denial_contacts::dialable;
@@ -469,9 +470,9 @@ impl Calls {
     ) -> Stateful<Div> {
         let (title, consequence, action, glyph) = match confirm {
             Confirm::DeleteCall(_) => (
-                "Delete this call?",
-                "It is removed from Recents on this phone.",
-                "Delete",
+                tr("Delete this call?"),
+                tr("It is removed from Recents on this phone."),
+                tr("Delete"),
                 Icon::Delete,
             ),
         };
@@ -508,7 +509,7 @@ impl Calls {
                     .gap(px(INSET))
                     .child(self.button(
                         "cancel",
-                        Face::Label("Cancel"),
+                        Face::Label(tr("Cancel")),
                         Fill::Control,
                         true,
                         cx,

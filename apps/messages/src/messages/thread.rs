@@ -1,6 +1,7 @@
 //! A conversation: its bubbles, anchored to the bottom like a chat, the
 //! actions of a held message, the composer and the chips over it.
 
+use denial_look::words::tr;
 use std::time::Instant;
 
 use denial_look::mobile::{AVATAR_SMALL, COMPOSER_HEIGHT, TOUCH, content_top, dp as dp_lp};
@@ -247,7 +248,7 @@ impl Messages {
         if message.failed() || message.undelivered() {
             buttons.push(self.button(
                 "retry",
-                Face::Both(Icon::Retry, "Retry"),
+                Face::Both(Icon::Retry, tr("Retry")),
                 Fill::Clear,
                 true,
                 cx,
@@ -266,20 +267,20 @@ impl Messages {
         [
             self.button(
                 "copy",
-                Face::Both(Icon::Copy, "Copy"),
+                Face::Both(Icon::Copy, tr("Copy")),
                 Fill::Clear,
                 true,
                 cx,
                 move |this, _, cx| {
                     this.dismiss(cx);
                     if let Some(text) = this.message_text(id) {
-                        this.copy(text, "Copied", cx);
+                        this.copy(text, tr("Copied"), cx);
                     }
                 },
             ),
             self.button(
                 "delete",
-                Face::Both(Icon::Delete, "Delete"),
+                Face::Both(Icon::Delete, tr("Delete")),
                 Fill::Danger,
                 true,
                 cx,
@@ -302,7 +303,7 @@ impl Messages {
                 .flex()
                 .justify_center()
                 .pb(dp(12.))
-                .child(chip(&self.look).child("This sender takes no replies"))
+                .child(chip(&self.look).child(tr("This sender takes no replies")))
                 .into_any_element();
         }
         let text = self.composer.read(cx).text().trim();

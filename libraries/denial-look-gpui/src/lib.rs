@@ -11,6 +11,16 @@ use gpui::{BoxShadow, Div, Hsla, Pixels, Styled, div, point, prelude::*, px, rel
 
 pub use icons::{Assets, Icon, icon};
 
+/// `text` in the app's language, when the app translates it
+/// (`denial_look::words`); other text, as a network's name, as it is.
+pub fn say(text: impl Into<gpui::SharedString>) -> gpui::SharedString {
+    let text = text.into();
+    match denial_look::words::translate(&text) {
+        Some(translated) => translated.into(),
+        None => text,
+    }
+}
+
 /// `value` dp in logical pixels.
 pub fn dp(value: f32) -> Pixels {
     px(mobile::dp(value))

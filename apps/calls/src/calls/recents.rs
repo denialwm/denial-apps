@@ -1,6 +1,7 @@
 //! The tab bar, the tabs' menu, and Recents: the call log in day islands,
 //! Today, Yesterday and Earlier, each with its label inside.
 
+use denial_look::words::tr;
 use std::time::Instant;
 
 use denial_look::mobile::{GESTURE_INSET, GROUP_HEIGHT, TAB_BAR, content_top};
@@ -43,9 +44,9 @@ impl Day {
 
     fn label(self) -> &'static str {
         match self {
-            Day::Today => "Today",
-            Day::Yesterday => "Yesterday",
-            Day::Earlier => "Earlier",
+            Day::Today => tr("Today"),
+            Day::Yesterday => tr("Yesterday"),
+            Day::Earlier => tr("Earlier"),
         }
     }
 }
@@ -62,12 +63,12 @@ impl Calls {
         if self.log.is_empty() {
             let island = self.state_island(
                 Icon::Phone,
-                "No calls yet",
+                tr("No calls yet"),
                 "Calls you make and get show here. Calls are mocked for now: nothing is \
                  dialled, and no one is reached.",
                 Some(self.button(
                     "open-keypad",
-                    Face::Both(Icon::Keypad, "Open the keypad"),
+                    Face::Both(Icon::Keypad, tr("Open the keypad")),
                     Fill::Accent,
                     layer.live(),
                     cx,
@@ -141,7 +142,7 @@ impl Calls {
         detail.extend(
             self.people
                 .kind(&call.number)
-                .map(|kind| kind.label().to_owned()),
+                .map(|kind| tr(kind.label()).to_owned()),
         );
         if call.talked > 0 {
             detail.push(data::length(call.talked));
@@ -211,7 +212,7 @@ impl Calls {
         let buttons = vec![
             self.button(
                 "call",
-                Face::Both(Icon::Phone, "Call"),
+                Face::Both(Icon::Phone, tr("Call")),
                 Fill::Clear,
                 true,
                 cx,
@@ -219,7 +220,7 @@ impl Calls {
             ),
             self.button(
                 "message",
-                Face::Both(Icon::Message, "Message"),
+                Face::Both(Icon::Message, tr("Message")),
                 Fill::Clear,
                 true,
                 cx,
@@ -227,15 +228,15 @@ impl Calls {
             ),
             self.button(
                 "copy",
-                Face::Both(Icon::Copy, "Copy"),
+                Face::Both(Icon::Copy, tr("Copy")),
                 Fill::Clear,
                 true,
                 cx,
-                move |this, _, cx| this.copy(copy.clone(), "Number copied", cx),
+                move |this, _, cx| this.copy(copy.clone(), tr("Number copied"), cx),
             ),
             self.button(
                 "delete",
-                Face::Both(Icon::Delete, "Delete"),
+                Face::Both(Icon::Delete, tr("Delete")),
                 Fill::Danger,
                 true,
                 cx,
@@ -310,7 +311,7 @@ impl Calls {
                         .justify_center()
                         .child(icon(glyph, dp(20.), solid(glyph_ink))),
                 )
-                .child(div().max_w_full().truncate().child(label));
+                .child(div().max_w_full().truncate().child(tr(label)));
             if live && *shown != screen {
                 tab = tab
                     .cursor_pointer()
@@ -373,7 +374,7 @@ impl Calls {
                         .p(dp(4.))
                         .child(item(
                             "incoming",
-                            Face::Both(Icon::Incoming, "Simulate an incoming call"),
+                            Face::Both(Icon::Incoming, tr("Simulate an incoming call")),
                             cx,
                             |this, window, cx| this.simulate_incoming(window, cx),
                         ))
@@ -382,9 +383,9 @@ impl Calls {
                             Face::Both(
                                 Icon::Person,
                                 if shown {
-                                    "Hide sample contacts"
+                                    tr("Hide sample contacts")
                                 } else {
-                                    "Show sample contacts"
+                                    tr("Show sample contacts")
                                 },
                             ),
                             cx,

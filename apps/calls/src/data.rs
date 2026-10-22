@@ -1,5 +1,7 @@
 //! The call log, and how its numbers, times and lengths read.
 
+use denial_look::words::{fill, tr};
+
 /// What happened to a call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
@@ -14,10 +16,10 @@ pub enum Direction {
 impl Direction {
     pub fn label(self) -> &'static str {
         match self {
-            Direction::Outgoing => "Outgoing",
-            Direction::Incoming => "Incoming",
-            Direction::Missed => "Missed",
-            Direction::Declined => "Declined",
+            Direction::Outgoing => tr("Outgoing"),
+            Direction::Incoming => tr("Incoming"),
+            Direction::Missed => tr("Missed"),
+            Direction::Declined => tr("Declined"),
         }
     }
 }
@@ -40,10 +42,16 @@ impl Call {
     /// "Outgoing call, 4 min", "Missed call", as a call's history reads.
     pub fn summary(&self) -> String {
         match (self.direction, self.talked) {
-            (Direction::Missed, _) => "Missed call".into(),
-            (Direction::Declined, _) => "Declined call".into(),
-            (Direction::Outgoing, 0) => "Outgoing call, not answered".into(),
-            (direction, talked) => format!("{} call, {}", direction.label(), length(talked)),
+            (Direction::Missed, _) => tr("Missed call").into(),
+            (Direction::Declined, _) => tr("Declined call").into(),
+            (Direction::Outgoing, 0) => tr("Outgoing call, not answered").into(),
+            (direction, talked) => fill(
+                "{direction} call, {length}",
+                &[
+                    ("direction", direction.label()),
+                    ("length", &length(talked)),
+                ],
+            ),
         }
     }
 }
@@ -51,10 +59,16 @@ impl Call {
 /// A call's length: "35 s", "4 min", "1 h 12 min".
 pub fn length(seconds: u64) -> String {
     match seconds {
-        0..60 => format!("{seconds} s"),
-        60..3600 => format!("{} min", seconds / 60),
-        _ if seconds % 3600 < 60 => format!("{} h", seconds / 3600),
-        _ => format!("{} h {} min", seconds / 3600, seconds % 3600 / 60),
+        0..60 => fill("{seconds} s", &[("seconds", &seconds.to_string())]),
+        60..3600 => fill("{minutes} min", &[("minutes", &(seconds / 60).to_string())]),
+        _ if seconds % 3600 < 60 => fill("{hours} h", &[("hours", &(seconds / 3600).to_string())]),
+        _ => fill(
+            "{hours} h {minutes} min",
+            &[
+                ("hours", &(seconds / 3600).to_string()),
+                ("minutes", &(seconds % 3600 / 60).to_string()),
+            ],
+        ),
     }
 }
 
@@ -149,11 +163,24 @@ pub fn clock(time: i64) -> String {
 pub fn day(time: i64, now: i64) -> String {
     let (t, today) = (local(time), local(now));
     match today.day - t.day {
-        0 => "Today".into(),
-        1 => "Yesterday".into(),
-        2..=6 => WEEKDAYS[t.weekday].into(),
-        _ if t.year == today.year => format!("{} {}", t.month_day, MONTHS[t.month]),
-        _ => format!("{} {} {}", t.month_day, MONTHS[t.month], t.year),
+        0 => tr("Today").into(),
+        1 => tr("Yesterday").into(),
+        2..=6 => tr(WEEKDAYS[t.weekday]).into(),
+        _ if t.year == today.year => fill(
+            "{day} {month}",
+            &[
+                ("day", &t.month_day.to_string()),
+                ("month", tr(MONTHS[t.month])),
+            ],
+        ),
+        _ => fill(
+            "{day} {month} {year}",
+            &[
+                ("day", &t.month_day.to_string()),
+                ("month", tr(MONTHS[t.month])),
+                ("year", &t.year.to_string()),
+            ],
+        ),
     }
 }
 
@@ -163,9 +190,14 @@ pub fn full_time(time: i64, now: i64) -> String {
     if local(now).day - t.day <= 6 {
         return format!("{} {:02}:{:02}", day(time, now), t.hour, t.minute);
     }
-    format!(
-        "{} {} {}, {:02}:{:02}",
-        t.month_day, MONTHS[t.month], t.year, t.hour, t.minute
+    fill(
+        "{day} {month} {year}, {time}",
+        &[
+            ("day", &t.month_day.to_string()),
+            ("month", tr(MONTHS[t.month])),
+            ("year", &t.year.to_string()),
+            ("time", &format!("{:02}:{:02}", t.hour, t.minute)),
+        ],
     )
 }
 

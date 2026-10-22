@@ -8,6 +8,7 @@
 
 mod gallery;
 
+use denial_look::words::{fill, tr};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -289,7 +290,7 @@ impl Camera {
                 }
                 self.ask_thumbnail(path);
                 self.arrival = Some(self.look.tween(motion::NEW_MESSAGE));
-                self.note("Saved to Pictures");
+                self.note(tr("Saved to Pictures"));
             }
             Event::Failed(error) => {
                 if self.capturing || self.developing > 0 {
@@ -547,14 +548,14 @@ impl Camera {
                     .text_color(tint(true))
                     .text_size(dp(14.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(format!("{} s", self.timer))
+                    .child(fill("{seconds} s", &[("seconds", &self.timer.to_string())]))
             })
             .on_click(cx.listener(|this, _, _, cx| {
                 let at = TIMERS.iter().position(|&timer| timer == this.timer).unwrap_or(0);
                 this.timer = TIMERS[(at + 1) % TIMERS.len()];
                 this.note(match this.timer {
-                    0 => "Timer off".to_string(),
-                    seconds => format!("Timer {seconds} s"),
+                    0 => tr("Timer off").to_string(),
+                    seconds => fill("Timer {seconds} s", &[("seconds", &seconds.to_string())]),
                 });
                 cx.notify();
             }));
@@ -815,8 +816,8 @@ impl Camera {
     fn notice(&self, top: f32, now: Instant) -> Option<impl IntoElement> {
         let text: SharedString = match &self.notice {
             Some((text, at)) if now - *at < NOTICE => text.clone(),
-            _ if self.developing > 1 => format!("Developing {} photos", self.developing).into(),
-            _ if self.developing > 0 => "Developing".into(),
+            _ if self.developing > 1 => fill("Developing {count} photos", &[("count", &self.developing.to_string())]).into(),
+            _ if self.developing > 0 => tr("Developing").into(),
             _ => return None,
         };
         Some(

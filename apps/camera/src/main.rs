@@ -6,6 +6,7 @@ mod library;
 mod photo;
 mod sensor;
 mod shading;
+mod words;
 
 use gpui::{
     App, Bounds, Focusable, KeyBinding, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
@@ -18,6 +19,7 @@ use crate::camera::{Back, Camera};
 const APP_ID: &str = "org.denialwm.Camera";
 
 fn main() {
+    denial_look::words::register_chinese(words::CHINESE);
     let (commands, engine_commands) = async_channel::bounded(8);
     // One preview frame waits at most; the camera drops frames the window
     // has no time for.

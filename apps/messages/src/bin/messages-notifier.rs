@@ -6,6 +6,7 @@
 //! or deleted anywhere takes its notification away. Started at login by
 //! messages-notifier.service.
 
+use denial_look::words::tr;
 use std::collections::HashMap;
 use std::process::{Command, ExitCode};
 
@@ -58,6 +59,7 @@ enum Event {
 }
 
 fn main() -> ExitCode {
+    denial_look::words::register_chinese(messages::words::CHINESE);
     match future::block_on(run()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -190,6 +192,8 @@ async fn post(
     let name = contacts
         .as_ref()
         .and_then(|contacts| Some(contacts.all()[contacts.find(peer)?].name.as_str()));
+    // The language too: the user may have changed it since.
+    denial_look::words::load();
     let hints = HashMap::from([
         ("desktop-entry", Value::from(messages::app::NAME)),
         ("category", Value::from("im.received")),
@@ -201,7 +205,7 @@ async fn post(
             "internet-mail",
             name.unwrap_or(peer),
             text,
-            &["default", "Open", "read", "Mark as read"],
+            &["default", tr("Open"), "read", tr("Mark as read")],
             hints,
             -1,
         )

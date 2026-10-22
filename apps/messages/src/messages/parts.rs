@@ -2,6 +2,7 @@
 //! placing of content islands, section chips, blocking states, the action
 //! group under a lifted island and the delete or block dialog.
 
+use denial_look::words::{fill, tr};
 use std::time::Instant;
 
 use denial_look::mobile::{AVATAR, TOUCH};
@@ -290,26 +291,26 @@ impl Messages {
             Confirm::DeleteMessage(id) => {
                 let peer = self.message_peer(*id).unwrap_or_default();
                 (
-                    "Delete this message?".to_string(),
-                    format!(
-                        "It is removed from this phone. {} keeps their copy.",
-                        self.people.name(&peer)
+                    tr("Delete this message?").to_string(),
+                    fill(
+                        "It is removed from this phone. {name} keeps their copy.",
+                        &[("name", &self.people.name(&peer))],
                     ),
-                    "Delete",
+                    tr("Delete"),
                     Icon::Delete,
                 )
             }
             Confirm::DeleteConversation(_) => (
-                "Delete this conversation?".to_string(),
-                "Its messages are removed from this phone.".to_string(),
-                "Delete",
+                tr("Delete this conversation?").to_string(),
+                tr("Its messages are removed from this phone.").to_string(),
+                tr("Delete"),
                 Icon::Delete,
             ),
             Confirm::Block(peer) => (
-                format!("Block {}?", self.people.name(peer)),
-                "Their messages go to Blocked messages in settings, without a notification."
+                fill("Block {name}?", &[("name", &self.people.name(peer))]),
+                tr("Their messages go to Blocked messages in settings, without a notification.")
                     .to_string(),
-                "Block",
+                tr("Block"),
                 Icon::Block,
             ),
         };
@@ -346,7 +347,7 @@ impl Messages {
                     .gap(px(INSET))
                     .child(self.button(
                         "cancel",
-                        Face::Label("Cancel"),
+                        Face::Label(tr("Cancel")),
                         Fill::Control,
                         true,
                         cx,

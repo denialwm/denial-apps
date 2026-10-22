@@ -8,6 +8,7 @@ mod parts;
 mod settings;
 mod thread;
 
+use denial_look::words::{fill, tr};
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::pin::pin;
@@ -357,9 +358,9 @@ impl Messages {
     /// Opens on the list, or on the conversation with `peer`.
     pub fn new(peer: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let look = Look::load();
-        let search = cx.new(|cx| TextInput::new("Search", &look, 1, cx));
-        let recipient = cx.new(|cx| TextInput::new("Name or phone number", &look, 1, cx));
-        let composer = cx.new(|cx| TextInput::new("Message", &look, COMPOSER_LINES, cx));
+        let search = cx.new(|cx| TextInput::new(tr("Search"), &look, 1, cx));
+        let recipient = cx.new(|cx| TextInput::new(tr("Name or phone number"), &look, 1, cx));
+        let composer = cx.new(|cx| TextInput::new(tr("Message"), &look, COMPOSER_LINES, cx));
         let mut subscriptions = vec![
             cx.observe(&search, |this, _, cx| this.find(cx)),
             cx.observe(&recipient, |this, _, cx| {
@@ -865,13 +866,13 @@ impl Messages {
     /// Why a message would fail now, if it would, with its icon.
     fn cannot_send(&self) -> Option<(Icon, &'static str)> {
         match (&self.link, self.modem.as_str()) {
-            (Link::Connecting, _) => Some((Icon::Network, "Connecting to the modem service")),
+            (Link::Connecting, _) => Some((Icon::Network, tr("Connecting to the modem service"))),
             (Link::Unavailable(reason), _) => Some((Icon::Alert, reason)),
             (Link::Ready(_), "registered") => None,
-            (_, "no-sim") => Some((Icon::Sim, "No SIM card")),
-            (_, "locked") => Some((Icon::Lock, "The SIM is locked")),
-            (_, "failed") => Some((Icon::Alert, "The modem is not working")),
-            _ => Some((Icon::Network, "No mobile network")),
+            (_, "no-sim") => Some((Icon::Sim, tr("No SIM card"))),
+            (_, "locked") => Some((Icon::Lock, tr("The SIM is locked"))),
+            (_, "failed") => Some((Icon::Alert, tr("The modem is not working"))),
+            _ => Some((Icon::Network, tr("No mobile network"))),
         }
     }
 
@@ -900,9 +901,12 @@ impl Messages {
 
     fn mark_read(&self, peer: &str, cx: &mut Context<Self>) {
         let peer = peer.to_owned();
-        self.call("marking read", "Not marked read", cx, async move |dmail| {
-            dmail.mark_read(&peer).await
-        });
+        self.call(
+            "marking read",
+            tr("Not marked read"),
+            cx,
+            async move |dmail| dmail.mark_read(&peer).await,
+        );
     }
 
     /// Reads a thread's newest page from dmail, and older pages until it
@@ -1364,7 +1368,7 @@ impl Messages {
                 candidates.push(Candidate {
                     peer,
                     title: contact.name.clone(),
-                    detail: format!("{} · {}", phone.kind.label(), phone.number),
+                    detail: format!("{} · {}", tr(phone.kind.label()), phone.number),
                     typed: false,
                 });
             }
@@ -1375,9 +1379,9 @@ impl Messages {
             candidates.insert(
                 0,
                 Candidate {
-                    title: format!("Send to {number}"),
+                    title: fill("Send to {number}", &[("number", &number)]),
                     peer: number,
-                    detail: "New conversation".to_string(),
+                    detail: tr("New conversation").to_string(),
                     typed: true,
                 },
             );
@@ -1437,7 +1441,7 @@ impl Messages {
             self.composer
                 .update(cx, |composer, cx| composer.set_text(text, cx));
         }
-        self.note("Not sent", cx);
+        self.note(tr("Not sent"), cx);
     }
 
     /// Sends a failed or undelivered message again, as a new one in place of
@@ -1469,7 +1473,7 @@ impl Messages {
                     Ok(()) => view.forget(id),
                     Err(error) => {
                         eprintln!("messages: sending again: {error}");
-                        view.note("Not sent", cx);
+                        view.note(tr("Not sent"), cx);
                     }
                 }
                 view.refresh(&peer, cx);
@@ -1497,7 +1501,7 @@ impl Messages {
                     Ok(()) => view.forget(id),
                     Err(error) => {
                         eprintln!("messages: deleting: {error}");
-                        view.note("Not deleted", cx);
+                        view.note(tr("Not deleted"), cx);
                     }
                 }
                 if let Some(peer) = peer {
@@ -1523,7 +1527,7 @@ impl Messages {
             return;
         }
         // ConversationDeleted rereads the lists.
-        self.call("deleting", "Not deleted", cx, async move |dmail| {
+        self.call("deleting", tr("Not deleted"), cx, async move |dmail| {
             dmail.delete_conversation(&peer).await
         });
     }
@@ -1534,20 +1538,27 @@ impl Messages {
         }
         self.note(
             if archived {
-                "Archived"
+                tr("Archived")
             } else {
-                "Back in Messages"
+                tr("Back in Messages")
             },
             cx,
         );
-        self.call("archiving", "Not changed", cx, async move |dmail| {
+        self.call("archiving", tr("Not changed"), cx, async move |dmail| {
             dmail.set_archived(&peer, archived).await
         });
     }
 
     fn block(&mut self, peer: String, blocked: bool, cx: &mut Context<Self>) {
-        self.note(if blocked { "Blocked" } else { "Unblocked" }, cx);
-        self.call("blocking", "Not changed", cx, async move |dmail| {
+        self.note(
+            if blocked {
+                tr("Blocked")
+            } else {
+                tr("Unblocked")
+            },
+            cx,
+        );
+        self.call("blocking", tr("Not changed"), cx, async move |dmail| {
             if blocked {
                 dmail.block(&peer).await
             } else {
@@ -1574,7 +1585,7 @@ impl Messages {
     fn set_delivery_reports(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.call(
             "setting delivery reports",
-            "Not changed",
+            tr("Not changed"),
             cx,
             async move |dmail| dmail.set_delivery_reports(enabled).await,
         );
@@ -1591,7 +1602,7 @@ impl Messages {
             };
             if let Err(error) = set.await {
                 eprintln!("messages: choosing SIM {slot}: {error}");
-                let _ = this.update(cx, |view, cx| view.note("Not changed", cx));
+                let _ = this.update(cx, |view, cx| view.note(tr("Not changed"), cx));
             }
         })
         .detach();
@@ -1642,8 +1653,8 @@ impl Messages {
             .map(|span| span.kind.clone());
         match kind {
             Some(Kind::Link(url) | Kind::Mail(url)) => cx.open_url(&url),
-            Some(Kind::Phone(number)) => self.copy(number, "Number copied", cx),
-            Some(Kind::Code(code)) => self.copy(code, "Code copied", cx),
+            Some(Kind::Phone(number)) => self.copy(number, tr("Number copied"), cx),
+            Some(Kind::Code(code)) => self.copy(code, tr("Code copied"), cx),
             None if message.failed() => self.retry(id, cx),
             None => {}
         }
@@ -1955,14 +1966,14 @@ impl Messages {
     fn top_contents(&self, screen: &Screen, layer: Layer, cx: &mut Context<Self>) -> Div {
         match screen {
             Screen::List => self.list_top(layer, cx),
-            Screen::Archived => self.titled_top("Archived", layer, cx),
+            Screen::Archived => self.titled_top(tr("Archived"), layer, cx),
             Screen::Compose => self.compose_top(layer, cx),
             Screen::Thread(peer) => match self.conversation(peer) {
                 Some(index) => self.thread_top(index, layer, cx),
                 None => self.titled_top("", layer, cx),
             },
-            Screen::Settings => self.titled_top("Settings", layer, cx),
-            Screen::Blocked => self.titled_top("Blocked messages", layer, cx),
+            Screen::Settings => self.titled_top(tr("Settings"), layer, cx),
+            Screen::Blocked => self.titled_top(tr("Blocked messages"), layer, cx),
         }
     }
 
@@ -2014,7 +2025,7 @@ async fn conversations(
 fn unavailable(error: &zbus::Error) -> &'static str {
     match error {
         zbus::Error::MethodError(name, ..) if name.as_str().ends_with(".AccessDenied") => {
-            "Messages may not use the modem service"
+            tr("Messages may not use the modem service")
         }
         _ => NOT_RUNNING,
     }

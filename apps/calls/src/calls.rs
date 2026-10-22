@@ -10,6 +10,7 @@ mod keypad;
 mod parts;
 mod recents;
 
+use denial_look::words::tr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -436,7 +437,7 @@ impl Calls {
     /// Opens on Recents, or on the keypad with `number` on it.
     pub fn new(number: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let look = Look::load();
-        let search = cx.new(|cx| TextInput::new("Search contacts and numbers", &look, 1, cx));
+        let search = cx.new(|cx| TextInput::new(tr("Search contacts and numbers"), &look, 1, cx));
         let mut subscriptions = vec![cx.observe(&search, |this, _, cx| {
             this.found.reset(0);
             cx.notify()
@@ -631,7 +632,7 @@ impl Calls {
             return self.open(Screen::Call, window, cx);
         }
         let Some(number) = dialable(&number).map(|_| number) else {
-            return self.note("Not a phone number", cx);
+            return self.note(tr("Not a phone number"), cx);
         };
         self.overlay = None;
         self.last_dialled = Some(number.clone());
@@ -642,7 +643,7 @@ impl Calls {
     fn simulate_incoming(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.overlay = None;
         if self.live.as_ref().is_some_and(|live| !live.ended()) {
-            return self.note("Already in a call", cx);
+            return self.note(tr("Already in a call"), cx);
         }
         let mut numbers: Vec<String> = (0..self.people.all().len())
             .filter(|&index| self.favourites.contains(self.people.key(index)))
@@ -801,7 +802,7 @@ impl Calls {
             Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
             Err(error) => {
                 eprintln!("calls: starting Messages: {error}");
-                self.note("Messages is not installed", cx);
+                self.note(tr("Messages is not installed"), cx);
             }
         }
     }
@@ -817,9 +818,9 @@ impl Calls {
         let contact = &self.people.all()[index];
         let mut text = contact.name.clone();
         for phone in &contact.phones {
-            text.push_str(&format!("\n{}: {}", phone.kind.label(), phone.number));
+            text.push_str(&format!("\n{}: {}", tr(phone.kind.label()), phone.number));
         }
-        self.copy(text, "Contact copied", cx);
+        self.copy(text, tr("Contact copied"), cx);
     }
 
     fn toggle_favourite(&mut self, key: String, cx: &mut Context<Self>) {
@@ -833,7 +834,7 @@ impl Calls {
     fn delete_call(&mut self, id: u64, cx: &mut Context<Self>) {
         self.log.retain(|call| call.id != id);
         self.recents.reset(0);
-        self.note("Deleted", cx);
+        self.note(tr("Deleted"), cx);
     }
 
     fn open(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
@@ -1390,7 +1391,7 @@ impl Calls {
     fn top_contents(&self, screen: &Screen, layer: Layer, cx: &mut Context<Self>) -> Div {
         match screen {
             Screen::Person(who) => self.person_top(who, layer, cx),
-            Screen::Call => self.titled_top("Mock call", layer, cx),
+            Screen::Call => self.titled_top(tr("Mock call"), layer, cx),
             Screen::Recents | Screen::Contacts | Screen::Keypad => self.top_row(),
         }
     }

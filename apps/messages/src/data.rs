@@ -1,5 +1,6 @@
 //! Conversations as dmail keeps them, how their peers and times read.
 
+use denial_look::words::{fill, tr};
 use std::ops::Range;
 
 use ::messages::dmail::{ConversationRow, MessageRow};
@@ -67,10 +68,10 @@ impl Message {
     pub fn label(&self) -> (String, bool) {
         let time = clock(self.time);
         match self.state.as_str() {
-            "sending" if self.outgoing => ("Sending…".into(), false),
-            "failed" if self.outgoing => ("Not sent. Tap to try again".into(), true),
-            "delivered" if self.outgoing => (format!("{time} · Delivered"), false),
-            _ if self.undelivered() => ("Not delivered".into(), true),
+            "sending" if self.outgoing => (tr("Sending…").into(), false),
+            "failed" if self.outgoing => (tr("Not sent. Tap to try again").into(), true),
+            "delivered" if self.outgoing => (fill("{time} · Delivered", &[("time", &time)]), false),
+            _ if self.undelivered() => (tr("Not delivered").into(), true),
             _ => (time, false),
         }
     }
@@ -78,13 +79,13 @@ impl Message {
     /// The full time and state, shown while the message is held.
     pub fn details(&self, now: i64) -> String {
         let state = match self.state.as_str() {
-            _ if !self.outgoing => "Received",
-            "sending" => "Sending",
-            "failed" => "Not sent",
-            "delivered" => "Delivered",
-            "undelivered" => "Not delivered",
-            "expired" => "Expired",
-            _ => "Sent",
+            _ if !self.outgoing => tr("Received"),
+            "sending" => tr("Sending"),
+            "failed" => tr("Not sent"),
+            "delivered" => tr("Delivered"),
+            "undelivered" => tr("Not delivered"),
+            "expired" => tr("Expired"),
+            _ => tr("Sent"),
         };
         format!("{} · {state}", full_time(self.time, now))
     }
@@ -255,11 +256,24 @@ pub fn clock(time: i64) -> String {
 pub fn day(time: i64, now: i64) -> String {
     let (t, today) = (local(time), local(now));
     match today.day - t.day {
-        0 => "Today".into(),
-        1 => "Yesterday".into(),
-        2..=6 => WEEKDAYS[t.weekday].into(),
-        _ if t.year == today.year => format!("{} {}", t.month_day, MONTHS[t.month]),
-        _ => format!("{} {} {}", t.month_day, MONTHS[t.month], t.year),
+        0 => tr("Today").into(),
+        1 => tr("Yesterday").into(),
+        2..=6 => tr(WEEKDAYS[t.weekday]).into(),
+        _ if t.year == today.year => fill(
+            "{day} {month}",
+            &[
+                ("day", &t.month_day.to_string()),
+                ("month", tr(MONTHS[t.month])),
+            ],
+        ),
+        _ => fill(
+            "{day} {month} {year}",
+            &[
+                ("day", &t.month_day.to_string()),
+                ("month", tr(MONTHS[t.month])),
+                ("year", &t.year.to_string()),
+            ],
+        ),
     }
 }
 
@@ -273,9 +287,14 @@ pub fn full_time(time: i64, now: i64) -> String {
     if local(now).day - t.day <= 6 {
         return format!("{} {:02}:{:02}", day(time, now), t.hour, t.minute);
     }
-    format!(
-        "{} {} {}, {:02}:{:02}",
-        t.month_day, MONTHS[t.month], t.year, t.hour, t.minute
+    fill(
+        "{day} {month} {year}, {time}",
+        &[
+            ("day", &t.month_day.to_string()),
+            ("month", tr(MONTHS[t.month])),
+            ("year", &t.year.to_string()),
+            ("time", &format!("{:02}:{:02}", t.hour, t.minute)),
+        ],
     )
 }
 
