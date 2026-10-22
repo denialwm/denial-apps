@@ -3,6 +3,8 @@
 //! What the user does goes to dmail through `mobile::Link`; what changes
 //! comes back as a fresh `mobile::State`.
 
+use denial_look::words::{fill, tr};
+use denial_look_gpui::say;
 use std::rc::Rc;
 
 use denial_look_gpui::{Icon, dp, island};
@@ -45,7 +47,13 @@ impl Settings {
             ),
             Modem::NoSim => (
                 "No SIM card".into(),
-                Some(format!("Nothing in {}", slot_name(state.sim_slot)).into()),
+                Some(
+                    fill(
+                        "Nothing in {slot}",
+                        &[("slot", &say(slot_name(state.sim_slot)))],
+                    )
+                    .into(),
+                ),
             ),
             Modem::Locked if state.pin_retries == 0 => (
                 "The SIM is blocked".into(),
@@ -175,7 +183,7 @@ impl Settings {
             Modem::Locked => "SIM locked".into(),
             Modem::Searching => "Looking for a network…".into(),
             Modem::Registered => match state.technology() {
-                Some(technology) => format!("{} · {technology}", state.operator).into(),
+                Some(technology) => format!("{} · {}", state.operator, say(technology)).into(),
                 None => state.operator.clone().into(),
             },
         })
@@ -193,11 +201,12 @@ impl Settings {
             if let Err(refusal) = link.set_data(on).await {
                 let _ = this.update(cx, |view, cx| {
                     view.mobile.state.data_enabled = !on;
-                    let turn = if on { "on" } else { "off" };
-                    view.note(
-                        format!("Could not turn mobile data {turn}: {}", said(&refusal)),
-                        cx,
-                    );
+                    let failed = if on {
+                        "Could not turn mobile data on: {why}"
+                    } else {
+                        "Could not turn mobile data off: {why}"
+                    };
+                    view.note(fill(failed, &[("why", &say(said(&refusal)))]), cx);
                 });
             }
         })
@@ -218,7 +227,13 @@ impl Settings {
             if let Err(refusal) = link.set_sim_slot(slot).await {
                 let _ = this.update(cx, |view, cx| {
                     view.mobile.state.sim_slot = before;
-                    view.note(format!("Could not change the SIM: {}", said(&refusal)), cx);
+                    view.note(
+                        fill(
+                            "Could not change the SIM: {why}",
+                            &[("why", &say(said(&refusal)))],
+                        ),
+                        cx,
+                    );
                 });
             }
         })
@@ -237,7 +252,10 @@ impl Settings {
             let _ = this.update_in(cx, |view, window, cx| match unlocked {
                 Ok(()) => {}
                 Err(Refusal::WrongPin) => view.ask_pin(Some("Wrong PIN"), window, cx),
-                Err(refusal) => view.note(format!("Could not unlock: {}", said(&refusal)), cx),
+                Err(refusal) => view.note(
+                    fill("Could not unlock: {why}", &[("why", &say(said(&refusal)))]),
+                    cx,
+                ),
             });
         });
     }
@@ -258,8 +276,8 @@ fn slot_name(slot: u8) -> &'static str {
 /// PIN tries left, as said under the lock.
 pub(super) fn tries(left: u32) -> String {
     match left {
-        1 => "1 try left before the SIM blocks".to_owned(),
-        left => format!("{left} tries left"),
+        1 => tr("1 try left before the SIM blocks").to_owned(),
+        left => fill("{count} tries left", &[("count", &left.to_string())]),
     }
 }
 
@@ -267,9 +285,9 @@ pub(super) fn tries(left: u32) -> String {
 fn network_line(state: &mobile::State) -> String {
     let mut line: Vec<String> = Vec::new();
     line.extend(state.technology());
-    line.push(wifi::quality(state.signal).to_owned());
+    line.push(say(wifi::quality(state.signal)).to_string());
     if state.roaming {
-        line.push("Roaming".to_owned());
+        line.push(tr("Roaming").to_owned());
     }
     line.join(" · ")
 }

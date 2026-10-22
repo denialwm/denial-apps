@@ -2,6 +2,7 @@
 //! it is. Everything comes from UPower as a fresh `battery::State`; nothing
 //! here changes the phone.
 
+use denial_look::words::{fill, tr};
 use std::time::Duration;
 
 use denial_look_gpui::{Icon, island};
@@ -100,13 +101,15 @@ fn percent(level: f64) -> String {
 /// What the battery is doing, and for how long, as one line.
 fn doing(battery: &Battery, plugged: bool) -> String {
     match (battery.charge, battery.until) {
-        (Charge::Charging, Some(until)) => format!("Charging · full in {}", lasting(until)),
-        (Charge::Charging, None) => "Charging".to_owned(),
-        (Charge::Full, _) if plugged => "Fully charged".to_owned(),
-        (Charge::Held, _) => "Plugged in, not charging".to_owned(),
-        (_, Some(until)) => format!("About {} left", lasting(until)),
-        (_, None) if plugged => "Plugged in".to_owned(),
-        (_, None) => "On battery".to_owned(),
+        (Charge::Charging, Some(until)) => {
+            fill("Charging · full in {time}", &[("time", &lasting(until))])
+        }
+        (Charge::Charging, None) => tr("Charging").to_owned(),
+        (Charge::Full, _) if plugged => tr("Fully charged").to_owned(),
+        (Charge::Held, _) => tr("Plugged in, not charging").to_owned(),
+        (_, Some(until)) => fill("About {time} left", &[("time", &lasting(until))]),
+        (_, None) if plugged => tr("Plugged in").to_owned(),
+        (_, None) => tr("On battery").to_owned(),
     }
 }
 
@@ -115,10 +118,16 @@ fn lasting(time: Duration) -> String {
     let minutes = (time.as_secs() + 30) / 60;
     let (hours, minutes) = (minutes / 60, minutes % 60);
     match hours {
-        0 => format!("{minutes} min"),
-        1..10 if minutes > 0 => format!("{hours} h {minutes} min"),
-        1..48 => format!("{hours} h"),
-        _ => format!("{} days", (hours + 12) / 24),
+        0 => fill("{minutes} min", &[("minutes", &minutes.to_string())]),
+        1..10 if minutes > 0 => fill(
+            "{hours} h {minutes} min",
+            &[
+                ("hours", &hours.to_string()),
+                ("minutes", &minutes.to_string()),
+            ],
+        ),
+        1..48 => fill("{hours} h", &[("hours", &hours.to_string())]),
+        _ => fill("{days} days", &[("days", &((hours + 12) / 24).to_string())]),
     }
 }
 

@@ -3,6 +3,8 @@
 //! media volume, and the settings Settings works out itself: the screen
 //! lock, the lock's delay and the accent.
 
+use denial_look::words::fill;
+use denial_look_gpui::say;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -20,7 +22,7 @@ const MEDIA: &str = "sound.media";
 
 impl Settings {
     /// The value at `path` in Denial's document, when it is there.
-    fn kept(&self, path: &str) -> Option<&Value> {
+    pub(super) fn kept(&self, path: &str) -> Option<&Value> {
         let document = self.denial.document.as_ref()?;
         Some(denial::at(document, path)).filter(|value| !value.is_null())
     }
@@ -32,6 +34,7 @@ impl Settings {
         };
         match item.source {
             Source::Denial(path) => self.kept(path).and_then(Value::as_bool).unwrap_or(start),
+            Source::Own => self.own_on(item),
             Source::Made => self.values.on(item),
             _ => start,
         }
@@ -72,12 +75,15 @@ impl Settings {
         }
     }
 
-    /// Whether a row shows now: some only go with one option of another.
+    /// Whether a row shows now: some only go with one option of another,
+    /// or with a toggle off (0) or on (1).
     pub(super) fn applies(&self, item: &Item) -> bool {
         item.only.is_none_or(|(key, options)| {
-            catalog::items()
-                .find(|(_, _, each)| each.key == key)
-                .and_then(|(_, _, each)| self.picked(each))
+            catalog::find(key)
+                .and_then(|each| match each.kind {
+                    Kind::Toggle(_) => Some(usize::from(self.on(each))),
+                    _ => self.picked(each),
+                })
                 .is_some_and(|picked| options.contains(&picked))
         })
     }
@@ -101,6 +107,7 @@ impl Settings {
                     .iter()
                     .position(|&(_, delay)| u64::from(delay) == seconds)
             }
+            "language.system" => Some(self.language_picked()),
             "style.accent" => {
                 if self.kept("appearance.accentSource") != Some(&json!("custom")) {
                     return Some(0);
@@ -123,7 +130,7 @@ impl Settings {
                 None => "No reader".into(),
                 Some(0) => "No fingers".into(),
                 Some(1) => "1 finger".into(),
-                Some(fingers) => format!("{fingers} fingers").into(),
+                Some(fingers) => fill("{count} fingers", &[("count", &fingers.to_string())]).into(),
             };
         }
         if item.key == "style.wallpaper" {
@@ -134,6 +141,9 @@ impl Settings {
                     .unwrap_or(wallpaper::DENIAL),
             )
             .into();
+        }
+        if let Some(shown) = self.own_shown(item) {
+            return shown;
         }
         let Kind::Choice(options, _) = item.kind else {
             return SharedString::default();
@@ -159,6 +169,7 @@ impl Settings {
                 move |document| denial::put(document, path, json!(on)),
                 cx,
             ),
+            Source::Own => self.own_flip(item, cx),
             Source::Made => {
                 self.values.set(item, on);
                 cx.notify();
@@ -246,6 +257,7 @@ impl Settings {
                         cx,
                     );
                 }
+                "language.system" => self.set_language(option, cx),
                 "style.accent" => {
                     let accent = option.checked_sub(1).map(|ix| ACCENTS[ix].1);
                     self.change(
@@ -295,6 +307,7 @@ impl Settings {
             Kind::Opens if item.key == "security.fingerprint" => {
                 self.open(Screen::Fingers, window, cx)
             }
+            Kind::Opens => self.own_open(item, window, cx),
             _ => {}
         }
     }
@@ -317,7 +330,13 @@ impl Settings {
             if let Err(Refusal(said)) = link.edit(&edit).await {
                 let _ = this.update(cx, |view, cx| {
                     view.note(
-                        format!("Could not change {}: {said}", what.to_lowercase()),
+                        fill(
+                            "Could not change {what}: {why}",
+                            &[
+                                ("what", &say(what).to_lowercase()),
+                                ("why", &say(said.as_str())),
+                            ],
+                        ),
                         cx,
                     )
                 });

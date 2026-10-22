@@ -3,6 +3,7 @@
 //! shown ringed in the accent. A tap shows it on every screen at once.
 
 use denial_look::INSET;
+use denial_look::words::fill;
 use denial_look_gpui::{dp, island, solid};
 use gpui::{Context, Div, ObjectFit, StyledImage, div, img, prelude::*, px};
 
@@ -145,7 +146,13 @@ impl Settings {
                 Ok(()) => view.note("Wallpaper set", cx),
                 Err(error) => {
                     view.wallpapers.current = wallpaper::current();
-                    view.note(format!("Could not set the wallpaper: {error}"), cx);
+                    view.note(
+                        fill(
+                            "Could not set the wallpaper: {why}",
+                            &[("why", &error.to_string())],
+                        ),
+                        cx,
+                    );
                 }
             });
         })

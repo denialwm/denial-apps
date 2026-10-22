@@ -169,6 +169,15 @@ impl Link {
         Ok(())
     }
 
+    /// Denial's version: the release installed, or the build's identity.
+    pub async fn version(&self) -> Result<String, Refusal> {
+        let version = self.call("denial.version", None).await?;
+        version["version"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Refusal("Denial did not say its version".to_owned()))
+    }
+
     /// The media volume, 0 to 1. Answered with Denial's level rather than
     /// asked of PipeWire, as the shade's slider is.
     pub async fn volume(&self) -> Result<f32, Refusal> {

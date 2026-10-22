@@ -1,6 +1,8 @@
 //! The home screen: the pages in one island per group, each group's name
 //! inside its island, and search over the pages and the settings on them.
 
+use denial_look::words::fill;
+use denial_look_gpui::say;
 use denial_look_gpui::{Icon, dp, icon, solid};
 use gpui::{Context, Div, SharedString, prelude::*};
 
@@ -22,14 +24,25 @@ impl Settings {
         GROUPS
             .iter()
             .map(|group| {
-                let count = group.pages.len();
-                let rows = group.pages.iter().enumerate().map(|(ix, page)| {
+                let pages: Vec<&'static Page> = group
+                    .pages
+                    .iter()
+                    .filter(|page| !matches!(page.content, Content::Hidden(_)))
+                    .collect();
+                let count = pages.len();
+                let rows = pages.into_iter().enumerate().map(|(ix, page)| {
                     let summary = match page.content {
                         Content::Wifi => self.wifi_summary(),
                         Content::Mobile => self.mobile_summary(),
                         Content::Bluetooth => self.bluetooth_summary(),
                         Content::Battery => self.battery_summary(),
-                        Content::Settings(_) | Content::Display | Content::Unavailable => None,
+                        Content::About => self.about_summary(),
+                        Content::Storage => self.storage_summary(),
+                        Content::Settings(_)
+                        | Content::Apps(_)
+                        | Content::Display
+                        | Content::Hidden(_)
+                        | Content::Unavailable => None,
                     };
                     let summary = summary.unwrap_or(page.summary.into());
                     self.page_row(page, summary, ix + 1 == count, layer, cx)
@@ -73,10 +86,12 @@ impl Settings {
     /// What `query` finds: the pages whose name or summary has it, then the
     /// settings whose name or detail has it, each opening its page.
     fn found(&self, query: &str, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
-        let has = |text: &str| text.to_lowercase().contains(query);
-        let pages: Vec<&'static Page> = GROUPS
-            .iter()
-            .flat_map(|group| group.pages)
+        // In English, and in the language shown.
+        let has = |text: &str| {
+            text.to_lowercase().contains(query)
+                || denial_look::words::translate(text).is_some_and(|shown| shown.contains(query))
+        };
+        let pages: Vec<&'static Page> = catalog::listed()
             .filter(|page| has(page.title) || has(page.summary))
             .collect();
         let settings: Vec<_> = catalog::items()
@@ -91,7 +106,10 @@ impl Settings {
             let rows = pages.iter().enumerate().map(|(ix, page)| {
                 self.page_row(page, page.summary.into(), ix + 1 == count, layer, cx)
             });
-            islands.push(self.rows(self.labelled(format!("Pages · {count}")), rows));
+            islands.push(self.rows(
+                self.labelled(fill("Pages · {count}", &[("count", &count.to_string())])),
+                rows,
+            ));
         }
         if !settings.is_empty() {
             let count = settings.len();
@@ -100,8 +118,8 @@ impl Settings {
                 .enumerate()
                 .map(|(ix, (page, section, item))| {
                     let place = match section.title {
-                        Some(section) => format!("{} · {section}", page.title),
-                        None => page.title.to_owned(),
+                        Some(section) => format!("{} · {}", say(page.title), say(section)),
+                        None => say(page.title).to_string(),
                     };
                     let row = self.nav_row(item.key, page.icon, item.title, place, ix + 1 == count);
                     let page = *page;
@@ -113,7 +131,10 @@ impl Settings {
                         row
                     }
                 });
-            islands.push(self.rows(self.labelled(format!("Settings · {count}")), rows));
+            islands.push(self.rows(
+                self.labelled(fill("Settings · {count}", &[("count", &count.to_string())])),
+                rows,
+            ));
         }
         islands
     }

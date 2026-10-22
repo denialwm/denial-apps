@@ -37,6 +37,14 @@ pub enum Content {
     Battery,
     /// The display, through deniald.
     Display,
+    /// What the phone is, from the kernel, BlueZ, dmail and deniald.
+    About,
+    /// The storage: used and free, and what uses it.
+    Storage,
+    /// Settings in sections, then the apps installed.
+    Apps(&'static [Section]),
+    /// Written, but shown nowhere until the phone has it.
+    Hidden(#[expect(dead_code, reason = "shown once the phone has it")] &'static [Section]),
     /// Listed, but not on the phone yet: its row shows faint and opens
     /// nothing.
     Unavailable,
@@ -180,10 +188,13 @@ impl Section {
 }
 
 /// The switch on the fingerprint screen, over the fingers.
-pub static FINGERPRINT_UNLOCK: Item =
-    item("fingerprint.unlock", "Unlock with a fingerprint", Kind::Toggle(true))
-        .icon(Icon::Fingerprint)
-        .denial("lockScreen.fingerprintUnlock");
+pub static FINGERPRINT_UNLOCK: Item = item(
+    "fingerprint.unlock",
+    "Unlock with a fingerprint",
+    Kind::Toggle(true),
+)
+.icon(Icon::Fingerprint)
+.denial("lockScreen.fingerprintUnlock");
 
 /// The accent colours to pick besides the wallpaper's, as Denial keeps
 /// them: ARGB.
@@ -347,38 +358,8 @@ pub static GROUPS: &[Group] = &[
                 id: "storage",
                 title: "Storage",
                 icon: Icon::Storage,
-                summary: "41 GB used of 256 GB",
-                content: Content::Settings(&[
-                    lead(&[item("storage.used", "41.2 GB used", Kind::Info("256 GB"))
-                        .icon(Icon::Storage)]),
-                    section(
-                        "What uses it",
-                        &[
-                            item("storage.photos", "Photos and videos", Kind::Info("18.0 GB"))
-                                .icon(Icon::Photos),
-                            item("storage.apps", "Apps", Kind::Info("12.4 GB")).icon(Icon::Apps),
-                            item("storage.system", "System", Kind::Info("9.6 GB"))
-                                .icon(Icon::Settings),
-                            item("storage.other", "Other files", Kind::Info("1.2 GB")),
-                        ],
-                    ),
-                    section(
-                        "Cleaning",
-                        &[
-                            item(
-                                "storage.manager",
-                                "Clear old photos when full",
-                                Kind::Toggle(false),
-                            )
-                            .detail("Only ones already backed up"),
-                            item(
-                                "storage.free",
-                                "Free up space",
-                                Kind::Action("Freed 1.3 GB"),
-                            ),
-                        ],
-                    ),
-                ]),
+                summary: "Used and free space",
+                content: Content::Storage,
             },
         ],
     },
@@ -560,66 +541,59 @@ pub static GROUPS: &[Group] = &[
                 id: "apps",
                 title: "Apps",
                 icon: Icon::Apps,
-                summary: "Default apps, Android apps",
-                content: Content::Settings(&[
+                summary: "Installed apps, Android apps",
+                content: Content::Apps(&[
                     section(
                         "Defaults",
                         &[
                             item("apps.sms", "Messages", Kind::Choice(&["Messages"], 0))
-                                .icon(Icon::Message),
+                                .icon(Icon::Message)
+                                .fixed(),
                             item("apps.phone", "Phone", Kind::Choice(&["Calls"], 0))
-                                .icon(Icon::Phone),
+                                .icon(Icon::Phone)
+                                .fixed(),
                         ],
                     ),
                     section(
                         "Android apps",
                         &[
                             item("apps.droidloom", "Run Android apps", Kind::Toggle(true))
-                                .detail("In their own windows, through Droidloom"),
+                                .detail("In their own windows, through Droidloom")
+                                .from(Source::Own),
                             item(
                                 "apps.background",
                                 "Let them run in the background",
-                                Kind::Toggle(false),
-                            ),
+                                Kind::Toggle(true),
+                            )
+                            .fixed(),
                         ],
                     ),
                 ]),
             },
             Page {
                 id: "language",
-                title: "Keyboard and language",
+                title: "Language and keyboard",
                 icon: Icon::Language,
-                summary: "Languages, autocorrect",
+                summary: "Language, keyboard",
                 content: Content::Settings(&[
-                    section(
+                    lead(&[item(
+                        "language.system",
                         "Language",
-                        &[item(
-                            "language.system",
-                            "Language",
-                            Kind::Choice(
-                                &[
-                                    "English (UK)",
-                                    "English (US)",
-                                    "Italiano",
-                                    "Deutsch",
-                                    "Français",
-                                    "Español",
-                                ],
-                                0,
-                            ),
-                        )
-                        .icon(Icon::Language)],
-                    ),
+                        Kind::Choice(&["English", "简体中文"], 0),
+                    )
+                    .icon(Icon::Language)
+                    .from(Source::Own)]),
                     section(
                         "Keyboard",
                         &[
-                            item("language.correct", "Autocorrect", Kind::Toggle(true)),
+                            item("language.correct", "Autocorrect", Kind::Toggle(false)).fixed(),
                             item(
                                 "language.popup",
                                 "Show the key you press",
-                                Kind::Toggle(true),
-                            ),
-                            item("language.height", "Keyboard height", Kind::Slider(0.5)),
+                                Kind::Toggle(false),
+                            )
+                            .fixed(),
+                            item("language.height", "Keyboard height", Kind::Slider(0.5)).fixed(),
                         ],
                     ),
                 ]),
@@ -629,26 +603,37 @@ pub static GROUPS: &[Group] = &[
                 title: "Date and time",
                 icon: Icon::Recent,
                 summary: "Time zone, 24-hour clock",
-                content: Content::Settings(&[section(
-                    "Clock",
-                    &[
+                content: Content::Settings(&[
+                    lead(&[
                         item("time.auto", "Set the time by itself", Kind::Toggle(true))
-                            .detail("From the network"),
-                        item(
-                            "time.zone",
-                            "Time zone",
-                            Kind::Choice(&["London", "Rome", "New York", "Tokyo", "Sydney"], 1),
-                        ),
-                        item("time.24", "24-hour clock", Kind::Toggle(true)),
-                    ],
-                )]),
+                            .detail("From the network")
+                            .from(Source::Own),
+                        item("time.date", "Date", Kind::Opens)
+                            .from(Source::Own)
+                            .only("time.auto", &[0]),
+                        item("time.time", "Time", Kind::Opens)
+                            .from(Source::Own)
+                            .only("time.auto", &[0]),
+                    ]),
+                    section(
+                        "Clock",
+                        &[
+                            item("time.zone", "Time zone", Kind::Opens)
+                                .icon(Icon::Location)
+                                .from(Source::Own),
+                            item("time.24", "24-hour clock", Kind::Toggle(true))
+                                .detail("17:45 rather than 5:45 PM")
+                                .denial("localization.twentyFourHourClock"),
+                        ],
+                    ),
+                ]),
             },
             Page {
                 id: "accessibility",
                 title: "Accessibility",
                 icon: Icon::Accessibility,
                 summary: "Motion, text, contrast",
-                content: Content::Settings(&[
+                content: Content::Hidden(&[
                     section(
                         "Seeing",
                         &[
@@ -680,7 +665,7 @@ pub static GROUPS: &[Group] = &[
                 title: "Updates",
                 icon: Icon::Update,
                 summary: "Denial 0.9 · up to date",
-                content: Content::Settings(&[
+                content: Content::Hidden(&[
                     lead(&[
                         item("updates.state", "Up to date", Kind::Info("Denial 0.9"))
                             .detail("Checked today at 09:12")
@@ -709,63 +694,52 @@ pub static GROUPS: &[Group] = &[
                 title: "About phone",
                 icon: Icon::Info,
                 summary: "Name, model, versions",
-                content: Content::Settings(&[
-                    section(
-                        "This phone",
-                        &[
-                            item("about.name", "Name", Kind::Info("Denial phone")),
-                            item("about.model", "Model", Kind::Info("Demo")),
-                            item(
-                                "about.number",
-                                "Phone number",
-                                Kind::Info("+44 7700 900123"),
-                            ),
-                        ],
-                    ),
-                    section(
-                        "Software",
-                        &[
-                            item("about.denial", "Denial", Kind::Info("0.9")),
-                            item("about.kernel", "Kernel", Kind::Info("linux-perpetua 7.3")),
-                            item("about.build", "Build", Kind::Info("2026.10.22")),
-                        ],
-                    ),
-                ]),
+                content: Content::About,
             },
         ],
     },
 ];
 
-/// The page with id `id`, if it opens.
-pub fn page(id: &str) -> Option<&'static Page> {
+/// The pages the home screen lists, in their groups' order.
+pub fn listed() -> impl Iterator<Item = &'static Page> {
     GROUPS
         .iter()
         .flat_map(|group| group.pages)
-        .find(|page| page.id == id && !matches!(page.content, Content::Unavailable))
+        .filter(|page| !matches!(page.content, Content::Hidden(_)))
 }
 
-/// Every setting, with its page and section.
+/// The page with id `id`, if it opens.
+pub fn page(id: &str) -> Option<&'static Page> {
+    listed().find(|page| page.id == id && !matches!(page.content, Content::Unavailable))
+}
+
+/// The setting with key `key`.
+pub fn find(key: &str) -> Option<&'static Item> {
+    items()
+        .map(|(_, _, item)| item)
+        .find(|item| item.key == key)
+}
+
+/// Every setting on a listed page, with its page and section.
 pub fn items() -> impl Iterator<Item = (&'static Page, &'static Section, &'static Item)> {
-    GROUPS
-        .iter()
-        .flat_map(|group| group.pages)
-        .flat_map(|page| {
-            let sections = match page.content {
-                Content::Settings(sections) => sections,
-                Content::Wifi
-                | Content::Mobile
-                | Content::Bluetooth
-                | Content::Battery
-                | Content::Display
-                | Content::Unavailable => &[],
-            };
-            sections
-                .iter()
-                .filter(|section| section.pending.is_none())
-                .flat_map(move |section| {
-                    section.items.iter().map(move |item| (page, section, item))
-                })
-        })
+    listed().flat_map(|page| {
+        let sections = match page.content {
+            Content::Settings(sections) | Content::Apps(sections) => sections,
+            Content::Wifi
+            | Content::Mobile
+            | Content::Bluetooth
+            | Content::Battery
+            | Content::Display
+            | Content::About
+            | Content::Storage
+            | Content::Hidden(_)
+            | Content::Unavailable => &[],
+        };
+        sections
+            .iter()
+            .filter(|section| section.pending.is_none())
+            .flat_map(move |section| section.items.iter().map(move |item| (page, section, item)))
+    })
 }
 
 #[cfg(test)]

@@ -15,7 +15,9 @@ mod networks;
 mod page;
 mod panel;
 mod parts;
+mod phone;
 mod power;
+mod system;
 mod wallpapers;
 
 use std::collections::HashMap;
@@ -27,16 +29,19 @@ use futures_lite::FutureExt;
 use denial_look::mobile::{GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom, dp as dp_lp};
 use denial_look::{INSET, Look, SettingsWatch, Tween, decelerate, ease_out_cubic, motion, stagger};
 use denial_look_gpui::input::{Submitted, TextInput};
-use denial_look_gpui::{backing, chip, dp, glass_group, solid};
+use denial_look_gpui::{backing, chip, dp, glass_group, say, solid};
 use gpui::{
     AnyElement, App, AsyncApp, Context, Div, Entity, FocusHandle, Focusable, Font, KeyboardInset,
     ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, actions, div, prelude::*,
     px,
 };
 
+use crate::about;
+use crate::apps;
 use crate::battery;
 use crate::bluetooth;
 use crate::catalog::{self, Content, Page};
+use crate::clock;
 use crate::denial;
 use crate::fingerprint;
 use crate::mobile;
@@ -71,6 +76,8 @@ enum Screen {
     Wallpapers,
     /// The fingers that unlock the phone.
     Fingers,
+    /// The time zones to pick from.
+    Zones,
 }
 
 impl PartialEq for Screen {
@@ -79,7 +86,8 @@ impl PartialEq for Screen {
             (Screen::Home, Screen::Home)
             | (Screen::SavedNetworks, Screen::SavedNetworks)
             | (Screen::Wallpapers, Screen::Wallpapers)
-            | (Screen::Fingers, Screen::Fingers) => true,
+            | (Screen::Fingers, Screen::Fingers)
+            | (Screen::Zones, Screen::Zones) => true,
             (Screen::Page(a), Screen::Page(b)) => std::ptr::eq(*a, *b),
             (Screen::Network { id: a, .. }, Screen::Network { id: b, .. }) => a == b,
             (Screen::Device { path: a }, Screen::Device { path: b }) => a == b,
@@ -99,6 +107,7 @@ impl Screen {
             Screen::Device { .. } => "device",
             Screen::Wallpapers => "wallpapers",
             Screen::Fingers => "fingers",
+            Screen::Zones => "zones",
         }
     }
 
@@ -293,6 +302,12 @@ enum Dialog {
     /// A name for a fingerprint to add, or for `finger`, which can also be
     /// removed here.
     Finger { finger: Option<String> },
+    /// The date, or the time of day, to set the clock to; `error` says why
+    /// it is asked again.
+    Clock {
+        date: bool,
+        error: Option<&'static str>,
+    },
 }
 
 /// Wi-Fi as Settings knows it.
@@ -389,6 +404,33 @@ struct Wallpapers {
     reading: Option<Task<()>>,
 }
 
+/// What the phone is, read each time About opens.
+#[derive(Default)]
+struct About {
+    facts: Option<about::Facts>,
+    /// Denial's version, once deniald has said it.
+    denial: Option<String>,
+}
+
+/// The storage, read when its page opens.
+#[derive(Default)]
+struct Storage {
+    /// Bytes used and in all where the home folder is.
+    used: Option<(u64, u64)>,
+    /// Bytes in the home folder, once counted.
+    home: Option<u64>,
+    /// Counting them.
+    counting: Option<Task<()>>,
+}
+
+/// What the Apps page shows, read when it opens.
+#[derive(Default)]
+struct Installed {
+    apps: Vec<apps::App>,
+    /// Droidloom starts with the session.
+    droidloom: bool,
+}
+
 /// The battery as Settings knows it.
 #[derive(Default)]
 struct Power {
@@ -452,6 +494,8 @@ pub struct Settings {
     name_field: Entity<TextInput>,
     /// A fingerprint's name, while naming one.
     finger_field: Entity<TextInput>,
+    /// The date or the time, while setting the clock.
+    clock_field: Entity<TextInput>,
     /// The slider under a finger or the mouse.
     /// The key of the slider the finger holds.
     sliding: Option<&'static str>,
@@ -467,6 +511,11 @@ pub struct Settings {
     denial: Denial,
     lock: Lock,
     fingers: Fingers,
+    about: About,
+    /// The clock as timedated says; None while it does not answer.
+    clock: Option<clock::State>,
+    storage: Storage,
+    installed: Installed,
     wallpapers: Wallpapers,
     bluetooth: Bluetooth,
     _settings: Task<()>,
@@ -480,6 +529,8 @@ pub struct Settings {
     reading_panel: Option<Task<()>>,
     /// Reading the volume again every second, while the Sound page shows.
     reading_volume: Option<Task<()>>,
+    /// Reading the clock again every second, while Date and time shows.
+    reading_clock: Option<Task<()>>,
     /// Unlocking the SIM, until dmail answers.
     _unlocking: Task<()>,
     _bluetooth: Task<()>,
@@ -513,6 +564,7 @@ impl Settings {
         let code_field = cx.new(|cx| TextInput::new("Code", &look, 1, cx));
         let name_field = cx.new(|cx| TextInput::new("Phone name", &look, 1, cx));
         let finger_field = cx.new(|cx| TextInput::new("Fingerprint name", &look, 1, cx));
+        let clock_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
         let pin = cx.new(|cx| {
             let mut input = TextInput::new("PIN", &look, 1, cx);
             input.set_secret(true, cx);
@@ -526,9 +578,17 @@ impl Settings {
             cx.observe(&code_field, |_, _, cx| cx.notify()),
             cx.observe(&name_field, |_, _, cx| cx.notify()),
             cx.observe(&finger_field, |_, _, cx| cx.notify()),
-            cx.subscribe_in(&finger_field, window, |this, _, _: &Submitted, window, cx| {
-                this.submit_dialog(window, cx)
-            }),
+            cx.observe(&clock_field, |_, _, cx| cx.notify()),
+            cx.subscribe_in(
+                &clock_field,
+                window,
+                |this, _, _: &Submitted, window, cx| this.submit_dialog(window, cx),
+            ),
+            cx.subscribe_in(
+                &finger_field,
+                window,
+                |this, _, _: &Submitted, window, cx| this.submit_dialog(window, cx),
+            ),
             cx.subscribe_in(&code_field, window, |this, _, _: &Submitted, window, cx| {
                 this.submit_dialog(window, cx)
             }),
@@ -587,6 +647,7 @@ impl Settings {
             code_field,
             name_field,
             finger_field,
+            clock_field,
             sliding: None,
             notice: None,
             screen,
@@ -615,6 +676,14 @@ impl Settings {
             },
             lock: Lock::default(),
             fingers: Fingers::default(),
+            // The home screen names the model under About.
+            about: About {
+                facts: Some(about::read()),
+                denial: None,
+            },
+            clock: None,
+            storage: Storage::default(),
+            installed: Installed::default(),
             wallpapers: Wallpapers {
                 current: wallpaper::current(),
                 ..Wallpapers::default()
@@ -622,6 +691,7 @@ impl Settings {
             _display: cx.spawn(async move |this, cx| Self::follow_display(this, cx).await),
             reading_panel: None,
             reading_volume: None,
+            reading_clock: None,
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
             _bluetooth: cx.spawn_in(window, async move |this, cx| {
@@ -663,6 +733,8 @@ impl Settings {
             &self.pin,
             &self.code_field,
             &self.name_field,
+            &self.finger_field,
+            &self.clock_field,
         ] {
             input.update(cx, |input, cx| input.restyle(&look, cx));
         }
@@ -818,8 +890,18 @@ impl Settings {
         self.follow_looking(cx);
         self.follow_panel(cx);
         self.follow_volume(cx);
+        self.follow_clock(cx);
+        if self.screen.is_page("storage") {
+            self.read_storage(cx);
+        }
+        if self.screen.is_page("apps") {
+            self.read_apps(cx);
+        }
         if self.screen.is_page("security") {
             self.read_lock(cx);
+        }
+        if self.screen.is_page("about") {
+            self.read_about(cx);
         }
         if self.screen.is_page("style") {
             self.wallpapers.current = wallpaper::current();
@@ -939,6 +1021,7 @@ impl Settings {
             Screen::Device { .. } => catalog::page("bluetooth").map_or(Screen::Home, Screen::Page),
             Screen::Wallpapers => catalog::page("style").map_or(Screen::Home, Screen::Page),
             Screen::Fingers => catalog::page("security").map_or(Screen::Home, Screen::Page),
+            Screen::Zones => catalog::page("time").map_or(Screen::Home, Screen::Page),
             Screen::Home | Screen::Page(_) => Screen::Home,
         }
     }
@@ -1031,7 +1114,7 @@ impl Settings {
                 cx.notify();
             });
         });
-        self.notice = Some((note.into(), self.look.tween(motion::CHIP_FADE), hide));
+        self.notice = Some((say(note), self.look.tween(motion::CHIP_FADE), hide));
         cx.notify();
     }
 
@@ -1115,13 +1198,17 @@ impl Settings {
                 Content::Bluetooth => self.bluetooth_page(layer, cx),
                 Content::Battery => self.battery_page(layer, cx),
                 Content::Display => self.display_page(layer, cx),
-                Content::Unavailable => Vec::new(),
+                Content::About => self.about_page(layer, cx),
+                Content::Storage => self.storage_page(),
+                Content::Apps(sections) => self.apps_page(sections, layer, cx),
+                Content::Hidden(_) | Content::Unavailable => Vec::new(),
             },
             Screen::SavedNetworks => self.saved_networks(layer, cx),
             Screen::Network { id, .. } => self.network(id, layer, cx),
             Screen::Device { path } => self.device_screen(path, layer, cx),
             Screen::Wallpapers => self.wallpapers_screen(width, layer, cx),
             Screen::Fingers => self.fingers_screen(layer, cx),
+            Screen::Zones => self.zones_screen(layer, cx),
         };
         let content = div()
             .id(screen.key())
@@ -1262,6 +1349,7 @@ impl Settings {
                 .unwrap_or_default(),
             Screen::Wallpapers => "Wallpaper".into(),
             Screen::Fingers => "Fingerprint".into(),
+            Screen::Zones => "Time zone".into(),
         };
         self.top_row()
             .child(self.back_button(layer, cx))

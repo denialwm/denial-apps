@@ -92,6 +92,7 @@ pub struct Adapter {
     path: String,
     /// What other devices see the phone as.
     pub name: String,
+    pub address: String,
     pub powered: bool,
     /// Off by rfkill: airplane mode or a switch.
     pub blocked: bool,
@@ -119,6 +120,7 @@ impl State {
             Some(Adapter {
                 path: path.clone(),
                 name: get(Some(props), "Alias").unwrap_or_default(),
+                address: get(Some(props), "Address").unwrap_or_default(),
                 powered: get(Some(props), "Powered").unwrap_or(false),
                 blocked: power.as_deref() == Some("off-blocked"),
                 discovering: get(Some(props), "Discovering").unwrap_or(false),

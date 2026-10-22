@@ -3,6 +3,7 @@
 //! does goes to deniald through `denial::Link`; the appearance and timeout
 //! come back through Denial's settings, the panel by reading it again.
 
+use denial_look::words::fill;
 use std::rc::Rc;
 
 use denial_look_gpui::{Icon, island};
@@ -228,9 +229,13 @@ impl Settings {
             let tried = link.try_rate(&output, rate).await;
             let _ = this.update(cx, |view, cx| match tried {
                 Ok(token) => view.ask_keep(token, rate, back, cx),
-                Err(denial::Refusal(said)) => {
-                    view.note(format!("Could not change the refresh rate: {said}"), cx)
-                }
+                Err(denial::Refusal(said)) => view.note(
+                    fill(
+                        "Could not change the refresh rate: {why}",
+                        &[("why", &said)],
+                    ),
+                    cx,
+                ),
             });
         })
         .detach();
@@ -272,7 +277,10 @@ impl Settings {
             };
             let _ = this.update(cx, |view, cx| {
                 if let Err(denial::Refusal(said)) = answered {
-                    view.note(format!("Could not answer Denial: {said}"), cx);
+                    view.note(
+                        fill("Could not answer Denial: {why}", &[("why", &said)]),
+                        cx,
+                    );
                 }
                 view.reread_panel(cx);
             });
@@ -299,7 +307,9 @@ fn screen_off(seconds: Option<u32>) -> SharedString {
     match seconds {
         None => "Never".into(),
         Some(60) => "1 minute".into(),
-        Some(seconds) if seconds % 60 == 0 => format!("{} minutes", seconds / 60).into(),
-        Some(seconds) => format!("{seconds} seconds").into(),
+        Some(seconds) if seconds % 60 == 0 => {
+            fill("{count} minutes", &[("count", &(seconds / 60).to_string())]).into()
+        }
+        Some(seconds) => fill("{count} seconds", &[("count", &seconds.to_string())]).into(),
     }
 }

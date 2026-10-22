@@ -82,6 +82,8 @@ pub struct State {
     pub pin_retries: u32,
     /// 1 or 2: the SIM for SMS and data.
     pub sim_slot: u8,
+    /// The SIM's own number as it holds it; empty when it holds none.
+    pub number: String,
     /// Whether mobile data is on, and where its session is.
     pub data_enabled: bool,
     pub data: Data,
@@ -182,6 +184,7 @@ impl Link {
             roaming: get(&modem, "Roaming").unwrap_or(false),
             pin_retries: get(&modem, "PinRetries").unwrap_or(0),
             sim_slot: get(&modem, "SimSlot").unwrap_or(1),
+            number: get(&modem, "Number").unwrap_or_default(),
             data_enabled: get(&data, "Enabled").unwrap_or(false),
             data: Data::parse(&get::<String>(&data, "State").unwrap_or_default()),
             interface: get(&data, "Interface").unwrap_or_default(),

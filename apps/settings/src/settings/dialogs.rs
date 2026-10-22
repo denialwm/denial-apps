@@ -2,12 +2,13 @@
 //! on the keyboard while it is up: picking one option, confirming what
 //! cannot be undone, and the passwords and names Wi-Fi asks for.
 
+use denial_look::words::fill;
 use std::time::Instant;
 
 use denial_look::mobile::TOUCH;
 use denial_look::{Tween, decelerate, floating, motion};
 use denial_look_gpui::input::TextInput;
-use denial_look_gpui::{color, control_radius, dp, island, solid};
+use denial_look_gpui::{color, control_radius, dp, island, say, solid};
 use gpui::{
     Context, Div, Entity, Focusable, FontWeight, SharedString, Stateful, Window, div, prelude::*,
     px,
@@ -71,7 +72,7 @@ impl Settings {
                         .px(dp(12.))
                         .rounded(control_radius(&self.look))
                         .child(self.radio(ix == *picked))
-                        .child(option.clone());
+                        .child(say(option.clone()));
                     self.pressable(row, cx, move |this, window, cx| this.pick(ix, window, cx))
                 });
                 island
@@ -98,7 +99,12 @@ impl Settings {
                 let typed = self.password.read(cx).text().chars().count();
                 let said: SharedString = match error {
                     Some(error) => (*error).into(),
-                    None => format!("{} · Enter the password", network.security.label()).into(),
+                    None => format!(
+                        "{} · {}",
+                        say(network.security.label()),
+                        say("Enter the password")
+                    )
+                    .into(),
                 };
                 self.form(island)
                     .child(self.dialog_title(network.name.clone()))
@@ -114,7 +120,7 @@ impl Settings {
             Dialog::Pin { error } => {
                 let tries = super::cellular::tries(self.mobile.state.pin_retries);
                 let said: SharedString = match error {
-                    Some(error) => format!("{error} · {tries}").into(),
+                    Some(error) => format!("{} · {tries}", say(*error)).into(),
                     None => tries.into(),
                 };
                 let ready = pin(self.pin.read(cx).text());
@@ -141,7 +147,7 @@ impl Settings {
                         .pt(dp(9.)),
                 };
                 self.form(island)
-                    .child(self.dialog_title(format!("Pair with {name}")))
+                    .child(self.dialog_title(fill("Pair with {name}", &[("name", name)])))
                     .child(self.said(said, false))
                     .children(code)
                     .when(typed, |form| {
@@ -151,12 +157,14 @@ impl Settings {
             }
             Dialog::Keep { rate, back, .. } => self
                 .form(island)
-                .child(self.dialog_title(format!("Keep {}?", hertz(*rate))))
+                .child(self.dialog_title(fill("Keep {rate}?", &[("rate", &hertz(*rate))])))
                 .child(self.said(
-                    format!(
-                        "Goes back to {} in {} seconds",
-                        hertz(*back),
-                        denial::KEEP.as_secs()
+                    fill(
+                        "Goes back to {rate} in {count} seconds",
+                        &[
+                            ("rate", &hertz(*back)),
+                            ("count", &denial::KEEP.as_secs().to_string()),
+                        ],
                     ),
                     false,
                 ))
@@ -189,6 +197,19 @@ impl Settings {
                     .child(self.said("What nearby devices see", false))
                     .child(self.dialog_field(&self.name_field, false, cx))
                     .child(self.answers("Rename", Fill::Accent, named, cx))
+            }
+            Dialog::Clock { date, error } => {
+                let typed = !self.clock_field.read(cx).text().trim().is_empty();
+                let said = match (error, date) {
+                    (Some(error), _) => *error,
+                    (None, true) => "Year, month and day: 2026-10-22",
+                    (None, false) => "Hours and minutes: 17:45",
+                };
+                self.form(island)
+                    .child(self.dialog_title(if *date { "Date" } else { "Time" }))
+                    .child(self.said(said, error.is_some()))
+                    .child(self.dialog_field(&self.clock_field, false, cx))
+                    .child(self.answers("Set", Fill::Accent, typed, cx))
             }
             Dialog::Finger { finger } => {
                 let named = !self.finger_field.read(cx).text().trim().is_empty();
@@ -257,7 +278,7 @@ impl Settings {
         div()
             .text_size(dp(20.))
             .font_weight(FontWeight::SEMIBOLD)
-            .child(title.into())
+            .child(say(title))
     }
 
     /// What a dialog says under its title; in the error colour when it says
@@ -268,7 +289,7 @@ impl Settings {
         } else {
             self.look.palette.secondary
         };
-        div().text_color(solid(ink)).child(said.into())
+        div().text_color(solid(ink)).child(say(said))
     }
 
     /// A text field in a dialog. A secret one ends in a button that shows
@@ -286,7 +307,7 @@ impl Settings {
                 .rounded(control_radius(&self.look))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(self.look.accent_text))
-                .child(label);
+                .child(say(label));
             let input = input.clone();
             self.pressable(button, cx, move |this, _, cx| {
                 this.revealed = !this.revealed;
@@ -336,7 +357,7 @@ impl Settings {
     }
 
     /// A radio mark: a ring, filled at its centre when `on`.
-    fn radio(&self, on: bool) -> Div {
+    pub(super) fn radio(&self, on: bool) -> Div {
         let ink = if on {
             self.look.accent
         } else {
@@ -411,6 +432,7 @@ impl Settings {
                     self.rename(name, window, cx);
                 }
             }
+            Dialog::Clock { date, .. } => self.set_clock(date, window, cx),
             Dialog::Finger { finger } => {
                 let name = self.finger_field.read(cx).text().trim().to_owned();
                 if !name.is_empty() {

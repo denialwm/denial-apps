@@ -4,6 +4,8 @@
 //! goes to the manager through `wifi::Link`; what changes comes back as a
 //! fresh `wifi::State`.
 
+use denial_look::words::fill;
+use denial_look_gpui::say;
 use std::future::Future;
 use std::rc::Rc;
 
@@ -78,7 +80,10 @@ impl Settings {
             return vec![self.missing(
                 Icon::Wifi,
                 "No Wi-Fi hardware",
-                format!("{} finds no Wi-Fi device", manager.label()),
+                fill(
+                    "{manager} finds no Wi-Fi device",
+                    &[("manager", manager.label())],
+                ),
             )];
         }
 
@@ -158,7 +163,7 @@ impl Settings {
                 Some(match count {
                     0 => "None yet".into(),
                     1 => "1 network".into(),
-                    count => format!("{count} networks").into(),
+                    count => fill("{count} networks", &[("count", &count.to_string())]).into(),
                 }),
                 (true, !enabled),
             )
@@ -254,9 +259,9 @@ impl Settings {
         vec![
             self.rows_island(saved.into_iter(), SEPARATOR, |saved, ends| {
                 let (glyph, status) = self.standing(&saved.id);
-                let mut detail = format!("{status} · {}", saved.security.label());
+                let mut detail = format!("{} · {}", say(status), say(saved.security.label()));
                 if !saved.autoconnect {
-                    detail.push_str(" · Joined by hand");
+                    detail.push_str(&format!(" · {}", say("Joined by hand")));
                 }
                 let row = self
                     .row(
@@ -399,7 +404,7 @@ impl Settings {
             if let Some(strength) = current.strength {
                 info.push((
                     "Signal",
-                    format!("{} · {strength}%", wifi::quality(strength)),
+                    format!("{} · {strength}%", say(wifi::quality(strength))),
                 ));
             }
             if let Some(frequency) = current.frequency {
@@ -556,7 +561,7 @@ impl Settings {
         } else if let Some(current) = &state.current {
             match current.phase {
                 Some(Phase::Connected) => current.name.clone().into(),
-                _ => format!("Connecting to {}", current.name).into(),
+                _ => fill("Connecting to {name}", &[("name", &current.name)]).into(),
             }
         } else {
             "Not connected".into()
@@ -581,11 +586,12 @@ impl Settings {
             if let Err(error) = link.set_enabled(on).await {
                 let _ = this.update(cx, |view, cx| {
                     view.wifi.state.enabled = !on;
-                    let turn = if on { "on" } else { "off" };
-                    view.note(
-                        format!("Could not turn Wi-Fi {turn}: {}", refused(&error)),
-                        cx,
-                    );
+                    let failed = if on {
+                        "Could not turn Wi-Fi on: {why}"
+                    } else {
+                        "Could not turn Wi-Fi off: {why}"
+                    };
+                    view.note(fill(failed, &[("why", &say(refused(&error)))]), cx);
                 });
             }
         })
@@ -688,7 +694,13 @@ impl Settings {
         cx.spawn(async move |this, cx| {
             if let Err(error) = link.disconnect(&device).await {
                 let _ = this.update(cx, |view, cx| {
-                    view.note(format!("Could not disconnect: {}", refused(&error)), cx)
+                    view.note(
+                        fill(
+                            "Could not disconnect: {why}",
+                            &[("why", &say(refused(&error)))],
+                        ),
+                        cx,
+                    )
                 });
             }
         })
@@ -703,7 +715,7 @@ impl Settings {
         };
         self.show(
             Dialog::Confirm {
-                title: format!("Forget {}?", saved.name).into(),
+                title: fill("Forget {name}?", &[("name", &saved.name)]).into(),
                 consequence: consequence.into(),
                 action: "Forget",
                 confirm: Rc::new(move |this, window, cx| this.forget(saved.clone(), window, cx)),
@@ -725,7 +737,10 @@ impl Settings {
             if let Err(error) = link.forget(&saved).await {
                 let _ = this.update(cx, |view, cx| {
                     view.note(
-                        format!("Could not forget {}: {}", saved.name, refused(&error)),
+                        fill(
+                            "Could not forget {name}: {why}",
+                            &[("name", &saved.name), ("why", &say(refused(&error)))],
+                        ),
                         cx,
                     )
                 });
@@ -795,7 +810,13 @@ impl Settings {
                     if let Some(saved) = saved.into_iter().find(|saved| saved.id == before.id) {
                         *saved = before;
                     }
-                    view.note(format!("Could not change it: {}", refused(&error)), cx);
+                    view.note(
+                        fill(
+                            "Could not change it: {why}",
+                            &[("why", &say(refused(&error)))],
+                        ),
+                        cx,
+                    );
                 });
             }
         })

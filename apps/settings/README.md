@@ -75,6 +75,45 @@ that reports a level and nothing else is left out. The page has the level
 and what the battery is doing (charging and until when, or the time left),
 then its health, charge cycles, temperature and power.
 
+About phone is real (`src/about.rs`, `src/settings/phone.rs`): the model
+and Denial's version (deniald's `denial.version`) at the top, then the
+phone's name, its number (dmail's `Modem1.Number`, as the SIM holds it), its
+Wi-Fi and Bluetooth addresses, storage used, the processor, memory and
+panel, and the system, kernel and up time, read from the kernel's files
+each time the page opens. The name is the Bluetooth adapter's, what nearby
+devices see, and renames as on the Bluetooth page.
+
+Date and time is real (`src/clock.rs`, `src/settings/system.rs`), through
+systemd's timedated (`org.freedesktop.timedate1`): setting the time from the
+network (NTP), and while that is off the date and the time, typed in a
+dialog; the time zone, picked by a city on a screen of their own; and the
+24-hour clock, Denial's `localization.twentyFourHourClock`, which the shell's
+clocks follow. The page reads timedated again every second while it shows.
+
+Language is real (`src/language.rs`): English or Simplified Chinese. A pick
+sets Denial's `localization.locale`, which the shell and the native apps
+follow at once; `LANG` in Denial's application environment, for the apps
+Denial starts next; and the system's language, through systemd's localed.
+The apps translate through `denial_look::words`, each with its own table of
+words (`src/words.rs` here). The keyboard settings are not on the phone yet.
+
+timedated and localed change things only with polkit's yes: on the Ace 3
+Phonewave's `48-phone-settings.rules` gives it to the phone's owner at the
+phone; elsewhere Denial's polkit agent asks for the password.
+
+Storage is real: the space used and free on the root filesystem, then what
+uses it, the home folder (counted file by file, on its own filesystem only)
+and the rest as System.
+
+Apps is real in two places: Android apps (Droidloom) starting with the
+session, which is the user's `graphical-session.target.wants` link to
+Droidloom's user unit, and Installed apps, every application entry in the
+XDG data directories that Denial would show (`src/apps.rs`), with its icon
+and name. Android apps always run in the background; default apps are not
+on the phone yet.
+
+Accessibility and Updates are kept in the catalog but not listed.
+
 Hotspot is listed but not on the phone yet: its row shows faint and opens
 nothing.
 
@@ -108,7 +147,9 @@ where its value lives (`src/settings/bound.rs`):
   rewrites the shell's `$XDG_STATE_HOME/denial/wallpaper`, which the shell
   follows, and when `wallpaper-depth` is installed starts the lock screen's
   depth mask of the new picture, as the shell's picker does.
-- Not on the phone yet: the ringtone, vibrating for calls, touch sounds,
+- In Settings' own code (`src/settings/system.rs`): date and time, the
+  language, Android apps starting.
+- Not on the phone yet: the keyboard, default apps, the ringtone, vibrating for calls, touch sounds,
   always showing the clock and the privacy switches. They show faint, on
   their values, and cannot be changed. "Recently sent" says it is not
   available yet.
@@ -155,6 +196,8 @@ root:
 - `reads_bluez` prints what BlueZ reports; it runs on any machine with
   BlueZ and changes nothing.
 - `reads_upower` prints the battery as UPower reports it.
+- `reads_facts` prints what About reads from the kernel; it runs on any
+  machine.
 - `reads_denial` prints the panel, its brightness, the display settings and
   the volume; run it as the session's user, with `XDG_RUNTIME_DIR` set.
 - `reads_the_lock` prints the lock PIN's length and the enrolled fingers,

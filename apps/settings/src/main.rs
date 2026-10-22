@@ -1,9 +1,14 @@
+mod about;
+mod apps;
 mod battery;
 mod bluetooth;
 mod catalog;
+mod clock;
 mod denial;
+mod droidloom;
 mod fingerprint;
 mod instance;
+mod language;
 mod lock;
 mod mobile;
 mod props;
@@ -11,6 +16,7 @@ mod settings;
 mod values;
 mod wallpaper;
 mod wifi;
+mod words;
 
 use futures_lite::future;
 use gpui::{
@@ -24,6 +30,7 @@ use crate::instance::{InstanceProxy, Open, Opener};
 use crate::settings::{Back, Settings};
 
 fn main() {
+    denial_look::words::register_chinese(words::CHINESE);
     // `settings <page>` opens on that page.
     let page = std::env::args().nth(1);
     let (opener, opens) = async_channel::unbounded();

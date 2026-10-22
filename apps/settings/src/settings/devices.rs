@@ -4,6 +4,8 @@
 //! back as a fresh `bluetooth::State`. Pairing questions from Settings'
 //! agent arrive as `bluetooth::Request`s and are answered in a dialog.
 
+use denial_look::words::fill;
+use denial_look_gpui::say;
 use std::future::Future;
 use std::rc::Rc;
 
@@ -138,7 +140,11 @@ impl Settings {
             return (*failure).into();
         }
         match (device.paired, device.connected, device.battery) {
-            (true, true, Some(battery)) => format!("Connected · Battery {battery}%").into(),
+            (true, true, Some(battery)) => fill(
+                "Connected · Battery {level}%",
+                &[("level", &battery.to_string())],
+            )
+            .into(),
             (true, true, None) => "Connected".into(),
             (true, false, _) => "Not connected".into(),
             (false, _, _) => device.kind.label().into(),
@@ -314,8 +320,12 @@ impl Settings {
             .collect();
         Some(match connected.as_slice() {
             [] => "On".into(),
-            [device] => format!("Connected to {}", device.name).into(),
-            devices => format!("{} devices connected", devices.len()).into(),
+            [device] => fill("Connected to {name}", &[("name", &device.name)]).into(),
+            devices => fill(
+                "{count} devices connected",
+                &[("count", &devices.len().to_string())],
+            )
+            .into(),
         })
     }
 
@@ -341,9 +351,13 @@ impl Settings {
                     if let Some(adapter) = &mut view.bluetooth.state.adapter {
                         adapter.powered = !on;
                     }
-                    let turn = if on { "on" } else { "off" };
-                    let why = bluetooth::failure(&error);
-                    view.note(format!("Could not turn Bluetooth {turn}: {why}"), cx);
+                    let failed = if on {
+                        "Could not turn Bluetooth on: {why}"
+                    } else {
+                        "Could not turn Bluetooth off: {why}"
+                    };
+                    let why = say(bluetooth::failure(&error));
+                    view.note(fill(failed, &[("why", &why)]), cx);
                 });
             }
         })
@@ -376,7 +390,7 @@ impl Settings {
                 view.bluetooth.busy = None;
                 if let Err(error) = done {
                     let why = bluetooth::failure(&error);
-                    view.note(format!("{}: {why}", device.name), cx);
+                    view.note(format!("{}: {}", device.name, say(why)), cx);
                     view.bluetooth.failed.insert(device.path, why);
                 }
                 cx.notify();
@@ -422,7 +436,7 @@ impl Settings {
     fn ask_forget_device(&mut self, device: Device, cx: &mut Context<Self>) {
         self.show(
             Dialog::Confirm {
-                title: format!("Forget {}?", device.name).into(),
+                title: fill("Forget {name}?", &[("name", &device.name)]).into(),
                 consequence: "The phone unpairs it. Pairing again needs it in pairing mode.".into(),
                 action: "Forget",
                 confirm: Rc::new(move |this, window, cx| {
@@ -446,7 +460,13 @@ impl Settings {
             if let Err(error) = link.forget(&adapter, &device).await {
                 let _ = this.update(cx, |view, cx| {
                     let why = bluetooth::failure(&error);
-                    view.note(format!("Could not forget {}: {why}", device.name), cx)
+                    view.note(
+                        fill(
+                            "Could not forget {name}: {why}",
+                            &[("name", &device.name), ("why", &say(why))],
+                        ),
+                        cx,
+                    )
                 });
             }
         })
@@ -454,7 +474,7 @@ impl Settings {
     }
 
     /// Asks for the phone's new name.
-    fn ask_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn ask_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(adapter) = &self.bluetooth.state.adapter else {
             return;
         };
@@ -475,7 +495,10 @@ impl Settings {
             if let Err(error) = link.set_name(&adapter, &name).await {
                 let _ = this.update(cx, |view, cx| {
                     let why = bluetooth::failure(&error);
-                    view.note(format!("Could not rename the phone: {why}"), cx)
+                    view.note(
+                        fill("Could not rename the phone: {why}", &[("why", &say(why))]),
+                        cx,
+                    )
                 });
             }
         })
@@ -530,31 +553,39 @@ impl Settings {
         let typed = self.code_field.read(cx).text().trim().to_owned();
         match &request.ask {
             Ask::Confirm(passkey) => (
-                format!("Check that {name} shows this code").into(),
+                fill("Check that {name} shows this code", &[("name", &name)]).into(),
                 Some(code(format!("{passkey:06}"))),
                 true,
                 Some("Pair"),
             ),
             Ask::Authorize => (
-                format!("{name} asks to pair").into(),
+                fill("{name} asks to pair", &[("name", &name)]).into(),
                 None,
                 true,
                 Some("Pair"),
             ),
             Ask::PinCode => (
-                format!("Type the PIN of {name}, often 0000 or 1234").into(),
+                fill(
+                    "Type the PIN of {name}, often 0000 or 1234",
+                    &[("name", &name)],
+                )
+                .into(),
                 None,
                 (1..=16).contains(&typed.len()),
                 Some("Pair"),
             ),
             Ask::Passkey => (
-                format!("Type the code {name} shows").into(),
+                fill("Type the code {name} shows", &[("name", &name)]).into(),
                 None,
                 (1..=6).contains(&typed.len()) && typed.bytes().all(|b| b.is_ascii_digit()),
                 Some("Pair"),
             ),
             Ask::Show(shown) => (
-                format!("Type this code on {name}, then press Enter there").into(),
+                fill(
+                    "Type this code on {name}, then press Enter there",
+                    &[("name", &name)],
+                )
+                .into(),
                 Some(code(shown.clone())),
                 false,
                 None,

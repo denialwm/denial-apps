@@ -4,6 +4,8 @@
 //! first. While one is added the screen holds only its progress, at the
 //! top, leaving the sensor near the bottom clear.
 
+use denial_look::words::fill;
+use denial_look_gpui::say;
 use std::rc::Rc;
 
 use denial_look_gpui::{Icon, dp, island, solid};
@@ -92,7 +94,7 @@ impl Settings {
             .as_ref()
             .and_then(|enrolled| enrolled.iter().position(|each| each == finger))
             .map_or(1, |ix| ix + 1);
-        format!("Fingerprint {place}")
+        fill("Fingerprint {number}", &[("number", &place.to_string())])
     }
 
     /// The finger being added: what to do, the touches taken, and Cancel.
@@ -150,7 +152,7 @@ impl Settings {
                     .pt(dp(6.))
                     .text_size(dp(20.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(format!("Adding {}", adding.name)),
+                    .child(fill("Adding {name}", &[("name", &adding.name)])),
             )
             .child(
                 div()
@@ -160,7 +162,7 @@ impl Settings {
                     } else {
                         self.look.palette.secondary
                     }))
-                    .child(said),
+                    .child(say(said)),
             )
             .child(bar)
             .child(self.buttons([cancel]).w_full().pt(dp(12.)))
@@ -245,7 +247,13 @@ impl Settings {
 
     fn keep_names(&mut self, cx: &mut Context<Self>) {
         if let Err(error) = fingerprint::save_names(&self.fingers.names) {
-            self.note(format!("Could not keep the names: {error}"), cx);
+            self.note(
+                fill(
+                    "Could not keep the names: {why}",
+                    &[("why", &error.to_string())],
+                ),
+                cx,
+            );
         }
     }
 
@@ -287,7 +295,7 @@ impl Settings {
             Progress::Added => {
                 let (finger, name) = (adding.finger.to_owned(), adding.name.clone());
                 self.fingers.adding = None;
-                self.note(format!("{name} added"), cx);
+                self.note(fill("{name} added", &[("name", &name)]), cx);
                 self.fingers.names.insert(finger, name);
                 self.keep_names(cx);
                 self.read_fingers(cx);
@@ -304,7 +312,7 @@ impl Settings {
     pub(super) fn ask_remove_finger(&mut self, finger: String, cx: &mut Context<Self>) {
         self.show(
             Dialog::Confirm {
-                title: format!("Remove {}?", self.finger_name(&finger)).into(),
+                title: fill("Remove {name}?", &[("name", &self.finger_name(&finger))]).into(),
                 consequence: "It no longer unlocks the phone.".into(),
                 action: "Remove",
                 confirm: Rc::new(move |this, _, cx| this.remove_finger(finger.clone(), cx)),
@@ -326,7 +334,10 @@ impl Settings {
                 view.fingers.removing = None;
                 match removed {
                     Ok(()) => {
-                        view.note(format!("{} removed", view.finger_name(&finger)), cx);
+                        view.note(
+                            fill("{name} removed", &[("name", &view.finger_name(&finger))]),
+                            cx,
+                        );
                         view.fingers.names.remove(&finger);
                         view.keep_names(cx);
                     }

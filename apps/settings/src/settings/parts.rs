@@ -3,7 +3,9 @@
 
 use denial_look::mobile::TOUCH;
 use denial_look::{CONTROL_FILL, PRESSED_FILL, lerp_rgb, on, palette};
-use denial_look_gpui::{Icon, chip, color, control_fill, control_radius, dp, icon, island, solid};
+use denial_look_gpui::{
+    Icon, chip, color, control_fill, control_radius, dp, icon, island, say, solid,
+};
 use gpui::{
     ClickEvent, Context, Div, Entity, FontWeight, SharedString, Stateful, Window, div, prelude::*,
     px,
@@ -127,7 +129,7 @@ impl Settings {
             .truncate()
             .text_size(dp(20.))
             .font_weight(FontWeight::SEMIBOLD)
-            .child(title.into())
+            .child(say(title))
     }
 
     /// A text field in the top group, `lead` before it.
@@ -158,7 +160,7 @@ impl Settings {
         div()
             .pt(dp(6.))
             .flex()
-            .child(chip(&self.look).child(label.into()))
+            .child(chip(&self.look).child(say(label)))
     }
 
     /// An island of rows under its label, the label inside it in accent
@@ -172,7 +174,7 @@ impl Settings {
                 .text_size(dp(12.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(self.look.accent_text))
-                .child(label.into().to_uppercase()),
+                .child(say(label).to_uppercase()),
         )
     }
 
@@ -213,12 +215,12 @@ impl Settings {
             .flex()
             .flex_col()
             .gap(dp(2.))
-            .child(div().child(title.into()))
+            .child(div().child(say(title)))
             .children(detail.map(|detail| {
                 div()
                     .text_size(dp(14.))
                     .text_color(solid(self.look.palette.secondary))
-                    .child(detail)
+                    .child(say(detail))
             }))
     }
 
@@ -286,7 +288,7 @@ impl Settings {
             .truncate()
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(ink))
-            .child(label.into());
+            .child(say(label));
         let button = match self.fill(fill) {
             Some(fill) => button.bg(solid(fill)),
             None => button.bg(control_fill(&self.look)),
@@ -362,7 +364,7 @@ impl Settings {
             .max_w(gpui::relative(0.55))
             .truncate()
             .text_color(solid(self.look.palette.secondary))
-            .child(value.into())
+            .child(say(value))
     }
 
     /// The chevron at the end of a row that opens something.

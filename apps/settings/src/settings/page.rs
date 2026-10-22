@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use denial_look::mobile::TOUCH;
 use denial_look::nested_radius;
-use denial_look_gpui::{Icon, control_fill, control_radius, dp, icon, island, solid};
+use denial_look_gpui::{Icon, control_fill, control_radius, dp, icon, island, say, solid};
 use gpui::{
     Context, DispatchPhase, Div, FontWeight, HitboxBehavior, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, TouchDragEvent, TouchPhase,
@@ -229,7 +229,7 @@ impl Settings {
                         .flex_none()
                         .max_w(relative(0.5))
                         .text_color(solid(palette.secondary))
-                        .child(value),
+                        .child(say(value)),
                 ),
             ),
             Kind::Action(_) => {
@@ -393,7 +393,7 @@ impl Settings {
                 .rounded(radius)
                 .truncate()
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(*option);
+                .child(say(*option));
             if ix == picked {
                 segment
                     .bg(solid(self.look.accent))
