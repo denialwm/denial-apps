@@ -3,8 +3,9 @@
 //! Tokens follow Denial's docs/APPLICATION_MATERIALS.md and, on phones,
 //! docs/MOBILE_APP_MATERIALS.md: neutral glass for floating groups and chips,
 //! warm opaque surfaces for content. The user's appearance, accent, opacity,
-//! roundness and motion come from ~/.config/denial/settings.json, and
-//! `SettingsWatch` follows that file.
+//! roundness and motion come from ~/.config/denial/settings.json, the
+//! accent taken from the wallpaper from Denial's
+//! ~/.local/state/denial/accent-color-v1, and `SettingsWatch` follows both.
 
 mod watch;
 
@@ -337,16 +338,45 @@ fn settings_path() -> Option<PathBuf> {
         .map(|dir| dir.join("denial/settings.json"))
 }
 
+/// Where Denial keeps the accent it took from the wallpaper:
+/// `$XDG_STATE_HOME/denial/accent-color-v1`, else under `~/.local/state`.
+fn wallpaper_accent_path() -> Option<PathBuf> {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+        .map(|dir| dir.join("denial/accent-color-v1"))
+}
+
+/// The wallpaper's accent as Denial keeps it: the magic `DENACNT\0`, the
+/// format 1, then red, green and blue.
+fn wallpaper_accent(bytes: &[u8]) -> Option<u32> {
+    match bytes {
+        [b'D', b'E', b'N', b'A', b'C', b'N', b'T', 0, 1, r, g, b] => {
+            Some(u32::from_be_bytes([0, *r, *g, *b]))
+        }
+        _ => None,
+    }
+}
+
 impl Look {
     pub fn load() -> Self {
         let settings = settings_path()
             .and_then(|path| std::fs::read(path).ok())
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or(Value::Null);
-        Self::from_settings(&settings)
+        let wallpaper = wallpaper_accent_path()
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| wallpaper_accent(&bytes));
+        Self::from_settings_and_wallpaper(&settings, wallpaper)
     }
 
     pub fn from_settings(settings: &Value) -> Self {
+        Self::from_settings_and_wallpaper(settings, None)
+    }
+
+    /// The look `settings` give, with the accent Denial took from the
+    /// wallpaper when they ask for that one.
+    pub fn from_settings_and_wallpaper(settings: &Value, wallpaper: Option<u32>) -> Self {
         let appearance = &settings["appearance"];
         let number = |value: &Value, default: f32| {
             value
@@ -365,7 +395,7 @@ impl Look {
             appearance["customAccentColor"].as_u64(),
         ) {
             (Some("custom"), Some(argb)) => (argb & 0xFF_FFFF) as u32,
-            _ => DEFAULT_ACCENT,
+            _ => wallpaper.unwrap_or(DEFAULT_ACCENT),
         };
         let glass = &appearance["glass"];
         let (window_alpha, panel_alpha) = match appearance["transparencyMode"].as_str() {
@@ -373,8 +403,10 @@ impl Look {
                 number(&glass["windowOpacity"], 1.0),
                 number(&glass["appPanelOpacity"], 1.0),
             ),
+            // Blur keeps the glass's window opacity, the one key for the
+            // backing behind apps.
             Some("blur") => (
-                MIN_WINDOW_ALPHA,
+                number(&glass["windowOpacity"], MIN_WINDOW_ALPHA),
                 number(&appearance["panelOpacity"], 0.5).clamp(0.05, 1.0),
             ),
             _ => (1.0, 1.0),
@@ -677,6 +709,26 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn accent_comes_from_the_wallpaper_unless_custom() {
+        let kept = *b"DENACNT\0\x01\x3b\x4a\xa6";
+        assert_eq!(wallpaper_accent(&kept), Some(0x3B4AA6));
+        assert_eq!(wallpaper_accent(&kept[..11]), None);
+        let wallpaper = serde_json::json!({"appearance": {"accentSource": "wallpaper"}});
+        let custom = serde_json::json!({
+            "appearance": {"accentSource": "custom", "customAccentColor": 0xFF11_2233u32}
+        });
+        assert_eq!(
+            Look::from_settings_and_wallpaper(&wallpaper, Some(0x3B4AA6)).accent,
+            0x3B4AA6
+        );
+        assert_eq!(
+            Look::from_settings_and_wallpaper(&custom, Some(0x3B4AA6)).accent,
+            0x112233
+        );
+        assert_eq!(Look::from_settings(&wallpaper).accent, DEFAULT_ACCENT);
     }
 
     #[test]

@@ -12,8 +12,9 @@ use gpui::{
     App, AvailableSpace, Bounds, ClipboardItem, Context, CursorStyle, ElementId,
     ElementInputHandler, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId,
     KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad,
-    Pixels, Point, ScrollHandle, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle,
-    Window, WrappedLine, actions, div, fill, point, prelude::*, px, relative, size,
+    Pixels, Point, ScrollHandle, SharedString, Style, TextInputConfiguration, TextRun,
+    UTF16Selection, UnderlineStyle, Window, WrappedLine, actions, div, fill, point, prelude::*, px,
+    relative, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -45,6 +46,8 @@ actions!(
 pub const LINE: f32 = 22.0;
 /// Size of the text, in dp.
 const TEXT: f32 = 16.0;
+/// What a secret field shows for each of its characters.
+const DOT: char = '•';
 
 pub fn bind_keys(cx: &mut App) {
     let context = Some("TextInput");
@@ -91,6 +94,9 @@ pub struct TextInput {
     /// The text or the cursor changed: the next paint scrolls the cursor into
     /// view.
     reveal: bool,
+    /// The text is a secret, such as a password: shown as one dot per
+    /// character, and never copied out.
+    secret: bool,
 }
 
 impl EventEmitter<Submitted> for TextInput {}
@@ -117,6 +123,34 @@ impl TextInput {
             is_selecting: false,
             scroll: ScrollHandle::new(),
             reveal: false,
+            secret: false,
+        }
+    }
+
+    /// Shows the text as dots, or as it is.
+    pub fn set_secret(&mut self, secret: bool, cx: &mut Context<Self>) {
+        self.secret = secret;
+        cx.notify();
+    }
+
+    /// Where byte `index` of the text is in what the field shows.
+    fn shown(&self, index: usize) -> usize {
+        if self.secret {
+            self.content[..index].chars().count() * DOT.len_utf8()
+        } else {
+            index
+        }
+    }
+
+    /// The byte of the text at byte `index` of what the field shows.
+    fn unshown(&self, index: usize) -> usize {
+        if self.secret {
+            self.content
+                .char_indices()
+                .nth(index / DOT.len_utf8())
+                .map_or(self.content.len(), |(at, _)| at)
+        } else {
+            index
         }
     }
 
@@ -190,14 +224,14 @@ impl TextInput {
         let Some(layout) = &self.last_layout else {
             return;
         };
-        let at = layout.position_for_index(self.cursor_offset());
+        let at = layout.position_for_index(self.shown(self.cursor_offset()));
         let target = point(at.x, at.y + layout.line_height * (0.5 + lines));
         let offset = if target.y < px(0.) {
             0
         } else if target.y >= layout.height() {
             self.content.len()
         } else {
-            layout.index_for_position(target)
+            self.unshown(layout.index_for_position(target))
         };
         self.move_to(offset, cx);
     }
@@ -282,7 +316,7 @@ impl TextInput {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.selected_range.is_empty() && !self.secret {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
             ));
@@ -290,7 +324,7 @@ impl TextInput {
     }
 
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.selected_range.is_empty() && !self.secret {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
             ));
@@ -326,7 +360,7 @@ impl TextInput {
         if position.y > bounds.bottom() {
             return self.content.len();
         }
-        layout.index_for_position(position - bounds.origin)
+        self.unshown(layout.index_for_position(position - bounds.origin))
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -398,6 +432,9 @@ impl TextInput {
         let style = window.text_style();
         let (text, text_color) = if self.content.is_empty() {
             (self.placeholder.clone(), solid(self.placeholder_color))
+        } else if self.secret {
+            let dots: String = self.content.chars().map(|_| DOT).collect();
+            (dots.into(), style.color)
         } else {
             (self.content.clone(), style.color)
         };
@@ -412,6 +449,7 @@ impl TextInput {
         let Some(marked) = self.marked_range.clone() else {
             return (text, vec![run]);
         };
+        let marked = self.shown(marked.start)..self.shown(marked.end);
         let runs = vec![
             TextRun {
                 len: marked.start,
@@ -548,6 +586,18 @@ impl Shaped {
 }
 
 impl EntityInputHandler for TextInput {
+    /// A secret field tells the input method it holds a password.
+    fn text_input_configuration(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> TextInputConfiguration {
+        TextInputConfiguration {
+            secret: self.secret,
+            ..Default::default()
+        }
+    }
+
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -639,8 +689,8 @@ impl EntityInputHandler for TextInput {
     ) -> Option<Bounds<Pixels>> {
         let layout = self.last_layout.as_ref()?;
         let range = self.range_from_utf16(&range_utf16);
-        let start = layout.position_for_index(range.start);
-        let end = layout.position_for_index(range.end);
+        let start = layout.position_for_index(self.shown(range.start));
+        let end = layout.position_for_index(self.shown(range.end));
         let right = if end.y == start.y { end.x } else { start.x };
         Some(Bounds::from_corners(
             bounds.origin + start,
@@ -656,7 +706,7 @@ impl EntityInputHandler for TextInput {
     ) -> Option<usize> {
         let bounds = self.last_bounds?;
         let layout = self.last_layout.as_ref()?;
-        let utf8_index = layout.index_for_position(point - bounds.origin);
+        let utf8_index = self.unshown(layout.index_for_position(point - bounds.origin));
         Some(self.offset_to_utf16(utf8_index))
     }
 }
@@ -733,11 +783,12 @@ impl Element for TextElement {
             window,
         );
         let accent = input.accent;
-        let selected_range = input.selected_range.clone();
+        let selected_range =
+            input.shown(input.selected_range.start)..input.shown(input.selected_range.end);
         let cursor_at = if input.content.is_empty() {
             point(px(0.), px(0.))
         } else {
-            layout.position_for_index(input.cursor_offset())
+            layout.position_for_index(input.shown(input.cursor_offset()))
         };
         let cursor_top = bounds.origin + cursor_at;
         // Scrolls the field so the cursor shows, from the next frame on.
