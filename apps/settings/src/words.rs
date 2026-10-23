@@ -247,6 +247,10 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Model", "型号"),
     ("Display size", "显示大小"),
     ("{dpi} dpi", "{dpi} dpi"),
+    (
+        "Open Android apps may restart to take the new size",
+        "打开的安卓应用可能会重启以使用新大小",
+    ),
     ("Small", "小"),
     ("Default", "默认"),
     ("Large", "大"),

@@ -18,7 +18,7 @@ use super::{Layer, OnPick, Settings};
 use crate::catalog::{Item, Kind, Section};
 
 /// A setting that cannot be changed is drawn at this opacity.
-const FAINT: f32 = 0.5;
+pub(super) const FAINT: f32 = 0.5;
 
 /// What a slider does with each new level, and whether the finger has let
 /// go.

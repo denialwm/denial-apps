@@ -17,6 +17,7 @@ use gpui::{
     prelude::*,
 };
 
+use super::page::FAINT;
 use super::parts::{Fill, ROW_GAP, ROW_PAD};
 use super::system::APP_ICON;
 use super::{Dialog, Layer, Screen, Settings};
@@ -28,16 +29,19 @@ use crate::{about, clock};
 /// How often the page reads how Android runs.
 const READ_EVERY: Duration = Duration::from_secs(2);
 
-/// The sizes Android apps can be drawn at, as shares of the density that
-/// draws them as large as Denial's own apps: Android's 160 dpi times the
-/// scale Denial gives windows.
+/// The sizes Android apps can be drawn at, as shares of the default density.
 const SIZES: [&str; 4] = ["Small", "Default", "Large", "Larger"];
 const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
+
+/// Android's density for the default size, per unit of the scale Denial
+/// gives windows: 460 dpi at scale 2, which matches a stock Android phone
+/// side by side. Android's own 160 drew its apps smaller than Denial's.
+const DEFAULT_DPI: f32 = 230.0;
 
 /// Android's density at the size `option` of `SIZES`.
 fn size_dpi(scale: f32, option: usize) -> Option<u32> {
     let share = SIZE_SCALES.get(option)?;
-    Some((160.0 * scale * share).round() as u32)
+    Some((DEFAULT_DPI * scale * share).round() as u32)
 }
 
 /// Android as Settings knows it.
@@ -347,22 +351,34 @@ impl Settings {
                     ),
             );
         }
-        if let Some(density) = android.density {
+        {
+            // Faint until Android tells its density.
+            let dpi = android.density.map(|density| density.dpi);
             let picked = (0..SIZES.len())
-                .find(|option| size_dpi(self.scale, *option) == Some(density.dpi))
+                .find(|option| dpi.is_some() && size_dpi(self.scale, *option) == dpi)
                 .unwrap_or(SIZES.len());
             parts.push(self.chip_row("Display"));
-            parts.push(island(&self.look).child(self.options_row(
-                "android.size",
-                "Display size",
-                Some(fill("{dpi} dpi", &[("dpi", &density.dpi.to_string())]).into()),
-                &SIZES,
-                picked,
-                live,
-                (true, true),
-                cx,
-                Rc::new(|this, option, _, cx| this.pick_android_size(option, cx)),
-            )));
+            parts.push(
+                island(&self.look).child(
+                    self.options_row(
+                        "android.size",
+                        "Display size",
+                        dpi.map(|dpi| fill("{dpi} dpi", &[("dpi", &dpi.to_string())]).into()),
+                        &SIZES,
+                        picked,
+                        live && dpi.is_some(),
+                        (true, true),
+                        cx,
+                        Rc::new(|this, option, _, cx| this.pick_android_size(option, cx)),
+                    )
+                    .child(
+                        div()
+                            .text_color(solid(self.look.palette.secondary))
+                            .child(tr("Open Android apps may restart to take the new size")),
+                    )
+                    .when(dpi.is_none(), |row| row.opacity(FAINT)),
+                ),
+            );
         }
         if let Some(stats) = &android.stats {
             let mut rows: Vec<(&str, String)> = vec![("Running for", about::up_time(stats.up))];
