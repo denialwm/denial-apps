@@ -3,6 +3,6 @@ Type=Application
 Name=Messages
 Comment=SMS for Denial phones
 Exec=/home/logix/.local/bin/messages
-Icon=internet-mail
+Icon=org.denialwm.Messages
 Terminal=false
 Categories=Network;

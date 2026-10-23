@@ -3,6 +3,6 @@ Type=Application
 Name=Settings
 Comment=Settings for Denial phones
 Exec=/home/logix/.local/bin/settings
-Icon=preferences-system
+Icon=org.denialwm.Settings
 Terminal=false
 Categories=Settings;

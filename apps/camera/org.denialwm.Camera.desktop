@@ -3,6 +3,6 @@ Type=Application
 Name=Camera
 Comment=Photos from the phone's cameras
 Exec=/home/logix/.local/bin/camera
-Icon=camera-photo
+Icon=org.denialwm.Camera
 Terminal=false
 Categories=Graphics;Photography;

@@ -39,6 +39,26 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 From an app's directory, `cargo run --release` on the host; the app's README
 covers device builds. Output goes to `target/` here.
 
+## Icons
+
+Each app's launcher icon, `apps/<name>/org.denialwm.<Name>.png`, comes from
+the [Yaru](https://github.com/ubuntu/yaru) icon theme (commit `7f18973e`),
+whose icons are under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). They keep
+that license, not the one below. Calls, Camera, Messages and Settings are
+Yaru's `calls-app`, `camera-app`, `messaging-app` and `settings-app` from
+`icons/src/fullcolor/default/apps/`. Each is the 256-unit drawing of its
+source sheet, with the viewBox cropped to the drawing so it fills its square
+as Android's icons do, rendered at 512 px with `rsvg-convert`. Messages and
+Calls are recolored: every hex color with HSL saturation of at least 0.25
+(except Yaru's `#ff0000` guides) has its hue turned by +75° with lightness times
+0.58 for Messages (to green), and by +115° with lightness times 0.84 for
+Calls (to blue).
+
+On the phone, an app's `.desktop` file goes in `~/.local/share/applications`
+and its icon in `~/.local/share/icons/hicolor/512x512/apps`; the `Icon=` key
+names it.
+
 ## License
 
 denial-apps is source-available, not open source. It uses the

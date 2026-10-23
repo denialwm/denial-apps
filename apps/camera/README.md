@@ -139,4 +139,4 @@ open. For the Ace 3, cross-built against its sysroot in
 
 Both write to `target/` at the denial-apps root. On the phone it runs as
 `~/.local/bin/camera`, with `org.denialwm.Camera.desktop` in
-`~/.local/share/applications`. Its user must be in the `video` group.
+`~/.local/share/applications` and its icon as the root README says. Its user must be in the `video` group.
