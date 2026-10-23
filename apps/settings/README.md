@@ -80,8 +80,10 @@ and Denial's version (deniald's `denial.version`) at the top, then the
 phone's name, its number (dmail's `Modem1.Number`, as the SIM holds it), its
 Wi-Fi and Bluetooth addresses, storage used, the processor, memory and
 panel, and the system, kernel and up time, read from the kernel's files
-each time the page opens. The name is the Bluetooth adapter's, what nearby
-devices see, and renames as on the Bluetooth page.
+each time the page opens. The name is systemd's pretty hostname
+(`src/name.rs`, `org.freedesktop.hostname1`), which Droidloom also gives
+Android as its device name. A rename, here or on the Bluetooth page, sets it
+and the Bluetooth adapter's name together.
 
 Date and time is real (`src/clock.rs`, `src/settings/system.rs`), through
 systemd's timedated (`org.freedesktop.timedate1`): setting the time from the
@@ -97,7 +99,7 @@ Denial starts next; and the system's language, through systemd's localed.
 The apps translate through `denial_look::words`, each with its own table of
 words (`src/words.rs` here). The keyboard settings are not on the phone yet.
 
-timedated and localed change things only with polkit's yes: on the Ace 3
+timedated, localed and hostnamed change things only with polkit's yes: on the Ace 3
 Phonewave's `48-phone-settings.rules` gives it to the phone's owner at the
 phone; elsewhere Denial's polkit agent asks for the password.
 
@@ -105,12 +107,30 @@ Storage is real: the space used and free on the root filesystem, then what
 uses it, the home folder (counted file by file, on its own filesystem only)
 and the rest as System.
 
-Apps is real in two places: Android apps (Droidloom) starting with the
-session, which is the user's `graphical-session.target.wants` link to
-Droidloom's user unit, and Installed apps, every application entry in the
-XDG data directories that Denial would show (`src/apps.rs`), with its icon
-and name. Android apps always run in the background; default apps are not
-on the phone yet.
+Apps lists every application entry in the XDG data directories that Denial
+would show (`src/apps.rs`), with its icon and name; default apps are not on
+the phone yet.
+
+Android is real (`src/droidloom.rs`, `src/settings/android.rs`). Its switch
+starts Android now and with each session: the user's
+`graphical-session.target.wants` link to Droidloom's user unit. Restart
+restarts that unit. How Android runs comes from droidloomd's control socket
+(`/run/droidloom/control.sock`, one JSON request and one JSON answer), read
+every two seconds while an Android screen or the home screen shows: ready or
+starting, time running, how long it took to start, memory without the file
+cache and swapped out, the share of the processor since the last reading,
+processes, app processes and threads, Android's version, the model and name
+Android gives apps, and Droidloom's release. Droidloom's unit is read with it
+over the session bus. When the unit failed, the page and the home screen say
+so, and the page shows the unit's last journal line from that run
+(`_SYSTEMD_INVOCATION_ID`); when the cell stopped on its own, droidloomd's
+reason. Display size draws Android apps at 85, 100, 115 or 130 percent of
+the size of Denial's own: 160 dpi times the scale Denial gives the Settings
+window, set through droidloomd's `set_dpi`. The apps are the
+launcher entries Droidloom exports (`X-Droidloom-Package`). An app's screen
+opens and stops it, shows its version, dates and storage, clears its cache or
+its storage, opens Android's App info for permissions and notifications, and
+uninstalls it unless it is part of Android.
 
 Accessibility and Updates are kept in the catalog but not listed.
 
@@ -148,7 +168,7 @@ where its value lives (`src/settings/bound.rs`):
   follows, and when `wallpaper-depth` is installed starts the lock screen's
   depth mask of the new picture, as the shell's picker does.
 - In Settings' own code (`src/settings/system.rs`): date and time, the
-  language, Android apps starting.
+  language, Android starting.
 - Not on the phone yet: the keyboard, default apps, the ringtone, vibrating for calls, touch sounds,
   always showing the clock and the privacy switches. They show faint, on
   their values, and cannot be changed. "Recently sent" says it is not

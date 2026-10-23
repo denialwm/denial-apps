@@ -43,6 +43,9 @@ pub enum Content {
     Storage,
     /// Settings in sections, then the apps installed.
     Apps(&'static [Section]),
+    /// Android through Droidloom: the switch in sections, then how it runs
+    /// and its apps.
+    Android(&'static [Section]),
     /// Written, but shown nowhere until the phone has it.
     Hidden(#[expect(dead_code, reason = "shown once the phone has it")] &'static [Section]),
     /// Listed, but not on the phone yet: its row shows faint and opens
@@ -541,34 +544,32 @@ pub static GROUPS: &[Group] = &[
                 id: "apps",
                 title: "Apps",
                 icon: Icon::Apps,
-                summary: "Installed apps, Android apps",
-                content: Content::Apps(&[
-                    section(
-                        "Defaults",
-                        &[
-                            item("apps.sms", "Messages", Kind::Choice(&["Messages"], 0))
-                                .icon(Icon::Message)
-                                .fixed(),
-                            item("apps.phone", "Phone", Kind::Choice(&["Calls"], 0))
-                                .icon(Icon::Phone)
-                                .fixed(),
-                        ],
-                    ),
-                    section(
-                        "Android apps",
-                        &[
-                            item("apps.droidloom", "Run Android apps", Kind::Toggle(true))
-                                .detail("In their own windows, through Droidloom")
-                                .from(Source::Own),
-                            item(
-                                "apps.background",
-                                "Let them run in the background",
-                                Kind::Toggle(true),
-                            )
+                summary: "Installed apps, defaults",
+                content: Content::Apps(&[section(
+                    "Defaults",
+                    &[
+                        item("apps.sms", "Messages", Kind::Choice(&["Messages"], 0))
+                            .icon(Icon::Message)
                             .fixed(),
-                        ],
-                    ),
-                ]),
+                        item("apps.phone", "Phone", Kind::Choice(&["Calls"], 0))
+                            .icon(Icon::Phone)
+                            .fixed(),
+                    ],
+                )]),
+            },
+            Page {
+                id: "android",
+                title: "Android (Droidloom)",
+                icon: Icon::Android,
+                summary: "Android apps, through Droidloom",
+                content: Content::Android(&[lead(&[item(
+                    "android.run",
+                    "Run Android apps",
+                    Kind::Toggle(true),
+                )
+                .detail("In their own windows, through Droidloom")
+                .icon(Icon::Android)
+                .from(Source::Own)])]),
             },
             Page {
                 id: "language",
@@ -724,7 +725,9 @@ pub fn find(key: &str) -> Option<&'static Item> {
 pub fn items() -> impl Iterator<Item = (&'static Page, &'static Section, &'static Item)> {
     listed().flat_map(|page| {
         let sections = match page.content {
-            Content::Settings(sections) | Content::Apps(sections) => sections,
+            Content::Settings(sections) | Content::Apps(sections) | Content::Android(sections) => {
+                sections
+            }
             Content::Wifi
             | Content::Mobile
             | Content::Bluetooth

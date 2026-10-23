@@ -1,7 +1,7 @@
 //! The About phone page: the phone's model and Denial's version at the top,
 //! then the phone's name and addresses, its storage, its hardware and its
-//! software. The name is the one nearby devices see, renamed as on the
-//! Bluetooth page; everything else is read, not set.
+//! software. The name is the one nearby devices and Android see, renamed
+//! here or on the Bluetooth page; everything else is read, not set.
 
 use denial_look::words::{fill, tr};
 use denial_look_gpui::{Icon, control_fill, dp, island, solid};
@@ -41,12 +41,8 @@ impl Settings {
         let mut parts = vec![self.about_hero(facts)];
 
         let adapter = self.bluetooth.state.adapter.as_ref();
-        let renames = layer.live() && self.bluetooth.link.is_some() && adapter.is_some();
-        let name = adapter
-            .map(|adapter| adapter.name.clone())
-            .filter(|name| !name.is_empty())
-            .or_else(about_hostname)
-            .unwrap_or_else(|| "Unknown".to_owned());
+        let renames = layer.live();
+        let name = self.phone_name().unwrap_or_else(|| "Unknown".to_owned());
         let mut phone: Vec<(&str, String)> = Vec::new();
         let number = &self.mobile.state.number;
         if self.mobile.read && self.mobile.link.is_some() {
@@ -228,6 +224,16 @@ impl Settings {
                             .bg(solid(self.look.accent)),
                     ),
             )
+    }
+
+    /// The owner's name for the phone, else Bluetooth's, else the system's.
+    pub(super) fn phone_name(&self) -> Option<String> {
+        let adapter = self.bluetooth.state.adapter.as_ref();
+        (self.about.facts.as_ref())
+            .and_then(|facts| facts.name.clone())
+            .or_else(|| adapter.map(|adapter| adapter.name.clone()))
+            .filter(|name| !name.is_empty())
+            .or_else(about_hostname)
     }
 
     /// About's line under its title on the home screen: the model.

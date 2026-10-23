@@ -10,6 +10,7 @@ pub enum Icon {
     Accessibility,
     Airplane,
     Alert,
+    Android,
     Apps,
     Archive,
     Back,
@@ -79,10 +80,11 @@ pub enum Icon {
     WifiWeak,
 }
 
-const ALL: [Icon; 70] = [
+const ALL: [Icon; 71] = [
     Icon::Accessibility,
     Icon::Airplane,
     Icon::Alert,
+    Icon::Android,
     Icon::Apps,
     Icon::Archive,
     Icon::Back,
@@ -158,6 +160,7 @@ impl Icon {
             Icon::Accessibility => "accessibility",
             Icon::Airplane => "airplane",
             Icon::Alert => "alert",
+            Icon::Android => "android",
             Icon::Apps => "apps",
             Icon::Archive => "archive",
             Icon::Back => "back",
@@ -238,6 +241,9 @@ impl Icon {
                 r#"<path d="M10.5 3.5a1.5 1.5 0 013 0V9l7.5 4.5v2l-7.5-2.3V18l2 1.5V21L12 20l-3.5 1v-1.5l2-1.5v-4.8L3 15.5v-2L10.5 9z"/>"#
             }
             Icon::Alert => r#"<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>"#,
+            Icon::Android => {
+                r#"<path d="M4.5 18a7.5 7.5 0 0115 0z"/><path d="M8 11.5L6 8.5M16 11.5l2-3M9.5 14.5v.5M14.5 14.5v.5"/>"#
+            }
             Icon::Apps => {
                 r#"<circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="7" r="2.5"/><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="17" r="2.5"/>"#
             }

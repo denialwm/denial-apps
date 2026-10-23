@@ -11,6 +11,7 @@ mod instance;
 mod language;
 mod lock;
 mod mobile;
+mod name;
 mod props;
 mod settings;
 mod values;

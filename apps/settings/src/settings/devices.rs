@@ -475,28 +475,41 @@ impl Settings {
 
     /// Asks for the phone's new name.
     pub(super) fn ask_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(adapter) = &self.bluetooth.state.adapter else {
-            return;
-        };
-        let name = adapter.name.clone();
+        let name = self.phone_name().unwrap_or_default();
         self.name_field
             .update(cx, |input, cx| input.set_text(name, cx));
         self.show(Dialog::Rename, cx);
         window.focus(&self.name_field.focus_handle(cx), cx);
     }
 
-    /// Renames the phone as other devices see it.
+    /// Renames the phone, and Bluetooth with it.
     pub(super) fn rename(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((link, adapter)) = self.bluetooth_link() else {
-            return;
-        };
+        let bluetooth = self.bluetooth_link();
         self.dismiss(window, cx);
         cx.spawn(async move |this, cx| {
-            if let Err(error) = link.set_name(&adapter, &name).await {
+            let why = match crate::name::set(&name).await {
+                Err(said) => Some(said),
+                Ok(()) => {
+                    let _ = this.update(cx, |view, cx| {
+                        if let Some(facts) = &mut view.about.facts {
+                            facts.name = Some(name.clone());
+                        }
+                        cx.notify();
+                    });
+                    match bluetooth {
+                        Some((link, adapter)) => link
+                            .set_name(&adapter, &name)
+                            .await
+                            .err()
+                            .map(|error| say(bluetooth::failure(&error)).to_string()),
+                        None => None,
+                    }
+                }
+            };
+            if let Some(why) = why {
                 let _ = this.update(cx, |view, cx| {
-                    let why = bluetooth::failure(&error);
                     view.note(
-                        fill("Could not rename the phone: {why}", &[("why", &say(why))]),
+                        fill("Could not rename the phone: {why}", &[("why", &why)]),
                         cx,
                     )
                 });

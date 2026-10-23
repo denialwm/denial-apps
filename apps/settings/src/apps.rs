@@ -13,6 +13,15 @@ pub struct App {
     pub id: String,
     pub name: String,
     pub icon: Option<PathBuf>,
+    /// For an Android app Droidloom put in the launcher: its package and
+    /// launcher activity.
+    pub android: Option<Android>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Android {
+    pub package: String,
+    pub component: Option<String>,
 }
 
 /// The data folders, the user's first.
@@ -114,6 +123,15 @@ fn entry(id: &str, path: &Path, dirs: &[PathBuf]) -> Option<App> {
             .get("Icon")
             .filter(|icon| !icon.is_empty())
             .and_then(|icon| icon_path(icon, dirs)),
+        android: fields
+            .get("X-Droidloom-Package")
+            .filter(|_| yes("X-Droidloom-Managed"))
+            .map(|package| Android {
+                package: (*package).to_owned(),
+                component: fields
+                    .get("X-Droidloom-Component")
+                    .map(|component| (*component).to_owned()),
+            }),
     })
 }
 
@@ -161,7 +179,12 @@ fn in_theme(theme: &Path, icon: &str) -> Option<PathBuf> {
             .flatten()
             .flatten()
             .filter(|entry| entry.path().is_dir())
-            .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+            .map(|entry| {
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    entry.path(),
+                )
+            })
             .collect::<Vec<_>>()
     };
     let mut found: Vec<((u8, u32), PathBuf)> = Vec::new();
@@ -183,7 +206,10 @@ fn in_theme(theme: &Path, icon: &str) -> Option<PathBuf> {
             }
         }
     }
-    found.into_iter().max_by_key(|(rank, _)| *rank).map(|(_, file)| file)
+    found
+        .into_iter()
+        .max_by_key(|(rank, _)| *rank)
+        .map(|(_, file)| file)
 }
 
 #[cfg(test)]

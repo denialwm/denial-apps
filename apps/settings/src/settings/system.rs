@@ -19,7 +19,7 @@ use crate::catalog::{self, Item, Section};
 use crate::{about, apps, clock, denial, droidloom, language};
 
 /// An app's icon in the installed apps, in dp.
-const APP_ICON: f32 = 36.0;
+pub(super) const APP_ICON: f32 = 36.0;
 
 impl Settings {
     /// Reads the clock every second while Date and time or the time zones
@@ -65,9 +65,8 @@ impl Settings {
         }));
     }
 
-    /// Reads the apps and whether Android apps run.
+    /// Reads the apps.
     pub(super) fn read_apps(&mut self, cx: &mut Context<Self>) {
-        self.installed.droidloom = droidloom::starts();
         cx.spawn(async move |this, cx| {
             let apps = cx.background_spawn(async { apps::read() }).await;
             let _ = this.update(cx, |view, cx| {
@@ -82,7 +81,7 @@ impl Settings {
     pub(super) fn own_on(&self, item: &Item) -> bool {
         match item.key {
             "time.auto" => self.clock.as_ref().is_some_and(|clock| clock.network),
-            "apps.droidloom" => self.installed.droidloom,
+            "android.run" => self.installed.droidloom,
             _ => false,
         }
     }
@@ -111,7 +110,7 @@ impl Settings {
                 })
                 .detach();
             }
-            "apps.droidloom" => {
+            "android.run" => {
                 if !droidloom::installed() {
                     return self.note(tr("Droidloom is not installed"), cx);
                 }
@@ -372,7 +371,7 @@ impl Settings {
         parts
     }
 
-    fn app_row(&self, app: &apps::App, (first, last): (bool, bool)) -> Stateful<Div> {
+    pub(super) fn app_row(&self, app: &apps::App, (first, last): (bool, bool)) -> Stateful<Div> {
         let radius = px(self.look.group_radius());
         let picture = match &app.icon {
             Some(path) => img(path.clone())

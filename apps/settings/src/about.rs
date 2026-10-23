@@ -1,6 +1,6 @@
-//! What the phone is: read from the kernel's files when About opens. The
-//! phone's name, number and Bluetooth address come from BlueZ and dmail,
-//! which Settings follows anyway; Denial's version from deniald.
+//! What the phone is: read from the kernel's and systemd's files when About
+//! opens. The phone's number and Bluetooth address come from dmail and
+//! BlueZ, which Settings follows anyway; Denial's version from deniald.
 
 use denial_look::words::fill;
 use std::path::Path;
@@ -8,6 +8,8 @@ use std::time::Duration;
 
 #[derive(Clone, Debug, Default)]
 pub struct Facts {
+    /// The name the owner gave the phone.
+    pub name: Option<String>,
     /// As the device tree or the firmware names it: "OnePlus Ace 3".
     pub model: Option<String>,
     /// The chip: "Snapdragon SM8550".
@@ -35,6 +37,7 @@ pub fn read() -> Facts {
     let (cores, top_ghz) = cores();
     let kernel_version = text("/proc/sys/kernel/version");
     Facts {
+        name: crate::name::read(),
         model: text("/sys/firmware/devicetree/base/model")
             .or_else(|| text("/sys/class/dmi/id/product_name")),
         chip: chip(),

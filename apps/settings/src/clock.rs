@@ -200,6 +200,11 @@ pub fn with_time(typed: &str) -> Option<i64> {
     Some(seconds(tm))
 }
 
+/// The local day of `ms` milliseconds since the epoch: "2026-10-23".
+pub fn day_of(ms: i64) -> String {
+    date_text(&local((ms / 1000) as libc::time_t))
+}
+
 /// "2026-10-22".
 pub fn date_text(tm: &libc::tm) -> String {
     format!(

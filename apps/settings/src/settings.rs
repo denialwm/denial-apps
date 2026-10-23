@@ -5,6 +5,7 @@
 //! group islands; a page holds its settings in section islands; Wi-Fi has
 //! its own screens, in `networks`.
 
+mod android;
 mod bound;
 mod cellular;
 mod devices;
@@ -78,6 +79,10 @@ enum Screen {
     Fingers,
     /// The time zones to pick from.
     Zones,
+    /// One Android app, by its package.
+    AndroidApp {
+        package: SharedString,
+    },
 }
 
 impl PartialEq for Screen {
@@ -91,6 +96,7 @@ impl PartialEq for Screen {
             (Screen::Page(a), Screen::Page(b)) => std::ptr::eq(*a, *b),
             (Screen::Network { id: a, .. }, Screen::Network { id: b, .. }) => a == b,
             (Screen::Device { path: a }, Screen::Device { path: b }) => a == b,
+            (Screen::AndroidApp { package: a }, Screen::AndroidApp { package: b }) => a == b,
             _ => false,
         }
     }
@@ -108,6 +114,7 @@ impl Screen {
             Screen::Wallpapers => "wallpapers",
             Screen::Fingers => "fingers",
             Screen::Zones => "zones",
+            Screen::AndroidApp { .. } => "android-app",
         }
     }
 
@@ -518,6 +525,9 @@ pub struct Settings {
     installed: Installed,
     wallpapers: Wallpapers,
     bluetooth: Bluetooth,
+    android: android::Android,
+    /// Device pixels per pixel of the window, as the compositor scales it.
+    scale: f32,
     _settings: Task<()>,
     _wifi: Task<()>,
     /// Joining a network, until it is joined or fails.
@@ -694,6 +704,8 @@ impl Settings {
             reading_clock: None,
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
+            android: android::Android::default(),
+            scale: 1.0,
             _bluetooth: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_bluetooth(this, cx).await
             }),
@@ -891,6 +903,7 @@ impl Settings {
         self.follow_panel(cx);
         self.follow_volume(cx);
         self.follow_clock(cx);
+        self.follow_android(cx);
         if self.screen.is_page("storage") {
             self.read_storage(cx);
         }
@@ -1022,6 +1035,9 @@ impl Settings {
             Screen::Wallpapers => catalog::page("style").map_or(Screen::Home, Screen::Page),
             Screen::Fingers => catalog::page("security").map_or(Screen::Home, Screen::Page),
             Screen::Zones => catalog::page("time").map_or(Screen::Home, Screen::Page),
+            Screen::AndroidApp { .. } => {
+                catalog::page("android").map_or(Screen::Home, Screen::Page)
+            }
             Screen::Home | Screen::Page(_) => Screen::Home,
         }
     }
@@ -1201,6 +1217,7 @@ impl Settings {
                 Content::About => self.about_page(layer, cx),
                 Content::Storage => self.storage_page(),
                 Content::Apps(sections) => self.apps_page(sections, layer, cx),
+                Content::Android(sections) => self.android_page(sections, layer, cx),
                 Content::Hidden(_) | Content::Unavailable => Vec::new(),
             },
             Screen::SavedNetworks => self.saved_networks(layer, cx),
@@ -1209,6 +1226,7 @@ impl Settings {
             Screen::Wallpapers => self.wallpapers_screen(width, layer, cx),
             Screen::Fingers => self.fingers_screen(layer, cx),
             Screen::Zones => self.zones_screen(layer, cx),
+            Screen::AndroidApp { package } => self.android_app_screen(package, layer, cx),
         };
         let content = div()
             .id(screen.key())
@@ -1350,6 +1368,10 @@ impl Settings {
             Screen::Wallpapers => "Wallpaper".into(),
             Screen::Fingers => "Fingerprint".into(),
             Screen::Zones => "Time zone".into(),
+            Screen::AndroidApp { package } => self
+                .android_app(package)
+                .map(|app| app.name.clone().into())
+                .unwrap_or_default(),
         };
         self.top_row()
             .child(self.back_button(layer, cx))
@@ -1360,6 +1382,7 @@ impl Settings {
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let now = Instant::now();
+        self.scale = window.scale_factor();
         if self.animating(now) {
             window.request_animation_frame();
         }
