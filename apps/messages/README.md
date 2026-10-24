@@ -59,16 +59,15 @@ starts it with the graphical session.
   dmail uses.
 - `noto-fonts-emoji` on the phone, for colour emoji.
 - [denialwm/gpui-touch](https://github.com/denialwm/gpui-touch), branch
-  `denial/touch-fling-end`: zed's GPUI with Wayland touch
-  (zed-industries/zed#64079) plus Denial's touch fixes. Pinned by commit;
-  push the fork before bumping `rev` here. For now Messages builds against
-  the local checkout, `../gpui-touch`, whose unpushed commits it needs (up
-  to 1f756d9): activating a window with another program's token, colour
-  emoji through a font's fallbacks (an emoji font may be a fallback though it
-  has no Latin letters; a character followed by VS16 takes a fallback that
-  has it), the keyboard inset of Denial's insets protocol version 2, and the
-  backdrop blur under glass groups, the composer and Send
-  (`Styled::backdrop_blur`, drawn by the wgpu renderer).
+  `main`: zed's GPUI with Wayland touch (zed-industries/zed#64079) plus
+  Denial's fixes: touch flings and cancel, activating a window with another
+  program's token, colour emoji through a font's fallbacks (an emoji font may
+  be a fallback though it has no Latin letters; a character followed by VS16
+  takes a fallback that has it), the keyboard inset of Denial's insets
+  protocol version 2, and the backdrop blur under glass groups, the composer
+  and Send (`Styled::backdrop_blur`, drawn by the wgpu renderer). Messages
+  builds against the local checkout, `../gpui-touch`; pinning it by `rev`
+  instead needs only the commit, which is on GitHub.
 
 Denial sends touch only as `wl_touch`, so upstream GPUI cannot be used on
 devices.
