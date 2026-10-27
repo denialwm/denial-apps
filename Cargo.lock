@@ -4327,6 +4327,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sensors"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-io",
+ "denial-look",
+ "denial-look-gpui",
+ "futures-lite",
+ "gpui",
+ "gpui_platform",
+ "zbus",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"

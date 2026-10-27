@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sensors
+Comment=What the phone's sensors read
+Exec=/home/logix/.local/bin/sensors
+Icon=org.denialwm.Sensors
+Terminal=false
+Categories=System;Monitor;

@@ -25,6 +25,7 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 | [`calls`](apps/calls) | Phone and contacts app; calls are mocked until dmail's Voice1 works |
 | [`camera`](apps/camera) | Camera app: our own raw pipeline, burst photos, front and back cameras |
 | [`settings`](apps/settings) | Phone settings: pages in groups, search, Islands controls; the settings are made up for now |
+| [`sensors`](apps/sensors) | What the phone's sensors read, from Phonewave's steinerd: orientation, ambient light, proximity |
 
 ## Libraries
 
@@ -45,9 +46,9 @@ Each app's launcher icon, `apps/<name>/org.denialwm.<Name>.png`, comes from
 the [Yaru](https://github.com/ubuntu/yaru) icon theme (commit `7f18973e`),
 whose icons are under
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). They keep
-that license, not the one below. Calls, Camera, Messages and Settings are
-Yaru's `calls-app`, `camera-app`, `messaging-app` and `settings-app` from
-`icons/src/fullcolor/default/apps/`. Each is the 256-unit drawing of its
+that license, not the one below. Calls, Camera, Messages, Settings and
+Sensors are Yaru's `calls-app`, `camera-app`, `messaging-app`, `settings-app`
+and `system-monitor-app` from `icons/src/fullcolor/default/apps/`. Each is the 256-unit drawing of its
 source sheet, with the viewBox cropped to the drawing so it fills its square
 as Android's icons do, rendered at 512 px with `rsvg-convert`. Messages and
 Calls are recolored: every hex color with HSL saturation of at least 0.25
