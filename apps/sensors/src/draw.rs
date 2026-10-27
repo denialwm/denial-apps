@@ -160,7 +160,7 @@ fn mix(a: Hsla, b: Hsla, t: f32) -> Hsla {
 }
 
 /// Where `lux` sits on a log scale: decades above `FLOOR_LUX`.
-fn level(lux: f64) -> f32 {
+fn decades(lux: f64) -> f32 {
     (lux.max(FLOOR_LUX) / FLOOR_LUX).log10() as f32
 }
 
@@ -184,7 +184,7 @@ pub fn light(
         .saturating_sub(1);
     let shown = || history.range(first..);
     let (low, high) = shown().fold((f32::MAX, f32::MIN), |(low, high), &(_, lux)| {
-        (low.min(level(lux)), high.max(level(lux)))
+        (low.min(decades(lux)), high.max(decades(lux)))
     });
     let middle = (low + high) / 2.;
     let span = (high - low).max(1.) * 1.2;
@@ -198,7 +198,7 @@ pub fn light(
         bounds.origin.x + px(width * (1. - age / HISTORY.as_secs_f32()))
     };
     let y = |lux: f64| {
-        bounds.origin.y + px(line / 2. + height * (1. - (level(lux) - low) / (high - low)))
+        bounds.origin.y + px(line / 2. + height * (1. - (decades(lux) - low) / (high - low)))
     };
     let mut points = Vec::new();
     for (ix, &(at, lux)) in shown().enumerate() {
@@ -234,6 +234,126 @@ pub fn light(
         stroke.line_to(*p);
     }
     if let Ok(path) = stroke.build() {
+        window.paint_path(path, ink.accent);
+    }
+}
+
+/// A compass dial turned so its north mark points north, with ticks every
+/// 30 degrees, longer at the four points, and a fixed mark at the top for
+/// where the phone faces, `heading` degrees clockwise from north.
+pub fn compass(bounds: Bounds<Pixels>, heading: f32, ink: Ink, window: &mut gpui::Window) {
+    let center = bounds.center();
+    let side = f32::from(bounds.size.width.min(bounds.size.height));
+    let line = (side / 64.).max(1.5);
+    // Room above the ring for the fixed mark.
+    let radius = side / 2. - side * 0.09;
+
+    let mut ring = PathBuilder::stroke(px(line));
+    circle(&mut ring, center, radius);
+    if let Ok(path) = ring.build() {
+        window.paint_path(path, ink.secondary.opacity(0.35));
+    }
+    let mut ticks = PathBuilder::stroke(px(line));
+    for step in 0..12 {
+        let at = step as f32 * 30. - heading;
+        let length = if step % 3 == 0 { 0.2 } else { 0.1 };
+        ticks.move_to(turned(center, at, 0., -radius * 0.92));
+        ticks.line_to(turned(center, at, 0., -radius * (0.92 - length)));
+    }
+    if let Ok(path) = ticks.build() {
+        window.paint_path(path, ink.foreground);
+    }
+    let mut north = PathBuilder::fill();
+    let tip = radius * 0.62;
+    north.add_polygon(
+        &[
+            turned(center, -heading, 0., -tip),
+            turned(center, -heading, radius * 0.13, -tip * 0.45),
+            turned(center, -heading, -radius * 0.13, -tip * 0.45),
+        ],
+        true,
+    );
+    if let Ok(path) = north.build() {
+        window.paint_path(path, ink.accent);
+    }
+    let mut south = PathBuilder::fill();
+    south.add_polygon(
+        &[
+            turned(center, -heading, 0., tip),
+            turned(center, -heading, radius * 0.13, tip * 0.45),
+            turned(center, -heading, -radius * 0.13, tip * 0.45),
+        ],
+        true,
+    );
+    if let Ok(path) = south.build() {
+        window.paint_path(path, ink.secondary.opacity(0.5));
+    }
+    let mut hub = PathBuilder::fill();
+    circle(&mut hub, center, radius * 0.08);
+    if let Ok(path) = hub.build() {
+        window.paint_path(path, ink.foreground);
+    }
+    let mut mark = PathBuilder::fill();
+    let top = center.y - px(radius + line);
+    let half = side * 0.05;
+    mark.add_polygon(
+        &[
+            point(center.x, top),
+            point(center.x - px(half), top - px(half * 1.4)),
+            point(center.x + px(half), top - px(half * 1.4)),
+        ],
+        true,
+    );
+    if let Ok(path) = mark.build() {
+        window.paint_path(path, ink.foreground);
+    }
+}
+
+/// A bubble level: the bubble floats to the high side by `tilt`, the
+/// horizontal part of the accelerometer's reading in g along the phone's x
+/// and y, its edge at 30 degrees; the phone is turned `turn` degrees on
+/// screen, as the orientation drawing has it.
+pub fn level(
+    bounds: Bounds<Pixels>,
+    (x, y): (f32, f32),
+    turn: f32,
+    ink: Ink,
+    window: &mut gpui::Window,
+) {
+    let center = bounds.center();
+    let radius = f32::from(bounds.size.width.min(bounds.size.height)) / 2. - 2.;
+    let line = (radius / 28.).max(1.5);
+    let bubble = radius * 0.24;
+
+    let mut well = PathBuilder::fill();
+    circle(&mut well, center, radius);
+    if let Ok(path) = well.build() {
+        window.paint_path(path, ink.control);
+    }
+    let mut guides = PathBuilder::stroke(px(line));
+    circle(&mut guides, center, radius - line / 2.);
+    guides.move_to(point(center.x - px(radius), center.y));
+    guides.line_to(point(center.x + px(radius), center.y));
+    guides.move_to(point(center.x, center.y - px(radius)));
+    guides.line_to(point(center.x, center.y + px(radius)));
+    if let Ok(path) = guides.build() {
+        window.paint_path(path, ink.secondary.opacity(0.35));
+    }
+    let mut target = PathBuilder::stroke(px(line));
+    circle(&mut target, center, bubble + line * 1.5);
+    if let Ok(path) = target.build() {
+        window.paint_path(path, ink.foreground);
+    }
+    // Half a g, 30 degrees, reaches the edge.
+    let reach = radius - bubble - line;
+    let (mut dx, mut dy) = (x * 2. * reach, -y * 2. * reach);
+    let off = (dx * dx + dy * dy).sqrt();
+    if off > reach {
+        (dx, dy) = (dx * reach / off, dy * reach / off);
+    }
+    let mut dot = PathBuilder::fill();
+    circle(&mut dot, turned(center, turn, dx, dy), bubble);
+    if let Ok(path) = dot.build() {
         window.paint_path(path, ink.accent);
     }
 }

@@ -2,7 +2,7 @@
 //! on the system bus, phonewave/services/sensors/steinerd). Its properties
 //! are read whole when it appears and follow its change signals after. A
 //! sensor gives readings only while someone claims it, so Sensors claims
-//! all three while its window shows and releases them while it is hidden;
+//! them all while its window shows and releases them while it is hidden;
 //! steinerd also drops the claims once this connection closes.
 
 use std::time::Duration;
@@ -18,7 +18,14 @@ const NAME: &str = "org.steinerd";
 const PATH: &str = "/org/steinerd";
 const INTERFACE: &str = "org.steinerd.Sensors1";
 /// What `Claim` and `Release` take.
-const SENSORS: [&str; 3] = ["orientation", "light", "proximity"];
+const SENSORS: [&str; 6] = [
+    "orientation",
+    "light",
+    "proximity",
+    "accel",
+    "gyro",
+    "compass",
+];
 const RETRY: Duration = Duration::from_secs(2);
 
 /// The physical edge pointing up.
@@ -67,6 +74,18 @@ pub struct State {
     pub light: f64,
     pub has_proximity: bool,
     pub near: bool,
+    pub has_accel: bool,
+    /// m/s²: x toward the right edge, y toward the top edge, z out of the
+    /// screen.
+    pub acceleration: [f64; 3],
+    pub has_gyro: bool,
+    /// rad/s about the same axes.
+    pub rotation_rate: [f64; 3],
+    pub has_compass: bool,
+    /// Degrees clockwise from magnetic north; None before a reading.
+    pub heading: Option<f64>,
+    /// 0 unreliable to 3 high.
+    pub heading_accuracy: u8,
 }
 
 impl State {
@@ -81,9 +100,25 @@ impl State {
             "Light" => self.light = value.downcast_ref::<f64>().unwrap_or(0.0),
             "HasProximity" => self.has_proximity = flag().unwrap_or(false),
             "Near" => self.near = flag().unwrap_or(false),
+            "HasAccel" => self.has_accel = flag().unwrap_or(false),
+            "Acceleration" => self.acceleration = vector(value),
+            "HasGyro" => self.has_gyro = flag().unwrap_or(false),
+            "RotationRate" => self.rotation_rate = vector(value),
+            "HasCompass" => self.has_compass = flag().unwrap_or(false),
+            "Heading" => self.heading = value.downcast_ref::<f64>().ok().filter(|h| *h >= 0.0),
+            "HeadingAccuracy" => self.heading_accuracy = value.downcast_ref::<u8>().unwrap_or(0),
             _ => {}
         }
     }
+}
+
+/// A `(ddd)` property.
+fn vector(value: &Value<'_>) -> [f64; 3] {
+    value
+        .try_clone()
+        .ok()
+        .and_then(|v| <(f64, f64, f64)>::try_from(v).ok())
+        .map_or([0.0; 3], |(x, y, z)| [x, y, z])
 }
 
 /// Follows steinerd for as long as `updates` is heard: what it reports, or

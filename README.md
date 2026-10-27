@@ -25,7 +25,7 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 | [`calls`](apps/calls) | Phone and contacts app; calls are mocked until dmail's Voice1 works |
 | [`camera`](apps/camera) | Camera app: our own raw pipeline, burst photos, front and back cameras |
 | [`settings`](apps/settings) | Phone settings: pages in groups, search, Islands controls; the settings are made up for now |
-| [`sensors`](apps/sensors) | What the phone's sensors read, from Phonewave's steinerd: orientation, ambient light, proximity |
+| [`sensors`](apps/sensors) | What the phone's sensors read, from Phonewave's steinerd: orientation, compass, level, gyroscope, ambient light, proximity |
 
 ## Libraries
 
