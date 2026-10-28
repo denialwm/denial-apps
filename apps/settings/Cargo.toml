@@ -21,3 +21,4 @@ zbus = "5.19"
 # apps/messages/Cargo.toml for what it carries beyond the pinned branch.
 gpui = { path = "../../../gpui-touch/crates/gpui" }
 gpui_platform = { path = "../../../gpui-touch/crates/gpui_platform", features = ["wayland"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }

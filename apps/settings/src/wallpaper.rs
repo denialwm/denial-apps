@@ -1,7 +1,7 @@
 //! The wallpaper, as Denial's shell keeps it: `$XDG_STATE_HOME/denial/wallpaper`,
 //! JSON naming the picture for every screen, which the shell watches and
 //! shows as soon as it changes. The pictures offered are Denial's own and
-//! the ones in `~/Pictures/Wallpapers`, as the shell's picker offers them.
+//! the ones in the wallpaper folder, as the shell's picker offers them.
 //!
 //! The lock screen sets its clock behind what stands in front, from a depth
 //! mask of the wallpaper that `wallpaper-depth` makes; when it is installed,
@@ -21,6 +21,47 @@ pub const DENIAL: &str =
 /// Thumbnails, in pixels: a phone screen's shape.
 const THUMB_WIDTH: u32 = 270;
 const THUMB_HEIGHT: u32 = 585;
+/// The placement preview's picture, uncropped: its longer side, in pixels.
+const PREVIEW_SIDE: u32 = 900;
+
+/// The largest zoom the shell takes.
+pub const MAX_ZOOM: f32 = 4.0;
+
+/// Where the wallpaper sits on the screen, as the shell draws it: scaled to
+/// cover the screen, enlarged `zoom` times about the point that `x` and `y`
+/// name, each from the leading edge at -1 to the trailing edge at 1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub x: f32,
+    pub y: f32,
+    pub zoom: f32,
+}
+
+impl Default for Placement {
+    fn default() -> Self {
+        Placement {
+            x: 0.0,
+            y: 0.0,
+            zoom: 1.0,
+        }
+    }
+}
+
+impl Placement {
+    /// The picture's place in a `width` by `height` screen when it is
+    /// `picture` pixels: its left and top edges and its size.
+    pub fn frame(&self, (width, height): (f32, f32), picture: (u32, u32)) -> [f32; 4] {
+        let (w, h) = (picture.0.max(1) as f32, picture.1.max(1) as f32);
+        let scale = f32::max(width / w, height / h) * self.zoom;
+        let (shown_w, shown_h) = (w * scale, h * scale);
+        [
+            (width - shown_w) * (self.x + 1.0) / 2.0,
+            (height - shown_h) * (self.y + 1.0) / 2.0,
+            shown_w,
+            shown_h,
+        ]
+    }
+}
 
 /// A wallpaper to pick: how the shell names it, and a picture of it.
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +97,27 @@ pub fn current() -> Option<String> {
     state["all"].as_str().map(str::to_owned)
 }
 
+/// Where the wallpaper sits, as the shell's file says.
+pub fn placement() -> Placement {
+    let state: Option<Value> = state_file()
+        .and_then(|path| std::fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let Some(state) = state else {
+        return Placement::default();
+    };
+    let number = |key: &str| {
+        state[key]
+            .as_f64()
+            .filter(|n| n.is_finite())
+            .map(|n| n as f32)
+    };
+    Placement {
+        x: number("alignmentX").unwrap_or(0.0).clamp(-1.0, 1.0),
+        y: number("alignmentY").unwrap_or(0.0).clamp(-1.0, 1.0),
+        zoom: number("zoom").unwrap_or(1.0).clamp(1.0, MAX_ZOOM),
+    }
+}
+
 /// What a resource is called in a row: its file's name, or Denial.
 pub fn name(resource: &str) -> String {
     match resource.strip_prefix("file:") {
@@ -67,10 +129,19 @@ pub fn name(resource: &str) -> String {
     }
 }
 
-/// Denial's own wallpaper and the pictures in `~/Pictures/Wallpapers`.
+/// The wallpaper folder, as the shell finds it: `$DENIAL_WALLPAPER_DIR`,
+/// else `~/Pictures/Wallpapers`. Downloaded wallpapers go there too.
+pub fn folder() -> Option<PathBuf> {
+    std::env::var_os("DENIAL_WALLPAPER_DIR")
+        .filter(|folder| !folder.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home().map(|home| home.join("Pictures/Wallpapers")))
+}
+
+/// Denial's own wallpaper and the pictures in the wallpaper folder.
 pub fn choices() -> Vec<Choice> {
-    let mut files: Vec<PathBuf> = home()
-        .and_then(|home| std::fs::read_dir(home.join("Pictures/Wallpapers")).ok())
+    let mut files: Vec<PathBuf> = folder()
+        .and_then(|folder| std::fs::read_dir(folder).ok())
         .into_iter()
         .flatten()
         .flatten()
@@ -132,18 +203,46 @@ pub fn set(choice: &Choice) -> std::io::Result<()> {
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({"version": 5}));
     state["all"] = json!(choice.resource);
-    state["alignmentX"] = json!(0.0);
-    state["alignmentY"] = json!(0.0);
-    state["horizontalAlignment"] = json!("center");
-    state["verticalAlignment"] = json!("center");
     state["outputs"] = json!({});
+    write_placement(&mut state, Placement::default());
+    write_state(&path, &state)
+}
+
+/// Places the wallpaper on every screen: each screen's own placement goes.
+pub fn place(placement: Placement) -> std::io::Result<()> {
+    let path = state_file().ok_or(std::io::ErrorKind::NotFound)?;
+    let mut state = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({"version": 5, "all": DENIAL}));
+    write_placement(&mut state, placement);
+    write_state(&path, &state)
+}
+
+fn write_placement(state: &mut Value, placement: Placement) {
+    // The anchors older shells read, as the shell names them.
+    let anchor = |at: f32, names: [&'static str; 3]| match at {
+        at if at < -0.5 => names[0],
+        at if at > 0.5 => names[2],
+        _ => names[1],
+    };
+    state["alignmentX"] = json!(placement.x);
+    state["alignmentY"] = json!(placement.y);
+    state["horizontalAlignment"] = json!(anchor(placement.x, ["left", "center", "right"]));
+    state["verticalAlignment"] = json!(anchor(placement.y, ["top", "center", "bottom"]));
+    state["zoom"] = json!(placement.zoom);
     state["outputAlignments"] = json!({});
+}
+
+/// Writes the shell's file beside itself and renames it over.
+fn write_state(path: &Path, state: &Value) -> std::io::Result<()> {
     if let Some(folder) = path.parent() {
         std::fs::create_dir_all(folder)?;
     }
     let temporary = path.with_extension("tmp");
-    std::fs::write(&temporary, serde_json::to_vec(&state)?)?;
-    std::fs::rename(&temporary, &path)
+    std::fs::write(&temporary, serde_json::to_vec(state)?)?;
+    std::fs::rename(&temporary, path)
 }
 
 /// Starts the lock screen's depth mask of `file`, when `wallpaper-depth` is
@@ -171,23 +270,59 @@ pub fn depth_installed() -> bool {
     })
 }
 
-/// A small picture of `file`, made once and kept in the cache under the
-/// file's name, size and time, so a changed file gets a new one.
-pub fn thumbnail(file: &Path) -> Option<PathBuf> {
+/// Where the cache keeps `kind` of picture of `file`, under the file's
+/// name, size and time, so a changed file gets a new one.
+fn cached(file: &Path, kind: &str) -> Option<PathBuf> {
     let metadata = std::fs::metadata(file).ok()?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     (file, metadata.len(), metadata.modified().ok()).hash(&mut hasher);
-    let thumb = cache()?.join(format!("{:016x}.jpg", hasher.finish()));
-    if thumb.is_file() {
-        return Some(thumb);
-    }
-    let picture = image::ImageReader::open(file)
+    Some(cache()?.join(format!("{:016x}{kind}.jpg", hasher.finish())))
+}
+
+fn decode(file: &Path) -> Option<image::DynamicImage> {
+    image::ImageReader::open(file)
         .ok()?
         .with_guessed_format()
         .ok()?
         .decode()
         .map_err(|error| eprintln!("settings: reading {}: {error}", file.display()))
+        .ok()
+}
+
+/// Saves `picture` as `to`, through a file beside it.
+fn save(picture: &image::RgbImage, to: &Path) -> Option<()> {
+    std::fs::create_dir_all(to.parent()?)
+        .map_err(|error| eprintln!("settings: making {}: {error}", to.display()))
         .ok()?;
+    let temporary = to.with_extension("new");
+    picture
+        .save_with_format(&temporary, image::ImageFormat::Jpeg)
+        .ok()?;
+    std::fs::rename(&temporary, to).ok()
+}
+
+/// `file` whole and smaller, for the placement preview, with its size:
+/// made once and kept in the cache.
+pub fn preview(file: &Path) -> Option<(PathBuf, (u32, u32))> {
+    let preview = cached(file, "-whole")?;
+    if preview.is_file() {
+        return Some((preview.clone(), image::image_dimensions(&preview).ok()?));
+    }
+    let picture = decode(file)?
+        .thumbnail(PREVIEW_SIDE, PREVIEW_SIDE)
+        .into_rgb8();
+    save(&picture, &preview)?;
+    Some((preview, picture.dimensions()))
+}
+
+/// A small picture of `file` in the screen's shape, made once and kept in
+/// the cache.
+pub fn thumbnail(file: &Path) -> Option<PathBuf> {
+    let thumb = cached(file, "")?;
+    if thumb.is_file() {
+        return Some(thumb);
+    }
+    let picture = decode(file)?;
     // Shrinks fast to twice the size first: wallpapers run to 40 megapixels.
     let cover = f64::max(
         f64::from(THUMB_WIDTH * 2) / f64::from(picture.width().max(1)),
@@ -201,20 +336,37 @@ pub fn thumbnail(file: &Path) -> Option<PathBuf> {
         )
         .resize_to_fill(THUMB_WIDTH, THUMB_HEIGHT, FilterType::Triangle)
         .into_rgb8();
-    std::fs::create_dir_all(thumb.parent()?)
-        .map_err(|error| eprintln!("settings: making {}: {error}", thumb.display()))
-        .ok()?;
-    let temporary = thumb.with_extension("new");
-    picture
-        .save_with_format(&temporary, image::ImageFormat::Jpeg)
-        .ok()?;
-    std::fs::rename(&temporary, &thumb).ok()?;
+    save(&picture, &thumb)?;
     Some(thumb)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn placement_covers_then_zooms() {
+        // A square on a 100 by 200 screen covers it 200 wide.
+        let centred = Placement::default();
+        assert_eq!(
+            centred.frame((100.0, 200.0), (50, 50)),
+            [-50.0, 0.0, 200.0, 200.0]
+        );
+        let left = Placement { x: -1.0, ..centred };
+        assert_eq!(
+            left.frame((100.0, 200.0), (50, 50)),
+            [0.0, 0.0, 200.0, 200.0]
+        );
+        let zoomed = Placement {
+            zoom: 2.0,
+            y: 1.0,
+            ..centred
+        };
+        assert_eq!(
+            zoomed.frame((100.0, 200.0), (50, 50)),
+            [-150.0, -200.0, 400.0, 400.0]
+        );
+    }
 
     #[test]
     fn names_come_from_files() {

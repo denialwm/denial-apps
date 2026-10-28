@@ -119,6 +119,37 @@ impl Settings {
         cx: &mut Context<Self>,
         slide: OnSlide,
     ) -> Stateful<Div> {
+        let shown = format!("{}%", (level * 100.0).round());
+        self.slider_row(
+            key,
+            glyph,
+            title,
+            detail,
+            shown.into(),
+            level,
+            live,
+            ends,
+            cx,
+            slide,
+        )
+    }
+
+    /// A row with a slider from 0 to 1 under its title, `shown` beside the
+    /// title saying what the level means.
+    #[expect(clippy::too_many_arguments)]
+    pub(super) fn slider_row(
+        &self,
+        key: &'static str,
+        glyph: Option<Icon>,
+        title: &'static str,
+        detail: Option<SharedString>,
+        shown: SharedString,
+        level: f32,
+        live: bool,
+        ends: (bool, bool),
+        cx: &mut Context<Self>,
+        slide: OnSlide,
+    ) -> Stateful<Div> {
         self.frame(key, ends)
             .flex()
             .flex_col()
@@ -128,7 +159,7 @@ impl Settings {
                     div()
                         .flex_none()
                         .text_color(solid(self.look.palette.secondary))
-                        .child(format!("{}%", (level * 100.0).round())),
+                        .child(say(shown)),
                 ),
             )
             .child(self.slider(key, level, live && self.dialog.is_none(), cx, slide))

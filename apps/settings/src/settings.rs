@@ -413,6 +413,13 @@ struct Wallpapers {
     thumbs: HashMap<String, std::path::PathBuf>,
     /// Reading the pictures and making their thumbnails.
     reading: Option<Task<()>>,
+    /// What Wallhaven offers.
+    online: wallpapers::Online,
+    /// Where the shown wallpaper sits, as the sliders have it.
+    placement: wallpaper::Placement,
+    /// The shown wallpaper whole, for the placement preview: its resource,
+    /// the picture and its size.
+    preview: Option<(String, std::path::PathBuf, (u32, u32))>,
 }
 
 /// What the phone is, read each time About opens.
@@ -511,6 +518,8 @@ pub struct Settings {
     finger_field: Entity<TextInput>,
     /// The date or the time, while setting the clock.
     clock_field: Entity<TextInput>,
+    /// What to look for on Wallhaven.
+    wallhaven_field: Entity<TextInput>,
     /// The slider under a finger or the mouse.
     /// The key of the slider the finger holds.
     sliding: Option<&'static str>,
@@ -586,6 +595,7 @@ impl Settings {
         let name_field = cx.new(|cx| TextInput::new("Phone name", &look, 1, cx));
         let finger_field = cx.new(|cx| TextInput::new("Fingerprint name", &look, 1, cx));
         let clock_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
+        let wallhaven_field = cx.new(|cx| TextInput::new("Search Wallhaven", &look, 1, cx));
         let pin = cx.new(|cx| {
             let mut input = TextInput::new("PIN", &look, 1, cx);
             input.set_secret(true, cx);
@@ -600,6 +610,12 @@ impl Settings {
             cx.observe(&name_field, |_, _, cx| cx.notify()),
             cx.observe(&finger_field, |_, _, cx| cx.notify()),
             cx.observe(&clock_field, |_, _, cx| cx.notify()),
+            cx.observe(&wallhaven_field, |this, _, cx| this.typed_wallhaven(cx)),
+            cx.subscribe_in(
+                &wallhaven_field,
+                window,
+                |this, _, _: &Submitted, window, cx| this.submit_wallhaven(window, cx),
+            ),
             cx.subscribe_in(
                 &clock_field,
                 window,
@@ -669,6 +685,7 @@ impl Settings {
             name_field,
             finger_field,
             clock_field,
+            wallhaven_field,
             sliding: None,
             notice: None,
             screen,
@@ -759,6 +776,7 @@ impl Settings {
             &self.name_field,
             &self.finger_field,
             &self.clock_field,
+            &self.wallhaven_field,
         ] {
             input.update(cx, |input, cx| input.restyle(&look, cx));
         }
@@ -1396,6 +1414,11 @@ impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let now = Instant::now();
         self.scale = window.scale_factor();
+        let viewport = window.viewport_size();
+        self.wallpapers.online.screen = (
+            (f32::from(viewport.width) * self.scale).round() as u32,
+            (f32::from(viewport.height) * self.scale).round() as u32,
+        );
         if self.animating(now) {
             window.request_animation_frame();
         }

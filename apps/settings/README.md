@@ -170,9 +170,24 @@ where its value lives (`src/settings/bound.rs`):
   signals, each claiming the reader on a bus connection of its own that
   lets it go when it closes. While the phone is locked Denial holds the
   reader.
-- The wallpaper (`src/wallpaper.rs`): Denial's own and the pictures in
-  `~/Pictures/Wallpapers`, three to a row on a screen of their own, from
-  thumbnails kept in `$XDG_CACHE_HOME/denial/settings/wallpapers`. A tap
+- The wallpaper (`src/wallpaper.rs`): Denial's own and the pictures in the
+  wallpaper folder (`$DENIAL_WALLPAPER_DIR`, else `~/Pictures/Wallpapers`, as
+  the shell has it), three to a row on a screen of their own, from
+  thumbnails kept in `$XDG_CACHE_HOME/denial/settings/wallpapers`. Under
+  them, Wallhaven's (`src/wallhaven.rs`), asked as the shell's picker asks:
+  safe for work, the month's toplist when the field is empty, else the best
+  matches, at least the screen's size, the screen's shape first, with
+  `WALLHAVEN_API_KEY` when set. More reads the next page; Wallhaven's small
+  pictures are kept in `$XDG_CACHE_HOME/denial/settings/wallhaven`. A tap
+  downloads the picture into the wallpaper folder as `wallhaven-<id>`, the
+  shell's name for it, showing the share received, then sets it. Above them
+  all, the shown wallpaper's placement: a small screen with the picture
+  placed in it (from a whole copy kept in the same cache), and sliders for
+  its zoom (100 to 400 percent, enlarged about the point its position
+  names, past covering the screen) and its position left and right, up and
+  down. The shell's file takes them as `zoom`, `alignmentX` and
+  `alignmentY` when the finger lets go; each screen's own placement goes. A
+  new wallpaper starts centred at 100 percent. A tap
   rewrites the shell's `$XDG_STATE_HOME/denial/wallpaper`, which the shell
   follows, and when `wallpaper-depth` is installed starts the lock screen's
   depth mask of the new picture, as the shell's picker does.

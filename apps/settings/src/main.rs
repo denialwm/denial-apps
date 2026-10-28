@@ -16,6 +16,7 @@ mod name;
 mod props;
 mod settings;
 mod values;
+mod wallhaven;
 mod wallpaper;
 mod wifi;
 mod words;
