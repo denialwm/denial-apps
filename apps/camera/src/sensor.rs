@@ -213,8 +213,36 @@ pub static ACE3_FRONT: Sensor = Sensor {
     colour: &S5K3P9,
 };
 
+/// The RedMagic 11 Pro's main camera: OmniVision OV50E40 over C-PHY,
+/// 4096x3072 binned, 30 fps. Its autofocus is not powered yet.
+pub static NX809J_MAIN: Sensor = Sensor {
+    name: "OV50E40",
+    facing: Facing::Back,
+    entity: "ov50e40",
+    csiphy: 2,
+    width: 4096,
+    height: 3072,
+    bayer: Bayer::Rggb,
+    black: 64.0,
+    clip: 1000.0,
+    // 10299 pixels per line at 1930.97 MHz.
+    line_us: 10299.0 / 1930.971428,
+    min_lines: 4,
+    max_lines: 6218,
+    line_step: 1,
+    // 0x0400 is 1x, up to 0x4000.
+    gain: Gain::Linear { unit: 1024.0 },
+    max_gain: 16.0,
+    // The driver reports a 270 degree counter-clockwise correction.
+    rotation: 90,
+    mirror: false,
+    lens: None,
+    focus: 0,
+    colour: &UNTUNED,
+};
+
 /// The RedMagic 11 Pro's ultrawide: OmniVision OV50D40, 4096x3072 binned,
-/// 30 fps. The main camera, an OV50E40 over C-PHY, has no driver yet.
+/// 30 fps.
 pub static NX809J_ULTRAWIDE: Sensor = Sensor {
     name: "OV50D40",
     facing: Facing::Back,
@@ -269,7 +297,8 @@ pub static NX809J_FRONT: Sensor = Sensor {
     colour: &UNTUNED,
 };
 
-static SENSORS: [&Sensor; 4] = [&ACE3_MAIN, &ACE3_FRONT, &NX809J_ULTRAWIDE, &NX809J_FRONT];
+static SENSORS: [&Sensor; 5] =
+    [&ACE3_MAIN, &ACE3_FRONT, &NX809J_MAIN, &NX809J_ULTRAWIDE, &NX809J_FRONT];
 
 /// The phone's camera facing `facing`: the first whose sensor is in the
 /// media graph, else the first known, which then fails to open by name.
