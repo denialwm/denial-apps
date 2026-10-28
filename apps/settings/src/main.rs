@@ -5,6 +5,7 @@ mod bluetooth;
 mod catalog;
 mod clock;
 mod denial;
+mod diagnostics;
 mod droidloom;
 mod fingerprint;
 mod instance;
@@ -31,6 +32,8 @@ use crate::instance::{InstanceProxy, Open, Opener};
 use crate::settings::{Back, Settings};
 
 fn main() {
+    diagnostics::init();
+    log::info!("starting Settings");
     denial_look::words::register_chinese(words::CHINESE);
     // `settings <page>` opens on that page.
     let page = std::env::args().nth(1);
@@ -70,6 +73,7 @@ fn main() {
                     |window, cx| cx.new(|cx| Settings::new(page, window, cx)),
                 )
                 .unwrap();
+            log::info!("Settings window opened");
             window
                 .update(cx, |view, window, cx| {
                     // Default text and rem spacing follow the dp layout too.

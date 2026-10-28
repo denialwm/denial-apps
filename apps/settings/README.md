@@ -228,3 +228,10 @@ root:
   changes how that saved network is joined and puts it back.
 - `leaves_and_rejoins` disconnects from the current network and joins it
   again.
+
+## Renderer diagnostics
+
+Set `DENIAL_SETTINGS_LOG` to a writable file to keep Settings' and the
+renderer's information messages, and every warning and error, when a
+launcher discards stderr. A new log file has mode 0600; an existing one is
+appended to. Without the variable Settings logs nothing.
