@@ -111,7 +111,9 @@ Apps lists every application entry in the XDG data directories that Denial
 would show (`src/apps.rs`), with its icon and name; default apps are not on
 the phone yet.
 
-Android is real (`src/droidloom.rs`, `src/settings/android.rs`). Its switch
+Android is real (`src/droidloom.rs`, `src/settings/android.rs`). Without
+Droidloom's user unit in /usr/lib, the page and the home screen say
+Droidloom is not installed, and the page holds nothing else. Its switch
 starts Android now and with each session: the user's
 `graphical-session.target.wants` link to Droidloom's user unit. Restart
 restarts that unit. How Android runs comes from droidloomd's control socket

@@ -300,6 +300,10 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Installed apps", "已安装的应用"),
     ("Droidloom is not installed", "未安装 Droidloom"),
     (
+        "Android apps run through Droidloom; install it to run them",
+        "安卓应用通过 Droidloom 运行；安装后即可使用",
+    ),
+    (
         "Could not change Android apps: {why}",
         "无法更改安卓应用设置：{why}",
     ),

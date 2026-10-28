@@ -136,7 +136,10 @@ impl Settings {
         android.ended = ended;
         android.unit = unit;
         if let Some(state) = unit.filter(|state| state.unit == Unit::Failed)
-            && android.failure.as_ref().is_none_or(|(known, _)| *known != state)
+            && android
+                .failure
+                .as_ref()
+                .is_none_or(|(known, _)| *known != state)
         {
             android.failure = Some((state, None));
             cx.spawn(async move |this, cx| {
@@ -199,7 +202,8 @@ impl Settings {
 
     /// Draws Android apps at the size picked from `SIZES`.
     fn pick_android_size(&mut self, option: usize, cx: &mut Context<Self>) {
-        let (Some(density), Some(dpi)) = (self.android.density, size_dpi(self.scale, option)) else {
+        let (Some(density), Some(dpi)) = (self.android.density, size_dpi(self.scale, option))
+        else {
             return;
         };
         let before = density.dpi;
@@ -296,8 +300,17 @@ impl Settings {
         layer: Layer,
         cx: &mut Context<Self>,
     ) -> Vec<Div> {
+        if !droidloom::installed() {
+            return vec![island(&self.look).child(self.row(
+                "android-missing",
+                Some(Icon::Android),
+                "Droidloom is not installed",
+                Some("Android apps run through Droidloom; install it to run them".into()),
+                (true, true),
+            ))];
+        }
         let mut parts = self.page(sections, layer, cx);
-        if !droidloom::installed() || !self.android.read {
+        if !self.android.read {
             return parts;
         }
         let android = &self.android;
@@ -462,15 +475,18 @@ impl Settings {
     }
 
     /// Android's line under its title on the home screen.
-    pub(super) fn android_summary(&self) -> Option<SharedString> {
-        droidloom::installed().then(|| {
-            let summary = match (self.installed.droidloom, self.android_failed()) {
-                (false, _) => "Off",
-                (true, false) => "On",
-                (true, true) => "On – failed",
-            };
-            summary.into()
-        })
+    pub(super) fn android_summary(&self) -> SharedString {
+        let summary = match (
+            droidloom::installed(),
+            self.installed.droidloom,
+            self.android_failed(),
+        ) {
+            (false, _, _) => "Droidloom is not installed",
+            (true, false, _) => "Off",
+            (true, true, false) => "On",
+            (true, true, true) => "On – failed",
+        };
+        summary.into()
     }
 
     /// The app with `package`, while the launcher lists it.

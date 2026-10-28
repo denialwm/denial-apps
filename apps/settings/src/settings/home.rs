@@ -38,7 +38,7 @@ impl Settings {
                         Content::Battery => self.battery_summary(),
                         Content::About => self.about_summary(),
                         Content::Storage => self.storage_summary(),
-                        Content::Android(_) => self.android_summary(),
+                        Content::Android(_) => Some(self.android_summary()),
                         Content::Settings(_)
                         | Content::Apps(_)
                         | Content::Display
