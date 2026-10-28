@@ -3,7 +3,7 @@
 //! colour is the stock tuning of each module, the QTech IMX890 (as
 //! libcamera's imx890.yaml in Phonewave has it) and the Sunny S5K3P9, from
 //! the facts exports in ~/.cache/phonewave/aston. The RedMagic 11 Pro
-//! (nx809j): the OV50D40 ultrawide, untuned.
+//! (nx809j): the OV50D40 ultrawide and the OV16A1Q front camera, untuned.
 
 use std::sync::OnceLock;
 
@@ -241,7 +241,35 @@ pub static NX809J_ULTRAWIDE: Sensor = Sensor {
     colour: &UNTUNED,
 };
 
-static SENSORS: [&Sensor; 3] = [&ACE3_MAIN, &ACE3_FRONT, &NX809J_ULTRAWIDE];
+/// The RedMagic 11 Pro's front camera: OmniVision OV16A1Q, Quad Bayer,
+/// 2304x1728 binned, 30 fps.
+pub static NX809J_FRONT: Sensor = Sensor {
+    name: "OV16A1Q",
+    facing: Facing::Front,
+    entity: "ov16a1q",
+    csiphy: 3,
+    width: 2304,
+    height: 1728,
+    bayer: Bayer::Bggr,
+    black: 64.0,
+    clip: 1000.0,
+    // 2721 pixels per line at 320 MHz.
+    line_us: 2721.0 / 320.0,
+    min_lines: 4,
+    max_lines: 3912,
+    line_step: 1,
+    // 0x0100 is 1x, up to 0x0f80.
+    gain: Gain::Linear { unit: 256.0 },
+    max_gain: 15.5,
+    // The driver reports a 90 degree counter-clockwise correction.
+    rotation: 270,
+    mirror: true,
+    lens: None,
+    focus: 0,
+    colour: &UNTUNED,
+};
+
+static SENSORS: [&Sensor; 4] = [&ACE3_MAIN, &ACE3_FRONT, &NX809J_ULTRAWIDE, &NX809J_FRONT];
 
 /// The phone's camera facing `facing`: the first whose sensor is in the
 /// media graph, else the first known, which then fails to open by name.
