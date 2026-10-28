@@ -3,8 +3,11 @@
 Camera app for Denial phones, written with GPUI. It drives the sensors
 itself, without libcamera: it routes one sensor through qcom-camss to memory
 as packed 10-bit raw (`src/device.rs`), and everything after that is ours.
-Values are for the Ace 3 (aston): the IMX890 main camera and the S5K3P9
-front camera (`src/sensor.rs`).
+Each phone's cameras are in `src/sensor.rs`, and the app uses the ones the
+media graph has. The Ace 3 (aston): the IMX890 main camera and the S5K3P9
+front camera. The RedMagic 11 Pro (nx809j): the OV50D40 ultrawide as the
+back camera, untuned (grey world white balance, the raw colours, no lens
+shading).
 
 It keeps to Denial's mobile materials
 (denial/docs/MOBILE_APP_MATERIALS.md) as an opaque window: a camera is judged

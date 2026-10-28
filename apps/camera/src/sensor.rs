@@ -1,9 +1,13 @@
-//! The phone's cameras: how each sensor is wired, timed and tuned. Values
-//! for the Ace 3 (aston). Colour is the stock tuning of each module: the
-//! QTech IMX890 (as libcamera's imx890.yaml in Phonewave has it) and the
-//! Sunny S5K3P9, from the facts exports in ~/.cache/phonewave/aston.
+//! The phones' cameras: how each sensor is wired, timed and tuned. The
+//! phone's own are the ones its media graph has (`of`). The Ace 3 (aston):
+//! colour is the stock tuning of each module, the QTech IMX890 (as
+//! libcamera's imx890.yaml in Phonewave has it) and the Sunny S5K3P9, from
+//! the facts exports in ~/.cache/phonewave/aston. The RedMagic 11 Pro
+//! (nx809j): the OV50D40 ultrawide, untuned.
 
-use crate::shading;
+use std::sync::OnceLock;
+
+use crate::{device, shading};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facing {
@@ -25,6 +29,7 @@ impl Facing {
 pub enum Bayer {
     Bggr,
     Grbg,
+    Rggb,
 }
 
 impl Bayer {
@@ -32,6 +37,7 @@ impl Bayer {
         match self {
             Bayer::Bggr => 0x3007,
             Bayer::Grbg => 0x300a,
+            Bayer::Rggb => 0x300f,
         }
     }
 
@@ -40,6 +46,7 @@ impl Bayer {
         let code = match self {
             Bayer::Bggr => *b"pBAA",
             Bayer::Grbg => *b"pgAA",
+            Bayer::Rggb => *b"pRAA",
         };
         u32::from_le_bytes(code)
     }
@@ -49,6 +56,7 @@ impl Bayer {
         match self {
             Bayer::Bggr => [(1, 1), (1, 0), (0, 1), (0, 0)],
             Bayer::Grbg => [(1, 0), (0, 0), (1, 1), (0, 1)],
+            Bayer::Rggb => [(0, 0), (1, 0), (0, 1), (1, 1)],
         }
     }
 }
@@ -118,6 +126,7 @@ pub struct Shading {
 pub struct Sensor {
     /// Shown in errors.
     pub name: &'static str,
+    pub facing: Facing,
     /// The start of the sensor's media entity name.
     pub entity: &'static str,
     /// The CSIPHY it is wired to.
@@ -150,9 +159,11 @@ pub struct Sensor {
     pub colour: &'static Colour,
 }
 
-/// The main camera: Sony IMX890 over C-PHY, 4096x3072 binned, 30 fps.
-pub static BACK: Sensor = Sensor {
+/// The Ace 3's main camera: Sony IMX890 over C-PHY, 4096x3072 binned,
+/// 30 fps.
+pub static ACE3_MAIN: Sensor = Sensor {
     name: "IMX890",
+    facing: Facing::Back,
     entity: "imx890",
     csiphy: 2,
     width: 4096,
@@ -175,9 +186,10 @@ pub static BACK: Sensor = Sensor {
     colour: &IMX890,
 };
 
-/// The front camera: Samsung S5K3P9, 2304x1728 binned, 30 fps.
-pub static FRONT: Sensor = Sensor {
+/// The Ace 3's front camera: Samsung S5K3P9, 2304x1728 binned, 30 fps.
+pub static ACE3_FRONT: Sensor = Sensor {
     name: "S5K3P9",
+    facing: Facing::Front,
     entity: "s5k3p9",
     csiphy: 1,
     width: 2304,
@@ -201,11 +213,46 @@ pub static FRONT: Sensor = Sensor {
     colour: &S5K3P9,
 };
 
+/// The RedMagic 11 Pro's ultrawide: OmniVision OV50D40, 4096x3072 binned,
+/// 30 fps. The main camera, an OV50E40 over C-PHY, has no driver yet.
+pub static NX809J_ULTRAWIDE: Sensor = Sensor {
+    name: "OV50D40",
+    facing: Facing::Back,
+    entity: "ov50d40",
+    csiphy: 1,
+    width: 4096,
+    height: 3072,
+    bayer: Bayer::Rggb,
+    black: 64.0,
+    clip: 1000.0,
+    // 6467 pixels per line at 760.8 MHz.
+    line_us: 6467.0 / 760.8,
+    min_lines: 2,
+    max_lines: 3912,
+    line_step: 1,
+    // 0x0100 is 1x, up to 0x0f80.
+    gain: Gain::Linear { unit: 256.0 },
+    max_gain: 15.5,
+    // The driver reports a 270 degree counter-clockwise correction.
+    rotation: 90,
+    mirror: false,
+    lens: None,
+    focus: 0,
+    colour: &UNTUNED,
+};
+
+static SENSORS: [&Sensor; 3] = [&ACE3_MAIN, &ACE3_FRONT, &NX809J_ULTRAWIDE];
+
+/// The phone's camera facing `facing`: the first whose sensor is in the
+/// media graph, else the first known, which then fails to open by name.
 pub fn of(facing: Facing) -> &'static Sensor {
-    match facing {
-        Facing::Back => &BACK,
-        Facing::Front => &FRONT,
-    }
+    static ENTITIES: OnceLock<Vec<String>> = OnceLock::new();
+    let entities = ENTITIES.get_or_init(|| device::entity_names().unwrap_or_default());
+    let mut facing_sensors = SENSORS.iter().copied().filter(|sensor| sensor.facing == facing);
+    let first = facing_sensors.clone().next().expect("a sensor for each facing");
+    facing_sensors
+        .find(|sensor| entities.iter().any(|name| name.starts_with(sensor.entity)))
+        .unwrap_or(first)
 }
 
 /// Stock AWB reference points of the QTech module (blackbody and daylight
@@ -254,6 +301,14 @@ static S5K3P9: Colour = Colour {
         Ccm { ct: 4700.0, m: [1.508, -0.516, 0.008, -0.139, 1.285, -0.146, 0.021, -0.433, 1.412] },
     ],
     shading: shading::S5K3P9,
+};
+
+/// No tuning yet: grey world white balance, the raw colours, no lens
+/// shading.
+static UNTUNED: Colour = Colour {
+    locus: &[],
+    ccms: &[Ccm { ct: 5000.0, m: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] }],
+    shading: &[],
 };
 
 /// Where pixel (x, y) of a `width` x `height` image lands once turned

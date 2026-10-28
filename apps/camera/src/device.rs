@@ -324,6 +324,11 @@ impl Graph {
     }
 }
 
+/// The names of the media graph's entities.
+pub fn entity_names() -> io::Result<Vec<String>> {
+    Ok(Graph::open()?.entities.into_iter().map(|entity| entity.name).collect())
+}
+
 fn set_pad_format(subdev: &File, pad: u32, sensor: &Sensor) -> io::Result<()> {
     let mut format = SubdevFormat {
         which: V4L2_SUBDEV_FORMAT_ACTIVE,
