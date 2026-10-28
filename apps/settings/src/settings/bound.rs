@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use super::{Dialog, Screen, Settings};
 use crate::catalog::{self, ACCENTS, Item, Kind, LOCK_DELAYS, Source};
 use crate::denial::{self, Refusal};
+use crate::fingerprint::{self, Opened};
 use crate::lock::{self, Outcome};
 use crate::wallpaper;
 
@@ -126,6 +127,7 @@ impl Settings {
     pub(super) fn shown(&self, item: &Item) -> SharedString {
         if item.key == "security.fingerprint" {
             return match self.fingers.enrolled.as_ref().map(Vec::len) {
+                _ if self.lock.pin_length == Some(0) => "Needs a PIN".into(),
                 _ if !self.on(&catalog::FINGERPRINT_UNLOCK) => "Off".into(),
                 None => "No reader".into(),
                 Some(0) => "No fingers".into(),
@@ -232,7 +234,10 @@ impl Settings {
                 cx.notify();
             }
             Source::Own => match item.key {
-                "security.lock" if option == 0 => self.ask_lock_pin(None, window, cx),
+                "security.lock" if option == 0 && self.lock.pin_length.unwrap_or(0) > 0 => {
+                    self.ask_change_pin(None, window, cx)
+                }
+                "security.lock" if option == 0 => self.ask_lock_pin(None, false, window, cx),
                 "security.lock" if self.lock.pin_length.unwrap_or(0) > 0 => {
                     self.ask_clear_pin(None, window, cx)
                 }
@@ -304,9 +309,8 @@ impl Settings {
             Kind::Opens if item.key == "style.wallpaper" => {
                 self.open(Screen::Wallpapers, window, cx)
             }
-            Kind::Opens if item.key == "security.fingerprint" => {
-                self.open(Screen::Fingers, window, cx)
-            }
+            Kind::Opens if item.key == "security.fingerprint" => self.open_fingers(window, cx),
+            Kind::Opens if item.key == "security.pin" => self.ask_change_pin(None, window, cx),
             Kind::Opens => self.own_open(item, window, cx),
             _ => {}
         }
@@ -428,17 +432,45 @@ impl Settings {
         self.read_fingers(cx);
     }
 
-    /// Asks for the account password and a new PIN, saying `error` when
-    /// asked again.
-    fn ask_lock_pin(
+    /// The fingerprints, behind the PIN: asked for, or set first when there
+    /// is none, since fingerprints never unlock without one. The PIN opens
+    /// Denial's fingerprint session; the password only sets a first PIN.
+    pub(super) fn open_fingers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.lock.pin_length {
+            Some(0) => self.ask_lock_pin(None, true, window, cx),
+            Some(_) => self.ask_pin_dialog(Dialog::CheckPin { error: None }, window, cx),
+            None => self.note("The screen lock does not answer", cx),
+        }
+    }
+
+    /// Asks for the account password and a new PIN, twice; `fingers` when
+    /// the fingerprints open after it. Says `error` when asked again.
+    pub(super) fn ask_lock_pin(
+        &mut self,
+        error: Option<&'static str>,
+        fingers: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_secrets(cx);
+        self.show(Dialog::LockPin { error, fingers }, cx);
+        window.focus(&self.password.focus_handle(cx), cx);
+    }
+
+    pub(super) fn ask_change_pin(
         &mut self,
         error: Option<&'static str>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.ask_pin_dialog(Dialog::ChangePin { error }, window, cx);
+    }
+
+    /// Shows `dialog`, which starts with the current PIN.
+    fn ask_pin_dialog(&mut self, dialog: Dialog, window: &mut Window, cx: &mut Context<Self>) {
         self.clear_secrets(cx);
-        self.show(Dialog::LockPin { error }, cx);
-        window.focus(&self.password.focus_handle(cx), cx);
+        self.show(dialog, cx);
+        window.focus(&self.current_pin.focus_handle(cx), cx);
     }
 
     fn ask_clear_pin(
@@ -452,12 +484,11 @@ impl Settings {
         window.focus(&self.password.focus_handle(cx), cx);
     }
 
-    /// Sets the lock PIN to `pin`, or removes it when None, once `password`
-    /// is the account's; asks again after a wrong one.
-    pub(super) fn change_pin(
+    /// Hands `request` to Denial's PIN helper, then does what follows it, or
+    /// asks again after a wrong password or PIN.
+    pub(super) fn send_pin(
         &mut self,
-        password: String,
-        pin: Option<String>,
+        request: PinRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -465,48 +496,192 @@ impl Settings {
             return;
         }
         self.lock.busy = true;
-        let length = pin.as_ref().map_or(0, |pin| pin.len() as u32);
-        let setting = pin.is_some();
+        cx.notify();
+        let after = request.after();
         cx.spawn_in(window, async move |this, cx| {
-            let outcome = cx
-                .background_spawn(async move {
-                    match &pin {
-                        Some(pin) => lock::set_pin(&password, pin),
-                        None => lock::clear_pin(&password),
-                    }
-                })
+            let (outcome, opened) = cx.background_spawn(async move { request.send() }).await;
+            let _ = this.update_in(cx, |view, window, cx| {
+                view.lock.busy = false;
+                view.pin_sent(after, outcome, window, cx);
+                if let Some(opened) = opened {
+                    view.session_opened(opened, window, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Opens Denial's fingerprint session with `pin`, then the fingerprints.
+    pub(super) fn open_session(
+        &mut self,
+        pin: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.lock.busy {
+            return;
+        }
+        self.lock.busy = true;
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let opened = cx
+                .background_spawn(async move { fingerprint::Session::open(&pin) })
                 .await;
             let _ = this.update_in(cx, |view, window, cx| {
                 view.lock.busy = false;
-                match outcome {
-                    Outcome::Saved | Outcome::Cleared => {
-                        view.lock.pin_length = Some(length);
-                        view.dismiss(window, cx);
-                        view.note(
-                            if setting {
-                                "The lock screen asks for the PIN"
+                view.session_opened(opened, window, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn session_opened(&mut self, opened: Opened, window: &mut Window, cx: &mut Context<Self>) {
+        let again = |view: &mut Self, error, window: &mut Window, cx: &mut Context<Self>| {
+            view.ask_pin_dialog(Dialog::CheckPin { error: Some(error) }, window, cx)
+        };
+        match opened {
+            Opened::Open(session, enrolled) => {
+                self.dismiss(window, cx);
+                self.follow_session(session, enrolled, cx);
+                if self.screen != Screen::Fingers {
+                    self.open(Screen::Fingers, window, cx);
+                }
+            }
+            Opened::WrongPin => again(self, "Wrong PIN", window, cx),
+            Opened::Wait(seconds) => {
+                self.dismiss(window, cx);
+                self.note(
+                    fill(
+                        "Too many tries. Wait {count} s",
+                        &[("count", &seconds.to_string())],
+                    ),
+                    cx,
+                );
+            }
+            Opened::NoPin => {
+                self.lock.pin_length = Some(0);
+                self.ask_lock_pin(None, true, window, cx);
+            }
+            Opened::Failed => {
+                self.dismiss(window, cx);
+                self.note("Fingerprints cannot change now", cx);
+            }
+        }
+    }
+
+    fn pin_sent(
+        &mut self,
+        after: After,
+        outcome: Outcome,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let wrong = match outcome {
+            Outcome::WrongPassword => "Wrong password",
+            Outcome::WrongPin => "Wrong PIN",
+            Outcome::InvalidPin => "Use 6 digits",
+            Outcome::Failed => {
+                self.dismiss(window, cx);
+                self.note("Could not change the screen lock", cx);
+                return;
+            }
+            Outcome::Saved | Outcome::Cleared => {
+                self.dismiss(window, cx);
+                match after {
+                    After::Set { length, fingers } => {
+                        self.lock.pin_length = Some(length);
+                        // With `fingers` the session opens next, with this PIN.
+                        if !fingers {
+                            self.note("The lock screen asks for the PIN", cx);
+                        }
+                    }
+                    After::Change { length } => {
+                        self.lock.pin_length = Some(length);
+                        self.note("The PIN is changed", cx);
+                    }
+                    After::Clear => {
+                        self.lock.pin_length = Some(0);
+                        self.note(
+                            if self
+                                .fingers
+                                .enrolled
+                                .as_ref()
+                                .is_some_and(|fingers| !fingers.is_empty())
+                            {
+                                "Fingerprints stop unlocking until a PIN is set"
                             } else {
                                 "The lock screen asks for the password"
                             },
                             cx,
                         );
                     }
-                    Outcome::WrongPassword if setting => {
-                        view.ask_lock_pin(Some("Wrong password"), window, cx)
-                    }
-                    Outcome::WrongPassword => {
-                        view.ask_clear_pin(Some("Wrong password"), window, cx)
-                    }
-                    Outcome::InvalidPin => {
-                        view.ask_lock_pin(Some("Use 4 to 12 digits"), window, cx)
-                    }
-                    Outcome::Failed => {
-                        view.dismiss(window, cx);
-                        view.note("Could not change the screen lock", cx);
-                    }
                 }
-            });
-        })
-        .detach();
+                return;
+            }
+        };
+        match after {
+            After::Set { fingers, .. } => self.ask_lock_pin(Some(wrong), fingers, window, cx),
+            After::Change { .. } => self.ask_change_pin(Some(wrong), window, cx),
+            After::Clear => self.ask_clear_pin(Some(wrong), window, cx),
+        }
+    }
+}
+
+/// What goes to Denial's PIN helper.
+pub(super) enum PinRequest {
+    /// A first PIN, or one forgotten, behind the account password.
+    Set {
+        password: String,
+        pin: String,
+        fingers: bool,
+    },
+    Change {
+        current: String,
+        pin: String,
+    },
+    Clear {
+        password: String,
+    },
+}
+
+/// What follows a request once the helper says yes; no secrets.
+#[derive(Clone, Copy)]
+enum After {
+    Set { length: u32, fingers: bool },
+    Change { length: u32 },
+    Clear,
+}
+
+impl PinRequest {
+    fn after(&self) -> After {
+        match self {
+            PinRequest::Set { pin, fingers, .. } => After::Set {
+                length: pin.len() as u32,
+                fingers: *fingers,
+            },
+            PinRequest::Change { pin, .. } => After::Change {
+                length: pin.len() as u32,
+            },
+            PinRequest::Clear { .. } => After::Clear,
+        }
+    }
+
+    /// The helper's answer and, for a first PIN the fingerprints asked
+    /// for, their session, opened with it.
+    fn send(self) -> (Outcome, Option<Opened>) {
+        match self {
+            PinRequest::Set {
+                password,
+                pin,
+                fingers,
+            } => {
+                let outcome = lock::set_pin(&password, &pin);
+                let opened = (fingers && outcome == Outcome::Saved)
+                    .then(|| fingerprint::Session::open(&pin));
+                (outcome, opened)
+            }
+            PinRequest::Change { current, pin } => (lock::change_pin(&current, &pin), None),
+            PinRequest::Clear { password } => (lock::clear_pin(&password), None),
+        }
     }
 }

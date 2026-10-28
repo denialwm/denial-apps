@@ -163,13 +163,20 @@ where its value lives (`src/settings/bound.rs`):
   level, faint: the phone has one volume for now.
 - The screen lock: PIN or password, through `deniald --lock-pin` (the
   compositor that started Settings names itself in
-  `DENIAL_COMPOSITOR_BINARY`), which checks the account password before it
-  sets or removes the PIN.
-- The fingers (`src/fingerprint.rs`), on a screen of their own: fprintd's
-  list, `DeleteEnrolledFinger` and `EnrollStart` with its `EnrollStatus`
-  signals, each claiming the reader on a bus connection of its own that
-  lets it go when it closes. While the phone is locked Denial holds the
-  reader.
+  `DENIAL_COMPOSITOR_BINARY`). A new PIN has 6 digits, typed twice. The
+  first PIN, or one forgotten, takes the account password; Change PIN takes
+  the PIN set now; going back to the password takes the password. A PIN set
+  before with 4 to 12 digits still works until it is changed.
+- The fingers (`src/fingerprint.rs`), on a screen of their own behind the
+  PIN: the Fingerprint row asks for it, or sets one first when there is
+  none, since Denial's lock screen leaves the reader off without a PIN. The
+  PIN opens Denial's fingerprint session, `sudo -n deniald
+  --fingerprint-settings`, which adds and removes fingers; a PIN just set
+  opens it at once. The device's sudo rule lets the session's user start
+  that one command without a password. The session ends after five
+  minutes or when the screen closes; the next change asks for the PIN
+  again. The count on the Security page is fprintd's list. While the phone
+  is locked Denial holds the reader.
 - The wallpaper (`src/wallpaper.rs`): Denial's own and the pictures in the
   wallpaper folder (`$DENIAL_WALLPAPER_DIR`, else `~/Pictures/Wallpapers`, as
   the shell has it), three to a row on a screen of their own, from

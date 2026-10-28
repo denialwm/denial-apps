@@ -14,6 +14,7 @@ use gpui::{
     px,
 };
 
+use super::bound::PinRequest;
 use super::panel::hertz;
 use super::parts::{Fill, ROW_GAP};
 use super::{Dialog, Settings};
@@ -169,21 +170,54 @@ impl Settings {
                     false,
                 ))
                 .child(self.answers("Keep", Fill::Accent, true, cx)),
-            Dialog::LockPin { error } => {
-                let ready = !self.password.read(cx).text().is_empty()
-                    && lock::valid_pin(self.pin.read(cx).text());
-                let said = error.unwrap_or("Your account password, then 4 to 12 digits");
+            Dialog::LockPin { error, fingers } => {
+                let ready = !self.password.read(cx).text().is_empty() && self.new_pin_typed(cx);
+                let said = error.unwrap_or(if *fingers {
+                    "Fingerprints need a PIN. Your account password, then 6 digits twice"
+                } else {
+                    "Your account password, then 6 digits twice"
+                });
                 self.form(island)
                     .child(self.dialog_title("Set a PIN"))
                     .child(self.said(said, error.is_some()))
                     .child(self.dialog_field(&self.password, true, cx))
-                    .child(self.dialog_field(&self.pin, false, cx))
+                    .child(self.dialog_field(&self.new_pin, false, cx))
+                    .child(self.dialog_field(&self.pin_again, false, cx))
                     .child(self.answers("Set", Fill::Accent, ready && !self.lock.busy, cx))
+            }
+            Dialog::ChangePin { error } => {
+                let ready =
+                    lock::may_be_pin(self.current_pin.read(cx).text()) && self.new_pin_typed(cx);
+                let said = error.unwrap_or("The PIN set now, then 6 new digits twice");
+                self.form(island)
+                    .child(self.dialog_title("Change the PIN"))
+                    .child(self.said(said, error.is_some()))
+                    .child(self.dialog_field(&self.current_pin, true, cx))
+                    .child(self.dialog_field(&self.new_pin, false, cx))
+                    .child(self.dialog_field(&self.pin_again, false, cx))
+                    .child(self.answers("Change", Fill::Accent, ready && !self.lock.busy, cx))
+            }
+            Dialog::CheckPin { error } => {
+                let ready = lock::may_be_pin(self.current_pin.read(cx).text());
+                let said = error.unwrap_or("Fingerprints change only after the PIN");
+                self.form(island)
+                    .child(self.dialog_title("Enter the PIN"))
+                    .child(self.said(said, error.is_some()))
+                    .child(self.dialog_field(&self.current_pin, true, cx))
+                    .child(self.answers("Next", Fill::Accent, ready && !self.lock.busy, cx))
             }
             Dialog::ClearPin { error } => {
                 let ready = !self.password.read(cx).text().is_empty();
-                let said =
-                    error.unwrap_or("Your account password; the lock screen then asks for it");
+                let fingers = self
+                    .fingers
+                    .enrolled
+                    .as_ref()
+                    .is_some_and(|fingers| !fingers.is_empty());
+                let said = error.unwrap_or(if fingers {
+                    "Your account password. Fingerprints stop unlocking until a PIN is set"
+                } else {
+                    "Your account password; the lock screen then asks for it"
+                });
                 self.form(island)
                     .child(self.dialog_title("Use the password"))
                     .child(self.said(said, error.is_some()))
@@ -415,15 +449,44 @@ impl Settings {
                 self.answer_pairing(Some(typed), window, cx);
             }
             Dialog::Keep { token, .. } => self.answer_keep(token, true, window, cx),
-            Dialog::LockPin { .. } => {
-                let pin = self.pin.read(cx).text().to_owned();
-                if !password.is_empty() && lock::valid_pin(&pin) {
-                    self.change_pin(password, Some(pin), window, cx);
+            Dialog::LockPin { fingers, .. } => {
+                if password.is_empty() {
+                    return;
+                }
+                match self.new_pin(cx) {
+                    Ok(Some(pin)) => self.send_pin(
+                        PinRequest::Set {
+                            password,
+                            pin,
+                            fingers,
+                        },
+                        window,
+                        cx,
+                    ),
+                    Ok(None) => {}
+                    Err(differ) => self.ask_lock_pin(Some(differ), fingers, window, cx),
+                }
+            }
+            Dialog::ChangePin { .. } => {
+                let current = self.current_pin.read(cx).text().to_owned();
+                if !lock::may_be_pin(&current) {
+                    return;
+                }
+                match self.new_pin(cx) {
+                    Ok(Some(pin)) => self.send_pin(PinRequest::Change { current, pin }, window, cx),
+                    Ok(None) => {}
+                    Err(differ) => self.ask_change_pin(Some(differ), window, cx),
+                }
+            }
+            Dialog::CheckPin { .. } => {
+                let pin = self.current_pin.read(cx).text().to_owned();
+                if lock::may_be_pin(&pin) {
+                    self.open_session(pin, window, cx);
                 }
             }
             Dialog::ClearPin { .. } => {
                 if !password.is_empty() {
-                    self.change_pin(password, None, window, cx);
+                    self.send_pin(PinRequest::Clear { password }, window, cx);
                 }
             }
             Dialog::Rename => {
@@ -492,10 +555,35 @@ impl Settings {
         window.focus(&self.hidden_name.focus_handle(cx), cx);
     }
 
+    /// Both new PIN fields hold 6 digits.
+    fn new_pin_typed(&self, cx: &Context<Self>) -> bool {
+        lock::valid_pin(self.new_pin.read(cx).text())
+            && lock::valid_pin(self.pin_again.read(cx).text())
+    }
+
+    /// The new PIN once typed the same twice; None while it is not typed
+    /// yet, and why it is asked again when the two differ.
+    fn new_pin(&self, cx: &Context<Self>) -> Result<Option<String>, &'static str> {
+        let (pin, again) = (self.new_pin.read(cx).text(), self.pin_again.read(cx).text());
+        if !self.new_pin_typed(cx) {
+            Ok(None)
+        } else if pin != again {
+            Err("The two new PINs differ")
+        } else {
+            Ok(Some(pin.to_owned()))
+        }
+    }
+
     /// Empties the password and PIN fields and hides what they hold.
     pub(super) fn clear_secrets(&mut self, cx: &mut Context<Self>) {
         self.revealed = false;
-        for field in [&self.password, &self.pin] {
+        for field in [
+            &self.password,
+            &self.pin,
+            &self.current_pin,
+            &self.new_pin,
+            &self.pin_again,
+        ] {
             field.update(cx, |input, cx| {
                 input.clear(cx);
                 input.set_secret(true, cx);

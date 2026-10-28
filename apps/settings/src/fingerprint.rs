@@ -1,21 +1,27 @@
 //! The fingers fprintd knows for this user on its default reader: listing
 //! them, adding one and removing one.
 //!
-//! Adding and removing claim the reader for the time it takes, each on a
-//! bus connection of its own: when Settings stops waiting, the connection
-//! closes and fprintd lets the reader go. While the phone is locked Denial
-//! holds the reader to unlock it, and it is busy here.
+//! Listing asks fprintd. Adding and removing go through Denial's fingerprint
+//! session, `deniald --fingerprint-settings`, which sudo starts as root for
+//! this one command without a password: the lock PIN opens it, since
+//! fingerprints never unlock without one, and the session keeps the PIN for
+//! readers that want it proven again for each finger added. The PIN goes
+//! on the session's input, never in its arguments, environment or logs.
+//! While the phone is locked Denial holds the reader to unlock it, and it
+//! is busy here.
 //!
 //! An optical reader under the screen lights itself for each touch, but
 //! nothing marks it while the phone is unlocked: Settings rings it, where
 //! Denial's `/etc/denial/fingerprint.json` places it on the panel.
 
 use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Lines, Write};
 use std::path::PathBuf;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-use futures_lite::StreamExt;
-use zbus::zvariant::{OwnedObjectPath, OwnedValue};
-use zbus::{Connection, MatchRule, MessageStream};
+use serde_json::{Value, json};
+use zbus::Connection;
+use zbus::zvariant::OwnedObjectPath;
 
 const NAME: &str = "net.reactivated.Fprint";
 const DEVICE: &str = "net.reactivated.Fprint.Device";
@@ -142,137 +148,239 @@ fn fprint_error(error: &zbus::Error) -> Option<&str> {
     }
 }
 
-/// What a row says when the reader would not do something.
-fn refusal(error: &zbus::Error) -> String {
-    match fprint_error(error) {
-        Some("AlreadyInUse") => "The reader is busy".to_owned(),
-        Some("PermissionDenied") => "Not allowed to change fingerprints".to_owned(),
-        Some("NoSuchDevice") => "No fingerprint reader".to_owned(),
-        _ => format!("The reader failed: {error}"),
+/// What Denial's fingerprint session says once it is open.
+#[derive(Debug, PartialEq)]
+pub enum Event {
+    /// The fingers on the reader, after each change.
+    Fingers(Vec<String>),
+    /// How adding the finger goes.
+    Progress(Progress),
+    /// A finger the reader would not remove, and why.
+    Refused(String),
+    /// The session ended; the PIN opens another.
+    Ended,
+}
+
+/// What came of opening the session.
+pub enum Opened {
+    /// Open, with the fingers on the reader.
+    Open(Session, Vec<String>),
+    WrongPin,
+    /// Too many wrong PINs: the PIN is taken again after these seconds.
+    Wait(u32),
+    /// No lock PIN is set.
+    NoPin,
+    /// The session did not start, or said nothing it should.
+    Failed,
+}
+
+/// Denial's fingerprint session, open while this lives.
+pub struct Session {
+    input: ChildStdin,
+    /// What the session says, until it ends.
+    pub events: async_channel::Receiver<Event>,
+}
+
+impl Session {
+    /// Starts the session and gives it `pin`. Blocks until it answers.
+    pub fn open(pin: &str) -> Opened {
+        if pin.is_empty() || pin.contains(['\n', '\r', '\0']) {
+            return Opened::WrongPin;
+        }
+        // The compositor that started Settings names itself, and sudo's
+        // rule allows only Denial's own binary.
+        let binary = std::env::var_os("DENIAL_COMPOSITOR_BINARY")
+            .filter(|binary| !binary.is_empty())
+            .unwrap_or_else(|| "deniald".into());
+        let Ok(mut child) = Command::new("sudo")
+            .args(["-n", "--"])
+            .arg(binary)
+            .arg("--fingerprint-settings")
+            .env("LC_ALL", "C")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| eprintln!("settings: starting the fingerprint session: {error}"))
+        else {
+            return Opened::Failed;
+        };
+        let (Some(mut input), Some(output)) = (child.stdin.take(), child.stdout.take()) else {
+            return Opened::Failed;
+        };
+        let mut lines = BufReader::new(output).lines();
+        let opened = loop {
+            let Some(said) = lines
+                .next()
+                .and_then(Result::ok)
+                .and_then(|line| serde_json::from_str::<Value>(&line).ok())
+            else {
+                break Opened::Failed;
+            };
+            match said["event"].as_str() {
+                Some("pin") => {
+                    if writeln!(input, "{pin}").is_err() {
+                        break Opened::Failed;
+                    }
+                }
+                Some("ready") => {
+                    let (sender, events) = async_channel::unbounded();
+                    std::thread::spawn(move || follow(child, lines, sender));
+                    return Opened::Open(Session { input, events }, fingers(&said));
+                }
+                Some("wrong-pin") => break Opened::WrongPin,
+                Some("rate-limited") => {
+                    let ms = said["retry_ms"].as_u64().unwrap_or(0);
+                    break Opened::Wait(ms.div_ceil(1000).max(1) as u32);
+                }
+                Some("pin-not-configured") => break Opened::NoPin,
+                _ => break Opened::Failed,
+            }
+        };
+        drop(input);
+        let _ = child.wait();
+        opened
+    }
+
+    /// Adds `finger`; `events` follow it. False when the session is gone.
+    pub fn add(&mut self, finger: &str) -> bool {
+        self.send(json!({"command": "enroll", "finger": finger}))
+    }
+
+    /// Removes `finger`; the fingers follow on `events`.
+    pub fn remove(&mut self, finger: &str) -> bool {
+        self.send(json!({"command": "delete", "finger": finger}))
+    }
+
+    /// Stops adding a finger.
+    pub fn cancel(&mut self) {
+        self.send(json!({"command": "cancel"}));
+    }
+
+    fn send(&mut self, command: Value) -> bool {
+        writeln!(self.input, "{command}").is_ok()
     }
 }
 
-/// Claims the reader on a connection of its own, which lets it go when it
-/// closes.
-async fn claim() -> zbus::Result<(Connection, OwnedObjectPath)> {
-    let bus = Connection::system().await?;
-    let device = device(&bus).await?;
-    bus.call_method(Some(NAME), &device, Some(DEVICE), "Claim", &(""))
-        .await?;
-    Ok((bus, device))
+fn fingers(said: &Value) -> Vec<String> {
+    said["fingers"]
+        .as_array()
+        .map(|fingers| {
+            fingers
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|finger| SLOTS.contains(finger))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-/// Removes `finger` from the reader.
-pub async fn remove(finger: &str) -> Result<(), String> {
-    let (bus, device) = claim().await.map_err(|error| refusal(&error))?;
-    let removed = bus
-        .call_method(
-            Some(NAME),
-            &device,
-            Some(DEVICE),
-            "DeleteEnrolledFinger",
-            &(finger),
-        )
-        .await;
-    let _ = bus
-        .call_method(Some(NAME), &device, Some(DEVICE), "Release", &())
-        .await;
-    match removed {
-        // fprintd forgets the finger even when the reader keeps it.
-        Err(error) if fprint_error(&error) == Some("PrintsNotDeletedFromDevice") => Ok(()),
-        removed => removed.map(drop).map_err(|error| refusal(&error)),
+/// Reads the open session until it ends, then lets it go.
+fn follow(
+    mut child: Child,
+    lines: Lines<BufReader<ChildStdout>>,
+    events: async_channel::Sender<Event>,
+) {
+    for line in lines.map_while(Result::ok) {
+        let Ok(said) = serde_json::from_str::<Value>(&line) else {
+            break;
+        };
+        if let Some(event) = event(&said)
+            && events.send_blocking(event).is_err()
+        {
+            break;
+        }
     }
+    let _ = events.send_blocking(Event::Ended);
+    let _ = child.wait();
 }
 
-/// Adds `finger`, saying each step on `progress` until it is added or
-/// fails. Dropping the future stops it.
-pub async fn add(finger: &str, progress: &async_channel::Sender<Progress>) {
-    if let Err(failed) = adding(finger, progress).await {
-        let _ = progress.send(Progress::Failed(failed)).await;
+/// What a line from the session means here, if anything.
+fn event(said: &Value) -> Option<Event> {
+    let failed = |why: &str| Some(Event::Progress(Progress::Failed(why.to_owned())));
+    match said["event"].as_str()? {
+        "ready" => Some(Event::Fingers(fingers(said))),
+        "expired" => Some(Event::Ended),
+        "enrollment" => {
+            let count = |key: &str| said[key].as_u64().unwrap_or(0) as u32;
+            let touches = Progress::Touches {
+                done: count("completed"),
+                of: count("total"),
+            };
+            let step = match said["status"].as_str()? {
+                "started" | "enroll-stage-passed" => touches,
+                "enroll-completed" => Progress::Added,
+                "enroll-retry-scan" => Progress::Again("Touch the sensor again"),
+                "enroll-swipe-too-short" | "enroll-finger-not-centered" => {
+                    Progress::Again("Put your finger in the middle of the sensor")
+                }
+                "enroll-remove-and-retry" => Progress::Again("Lift your finger, then touch again"),
+                "enroll-duplicate" => return failed("This fingerprint is already added"),
+                "enroll-data-full" => {
+                    return failed("The reader has no room for another fingerprint");
+                }
+                "enroll-disconnected" => return failed("The reader went away"),
+                // Some readers say no more than this, for a finger already
+                // added or a full reader too.
+                "enroll-failed" | "enroll-unknown-error" => {
+                    return failed(
+                        "The reader could not add this fingerprint. Try again, or another finger",
+                    );
+                }
+                _ => return None,
+            };
+            Some(Event::Progress(step))
+        }
+        "error" => match said["code"].as_str()? {
+            "delete-failed" => Some(Event::Refused("The reader would not remove it".to_owned())),
+            "already-enrolled" => failed("This fingerprint is already added"),
+            "wrong-pin" | "rate-limited" | "pin-authorization-failed" | "pin-not-configured" => {
+                failed("The reader did not take the PIN")
+            }
+            _ => failed("The reader could not add this fingerprint. Try again, or another finger"),
+        },
+        _ => None,
     }
-}
-
-async fn adding(finger: &str, progress: &async_channel::Sender<Progress>) -> Result<(), String> {
-    let (bus, device) = claim().await.map_err(|error| refusal(&error))?;
-    let of = bus
-        .call_method(
-            Some(NAME),
-            &device,
-            Some("org.freedesktop.DBus.Properties"),
-            "Get",
-            &(DEVICE, "num-enroll-stages"),
-        )
-        .await
-        .ok()
-        .and_then(|reply| reply.body().deserialize::<OwnedValue>().ok())
-        .and_then(|value| i32::try_from(value).ok())
-        .and_then(|stages| u32::try_from(stages).ok())
-        .unwrap_or(0);
-    let rule = MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender(NAME)
-        .and_then(|rule| rule.path(device.as_ref()))
-        .and_then(|rule| rule.interface(DEVICE))
-        .and_then(|rule| rule.member("EnrollStatus"))
-        .map_err(|error| error.to_string())?
-        .build();
-    let mut statuses = MessageStream::for_match_rule(rule, &bus, Some(16))
-        .await
-        .map_err(|error| refusal(&error))?;
-    bus.call_method(Some(NAME), &device, Some(DEVICE), "EnrollStart", &(finger))
-        .await
-        .map_err(|error| refusal(&error))?;
-    let _ = progress.send(Progress::Touches { done: 0, of }).await;
-    let mut done = 0;
-    let outcome = loop {
-        let Some(Ok(status)) = statuses.next().await else {
-            break Err("fprintd stopped".to_owned());
-        };
-        let Ok((result, finished)) = status.body().deserialize::<(String, bool)>() else {
-            continue;
-        };
-        let step = match result.as_str() {
-            "enroll-completed" => break Ok(()),
-            "enroll-stage-passed" => {
-                done += 1;
-                Progress::Touches { done, of }
-            }
-            "enroll-retry-scan" => Progress::Again("Touch the sensor again"),
-            "enroll-swipe-too-short" | "enroll-finger-not-centered" => {
-                Progress::Again("Put your finger in the middle of the sensor")
-            }
-            "enroll-remove-and-retry" => Progress::Again("Lift your finger, then touch again"),
-            "enroll-duplicate" => break Err("This fingerprint is already added".to_owned()),
-            "enroll-data-full" => {
-                break Err("The reader has no room for another fingerprint".to_owned());
-            }
-            "enroll-disconnected" => break Err("The reader went away".to_owned()),
-            // Some readers say no more than this, for a finger already
-            // added or a full reader too.
-            _ if finished => {
-                break Err(
-                    "The reader could not add this fingerprint. Try again, or another finger"
-                        .to_owned(),
-                );
-            }
-            _ => continue,
-        };
-        let _ = progress.send(step).await;
-    };
-    let _ = bus
-        .call_method(Some(NAME), &device, Some(DEVICE), "EnrollStop", &())
-        .await;
-    let _ = bus
-        .call_method(Some(NAME), &device, Some(DEVICE), "Release", &())
-        .await;
-    outcome?;
-    let _ = progress.send(Progress::Added).await;
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_lines_mean_events() {
+        let event = |line: Value| event(&line);
+        assert_eq!(
+            event(json!({"event": "ready", "fingers": ["right-thumb", "nose"]})),
+            Some(Event::Fingers(vec!["right-thumb".to_owned()]))
+        );
+        assert_eq!(
+            event(
+                json!({"event": "enrollment", "status": "enroll-stage-passed", "completed": 2, "total": 10})
+            ),
+            Some(Event::Progress(Progress::Touches { done: 2, of: 10 }))
+        );
+        assert_eq!(
+            event(
+                json!({"event": "enrollment", "status": "enroll-completed", "completed": 10, "total": 10})
+            ),
+            Some(Event::Progress(Progress::Added))
+        );
+        assert_eq!(
+            event(json!({"event": "enrollment", "status": "cancelled"})),
+            None
+        );
+        assert!(matches!(
+            event(json!({"event": "error", "code": "enrollment-failed"})),
+            Some(Event::Progress(Progress::Failed(_)))
+        ));
+        assert!(matches!(
+            event(json!({"event": "error", "code": "delete-failed"})),
+            Some(Event::Refused(_))
+        ));
+        assert_eq!(event(json!({"event": "expired"})), Some(Event::Ended));
+    }
 
     /// Lists the fingers on a phone: `cargo test -- --ignored --nocapture
     /// lists_fingers`, as the session's user.

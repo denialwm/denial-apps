@@ -472,6 +472,9 @@ pub static GROUPS: &[Group] = &[
                             )
                             .icon(Icon::Lock)
                             .from(Source::Own),
+                            item("security.pin", "Change PIN", Kind::Opens)
+                                .from(Source::Own)
+                                .only("security.lock", &[0]),
                             item("security.fingerprint", "Fingerprint", Kind::Opens)
                                 .icon(Icon::Fingerprint)
                                 .from(Source::Own),

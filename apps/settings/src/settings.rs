@@ -305,9 +305,17 @@ enum Dialog {
     /// Whether to keep the panel's new refresh rate, `rate`, or go back to
     /// `back`; Denial keeps the change under `token`.
     Keep { token: u64, rate: u32, back: u32 },
-    /// The account password and a new lock PIN; `error` says why it is
-    /// asked again.
-    LockPin { error: Option<&'static str> },
+    /// The account password and a new lock PIN, twice: the first PIN, or
+    /// one forgotten. `fingers` when the fingerprints asked for it, which
+    /// open once it is set. `error` says why it is asked again.
+    LockPin {
+        error: Option<&'static str>,
+        fingers: bool,
+    },
+    /// The current lock PIN and a new one, twice.
+    ChangePin { error: Option<&'static str> },
+    /// The lock PIN, before the fingerprints open.
+    CheckPin { error: Option<&'static str> },
     /// The account password, to remove the lock PIN.
     ClearPin { error: Option<&'static str> },
     /// A name for a fingerprint to add, or for `finger`, which can also be
@@ -387,10 +395,13 @@ struct Fingers {
     adding: Option<Adding>,
     /// A finger being removed.
     removing: Option<String>,
+    /// Denial's fingerprint session, which adds and removes them, and the
+    /// task following what it says; open after the PIN, while the
+    /// fingerprints show.
+    session: Option<(fingerprint::Session, Task<()>)>,
 }
 
-/// A finger being added: how far it is, and the task that adds it, which
-/// stops when dropped.
+/// A finger being added and how far it is.
 struct Adding {
     /// fprintd's slot, and the name it gets once added.
     finger: &'static str,
@@ -400,7 +411,6 @@ struct Adding {
     again: Option<&'static str>,
     /// Where the sensor is, as `fingerprint::sensor` says.
     sensor: Option<[f32; 4]>,
-    _task: Task<()>,
 }
 
 /// The wallpapers as Settings knows them.
@@ -510,6 +520,11 @@ pub struct Settings {
     hidden_name: Entity<TextInput>,
     /// The SIM PIN dialog's field.
     pin: Entity<TextInput>,
+    /// The lock PIN dialogs' fields: the PIN set now, a new one and the new
+    /// one again.
+    current_pin: Entity<TextInput>,
+    new_pin: Entity<TextInput>,
+    pin_again: Entity<TextInput>,
     /// The pairing dialog's field, for a PIN or passkey to type.
     code_field: Entity<TextInput>,
     /// The phone's Bluetooth name, while renaming.
@@ -596,16 +611,25 @@ impl Settings {
         let finger_field = cx.new(|cx| TextInput::new("Fingerprint name", &look, 1, cx));
         let clock_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
         let wallhaven_field = cx.new(|cx| TextInput::new("Search Wallhaven", &look, 1, cx));
-        let pin = cx.new(|cx| {
-            let mut input = TextInput::new("PIN", &look, 1, cx);
-            input.set_secret(true, cx);
-            input
-        });
+        let secret = |hint: &str, cx: &mut Context<Self>| {
+            cx.new(|cx| {
+                let mut input = TextInput::new(hint, &look, 1, cx);
+                input.set_secret(true, cx);
+                input
+            })
+        };
+        let pin = secret("PIN", cx);
+        let current_pin = secret("Current PIN", cx);
+        let new_pin = secret("New PIN", cx);
+        let pin_again = secret("New PIN again", cx);
         let mut subscriptions = vec![
             cx.observe(&search, |_, _, cx| cx.notify()),
             cx.observe(&password, |_, _, cx| cx.notify()),
             cx.observe(&hidden_name, |_, _, cx| cx.notify()),
             cx.observe(&pin, |_, _, cx| cx.notify()),
+            cx.observe(&current_pin, |_, _, cx| cx.notify()),
+            cx.observe(&new_pin, |_, _, cx| cx.notify()),
+            cx.observe(&pin_again, |_, _, cx| cx.notify()),
             cx.observe(&code_field, |_, _, cx| cx.notify()),
             cx.observe(&name_field, |_, _, cx| cx.notify()),
             cx.observe(&finger_field, |_, _, cx| cx.notify()),
@@ -633,6 +657,17 @@ impl Settings {
                 this.submit_dialog(window, cx)
             }),
             cx.subscribe_in(&pin, window, |this, _, _: &Submitted, window, cx| {
+                this.submit_dialog(window, cx)
+            }),
+            cx.subscribe_in(
+                &current_pin,
+                window,
+                |this, _, _: &Submitted, window, cx| this.submit_dialog(window, cx),
+            ),
+            cx.subscribe_in(&new_pin, window, |this, _, _: &Submitted, window, cx| {
+                this.submit_dialog(window, cx)
+            }),
+            cx.subscribe_in(&pin_again, window, |this, _, _: &Submitted, window, cx| {
                 this.submit_dialog(window, cx)
             }),
             cx.subscribe_in(&password, window, |this, _, _: &Submitted, window, cx| {
@@ -681,6 +716,9 @@ impl Settings {
             revealed: false,
             hidden_name,
             pin,
+            current_pin,
+            new_pin,
+            pin_again,
             code_field,
             name_field,
             finger_field,
@@ -957,6 +995,8 @@ impl Settings {
             self.read_fingers(cx);
         } else {
             self.fingers.adding = None;
+            self.fingers.removing = None;
+            self.fingers.session = None;
         }
     }
 

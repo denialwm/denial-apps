@@ -3,6 +3,9 @@
 //! them, a tap renaming or removing one, and a row to add another, named
 //! first. While one is added the screen holds only its progress, at the
 //! top, leaving the sensor near the bottom clear.
+//!
+//! Adding and removing go through Denial's fingerprint session, which the
+//! PIN opened; once it ends, the next change asks for the PIN again.
 
 use denial_look::words::fill;
 use denial_look_gpui::say;
@@ -16,7 +19,7 @@ use gpui::{
 use super::parts::{Fill, ROW_PAD};
 use super::{Adding, Dialog, Layer, Settings};
 use crate::catalog::FINGERPRINT_UNLOCK;
-use crate::fingerprint::{self, Progress, SLOTS};
+use crate::fingerprint::{self, Event, Progress, SLOTS, Session};
 
 impl Settings {
     pub(super) fn fingers_screen(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
@@ -135,7 +138,9 @@ impl Settings {
             cx,
             |this, _, cx| {
                 this.fingers.adding = None;
-                this.read_fingers(cx);
+                if let Some((session, _)) = this.fingers.session.as_mut() {
+                    session.cancel();
+                }
                 cx.notify();
             },
         );
@@ -202,9 +207,72 @@ impl Settings {
         .detach();
     }
 
+    /// Follows the session the PIN opened, which found `enrolled`.
+    pub(super) fn follow_session(
+        &mut self,
+        session: Session,
+        enrolled: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let events = session.events.clone();
+        let task = cx.spawn(async move |this, cx| {
+            while let Ok(event) = events.recv().await {
+                if this
+                    .update(cx, |view, cx| view.session_said(event, cx))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        self.fingers.session = Some((session, task));
+        self.fingers.enrolled = Some(enrolled);
+        self.fingers.read = true;
+        cx.notify();
+    }
+
+    fn session_said(&mut self, event: Event, cx: &mut Context<Self>) {
+        match event {
+            Event::Fingers(enrolled) => {
+                if let Some(finger) = self.fingers.removing.take()
+                    && !enrolled.contains(&finger)
+                {
+                    self.note(
+                        fill("{name} removed", &[("name", &self.finger_name(&finger))]),
+                        cx,
+                    );
+                    self.fingers.names.remove(&finger);
+                    self.keep_names(cx);
+                }
+                self.fingers.enrolled = Some(enrolled);
+            }
+            Event::Progress(step) => self.took(step, cx),
+            Event::Refused(why) => self.note(why, cx),
+            Event::Ended => {
+                self.fingers.session = None;
+                self.fingers.removing = None;
+                if self.fingers.adding.take().is_some() {
+                    self.note("Enter the PIN again to add it", cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// The open session, or, without one, the PIN asked for again.
+    fn session(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<&mut Session> {
+        if self.fingers.session.is_none() {
+            self.open_fingers(window, cx);
+        }
+        self.fingers.session.as_mut().map(|(session, _)| session)
+    }
+
     /// Asks the name of a fingerprint to add, or, for `finger`, its new
     /// name, with the choice to remove it.
     fn ask_finger(&mut self, finger: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if finger.is_none() && self.session(window, cx).is_none() {
+            return;
+        }
         let name = match &finger {
             Some(finger) => self.finger_name(finger),
             None => String::new(),
@@ -260,24 +328,20 @@ impl Settings {
     /// Adds `finger`, the screen following each touch, until it is added,
     /// fails or is cancelled.
     fn add_finger(&mut self, finger: &'static str, name: String, cx: &mut Context<Self>) {
-        let (steps, said) = async_channel::unbounded();
-        let task = cx.spawn(async move |this, cx| {
-            let _adding =
-                cx.background_spawn(async move { fingerprint::add(finger, &steps).await });
-            while let Ok(step) = said.recv().await {
-                let finished = matches!(step, Progress::Added | Progress::Failed(_));
-                if this.update(cx, |view, cx| view.took(step, cx)).is_err() || finished {
-                    return;
-                }
-            }
-        });
+        let Some((session, _)) = self.fingers.session.as_mut() else {
+            self.note("Enter the PIN again to add it", cx);
+            return;
+        };
+        if !session.add(finger) {
+            self.note("Fingerprints cannot change now", cx);
+            return;
+        }
         self.fingers.adding = Some(Adding {
             finger,
             name,
             sensor: fingerprint::sensor(),
             progress: Progress::Touches { done: 0, of: 0 },
             again: None,
-            _task: task,
         });
         cx.notify();
     }
@@ -298,12 +362,10 @@ impl Settings {
                 self.note(fill("{name} added", &[("name", &name)]), cx);
                 self.fingers.names.insert(finger, name);
                 self.keep_names(cx);
-                self.read_fingers(cx);
             }
             Progress::Failed(why) => {
                 self.fingers.adding = None;
                 self.note(why, cx);
-                self.read_fingers(cx);
             }
         }
         cx.notify();
@@ -315,37 +377,23 @@ impl Settings {
                 title: fill("Remove {name}?", &[("name", &self.finger_name(&finger))]).into(),
                 consequence: "It no longer unlocks the phone.".into(),
                 action: "Remove",
-                confirm: Rc::new(move |this, _, cx| this.remove_finger(finger.clone(), cx)),
+                confirm: Rc::new(move |this, window, cx| {
+                    this.remove_finger(finger.clone(), window, cx)
+                }),
             },
             cx,
         );
     }
 
-    fn remove_finger(&mut self, finger: String, cx: &mut Context<Self>) {
-        self.fingers.removing = Some(finger.clone());
+    fn remove_finger(&mut self, finger: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(session) = self.session(window, cx) else {
+            return;
+        };
+        if !session.remove(&finger) {
+            self.note("Fingerprints cannot change now", cx);
+            return;
+        }
+        self.fingers.removing = Some(finger);
         cx.notify();
-        cx.spawn(async move |this, cx| {
-            let removed = {
-                let finger = finger.clone();
-                cx.background_spawn(async move { fingerprint::remove(&finger).await })
-                    .await
-            };
-            let _ = this.update(cx, |view, cx| {
-                view.fingers.removing = None;
-                match removed {
-                    Ok(()) => {
-                        view.note(
-                            fill("{name} removed", &[("name", &view.finger_name(&finger))]),
-                            cx,
-                        );
-                        view.fingers.names.remove(&finger);
-                        view.keep_names(cx);
-                    }
-                    Err(why) => view.note(why, cx),
-                }
-                view.read_fingers(cx);
-            });
-        })
-        .detach();
     }
 }
