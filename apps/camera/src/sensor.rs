@@ -3,8 +3,10 @@
 //! colour is the stock tuning of each module, the QTech IMX890 (as
 //! libcamera's imx890.yaml in Phonewave has it) and the Sunny S5K3P9, from
 //! the facts exports in ~/.cache/phonewave/aston. The RedMagic 11 Pro
-//! (nx809j): the OV50D40 ultrawide and the OV16A1Q front camera, untuned.
+//! (nx809j): the OV50E40 main camera, the OV50D40 ultrawide and the OV16A1Q
+//! front camera, untuned.
 
+use std::ops::RangeInclusive;
 use std::sync::OnceLock;
 
 use crate::{device, shading};
@@ -152,11 +154,18 @@ pub struct Sensor {
     pub rotation: u32,
     /// The image is shown and kept mirrored, as a mirror would show it.
     pub mirror: bool,
-    /// The start of the focus motor's media entity name.
-    pub lens: Option<&'static str>,
-    /// Lens position, 0 to 1023, before the first focus sweep ends.
-    pub focus: u32,
+    pub lens: Option<Lens>,
     pub colour: &'static Colour,
+}
+
+/// A focus motor.
+pub struct Lens {
+    /// The start of its media entity name.
+    pub entity: &'static str,
+    /// The positions the focus sweep covers.
+    pub travel: RangeInclusive<u32>,
+    /// Lens position before the first focus sweep ends.
+    pub start: u32,
 }
 
 /// The Ace 3's main camera: Sony IMX890 over C-PHY, 4096x3072 binned,
@@ -180,9 +189,12 @@ pub static ACE3_MAIN: Sensor = Sensor {
     max_gain: 16.0,
     rotation: 90,
     mirror: false,
-    lens: Some("dw9719"),
-    // Sharp at about 30 cm.
-    focus: 416,
+    lens: Some(Lens {
+        entity: "dw9719",
+        travel: 0..=1023,
+        // Sharp at about 30 cm.
+        start: 416,
+    }),
     colour: &IMX890,
 };
 
@@ -209,12 +221,11 @@ pub static ACE3_FRONT: Sensor = Sensor {
     rotation: 90,
     mirror: true,
     lens: None,
-    focus: 0,
     colour: &S5K3P9,
 };
 
 /// The RedMagic 11 Pro's main camera: OmniVision OV50E40 over C-PHY,
-/// 4096x3072 binned, 30 fps. Its autofocus is not powered yet.
+/// 4096x3072 binned, 30 fps.
 pub static NX809J_MAIN: Sensor = Sensor {
     name: "OV50E40",
     facing: Facing::Back,
@@ -236,8 +247,13 @@ pub static NX809J_MAIN: Sensor = Sensor {
     // The driver reports a 270 degree counter-clockwise correction.
     rotation: 90,
     mirror: false,
-    lens: None,
-    focus: 0,
+    // A shelf at 3 m is sharp from 0x600 to 0x800, a chart at 12 cm from
+    // 0x880 to 0xb00; the ends go past both.
+    lens: Some(Lens {
+        entity: "dw9785",
+        travel: 0x500..=0xc00,
+        start: 0x700,
+    }),
     colour: &UNTUNED,
 };
 
@@ -265,7 +281,6 @@ pub static NX809J_ULTRAWIDE: Sensor = Sensor {
     rotation: 90,
     mirror: false,
     lens: None,
-    focus: 0,
     colour: &UNTUNED,
 };
 
@@ -293,7 +308,6 @@ pub static NX809J_FRONT: Sensor = Sensor {
     rotation: 270,
     mirror: true,
     lens: None,
-    focus: 0,
     colour: &UNTUNED,
 };
 

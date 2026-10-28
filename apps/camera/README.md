@@ -6,8 +6,7 @@ as packed 10-bit raw (`src/device.rs`), and everything after that is ours.
 Each phone's cameras are in `src/sensor.rs`, and the app uses the ones the
 media graph has. The Ace 3 (aston): the IMX890 main camera and the S5K3P9
 front camera. The RedMagic 11 Pro (nx809j): the OV50E40 main camera as the
-back camera, at a fixed focus while its focus motor is unpowered, and the
-OV16A1Q as the front one; the OV50D40 ultrawide stands in for the main
+back camera, focused through its DW9785, and the OV16A1Q as the front one; the OV50D40 ultrawide stands in for the main
 camera when the kernel has no OV50E40. All three are untuned (grey world
 white balance, the raw colours, no lens shading).
 

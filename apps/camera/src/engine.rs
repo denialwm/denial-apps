@@ -3,6 +3,7 @@
 //! is developed from. The window talks to it through `Command`s and hears
 //! back through `Event`s.
 
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +14,7 @@ use image::{Frame, RgbaImage};
 use crate::device::Device;
 use crate::isp::{self, Exposure, Preview, Rendering, Tone};
 use crate::photo::{self, Group};
-use crate::sensor::{self, Facing, Sensor};
+use crate::sensor::{self, Facing, Lens, Sensor};
 
 /// Frames the sensor takes to apply new exposure controls, plus one.
 const SETTLE: usize = 3;
@@ -24,10 +25,11 @@ const AE_EVERY: usize = 3;
 /// for the shadows, a shorter one, and a much shorter one for the lights.
 const BRACKET: [(f32, usize); 3] = [(2.0, 8), (0.25, 4), (1.0 / 16.0, 4)];
 /// The focus sweep: coarse over the whole travel, then fine around the
-/// best coarse position.
+/// best coarse position. The steps are for a travel of `TRAVEL` positions
+/// and scale with the lens's.
 const COARSE: u32 = 80;
 const FINE: u32 = 16;
-const MAX_FOCUS: u32 = 1023;
+const TRAVEL: u32 = 1023;
 /// Waiting this long for the camera to come back after an error.
 const RETRY: Duration = Duration::from_secs(2);
 
@@ -62,18 +64,26 @@ struct Sweep {
     wait: usize,
     scores: Vec<(u32, f32)>,
     fine: bool,
+    travel: RangeInclusive<u32>,
+    coarse_step: u32,
+    fine_step: u32,
 }
 
 impl Sweep {
-    fn coarse(x: f32, y: f32) -> Self {
+    fn coarse(x: f32, y: f32, lens: &Lens) -> Self {
+        let span = lens.travel.end() - lens.travel.start();
+        let coarse_step = COARSE * span / TRAVEL;
         Self {
             x,
             y,
-            positions: (0..=MAX_FOCUS).step_by(COARSE as usize).collect(),
+            positions: lens.travel.clone().step_by(coarse_step as usize).collect(),
             next: 0,
             wait: 0,
             scores: Vec::new(),
             fine: false,
+            travel: lens.travel.clone(),
+            coarse_step,
+            fine_step: FINE * span / TRAVEL,
         }
     }
 }
@@ -152,8 +162,8 @@ fn stream(
     let mut exposure = Exposure::of(20_000.0, sensor);
     device.expose(exposure.lines, sensor.gain.code(exposure.gain))?;
     let mut rendering = Rendering::neutral(sensor.colour);
-    let mut sweep = device.has_lens().then(|| Sweep::coarse(0.5, 0.5));
-    let mut focus = sensor.focus;
+    let mut sweep = sensor.lens.as_ref().map(|lens| Sweep::coarse(0.5, 0.5, lens));
+    let mut focus = sensor.lens.as_ref().map_or(0, |lens| lens.start);
     device.focus(focus)?;
     if events.send_blocking(Event::Opened(facing)).is_err() {
         return Ok(Stop::Closed);
@@ -167,8 +177,8 @@ fn stream(
                 Command::Hide(true) => return Ok(Stop::Hide),
                 Command::Zoom(next) => *zoom = next,
                 Command::Focus(x, y) => {
-                    if device.has_lens() {
-                        sweep = Some(Sweep::coarse(x, y));
+                    if let Some(lens) = &sensor.lens {
+                        sweep = Some(Sweep::coarse(x, y, lens));
                     }
                 }
                 Command::Shoot => {
@@ -250,9 +260,9 @@ fn step_sweep(sweep: &mut Sweep, preview: &Preview, device: &Device, focus: &mut
             return Ok(true);
         }
         sweep.fine = true;
-        sweep.positions = (best.saturating_sub(COARSE / 2)..=(best + COARSE / 2).min(MAX_FOCUS))
-            .step_by(FINE as usize)
-            .collect();
+        let start = best.saturating_sub(sweep.coarse_step / 2).max(*sweep.travel.start());
+        let end = (best + sweep.coarse_step / 2).min(*sweep.travel.end());
+        sweep.positions = (start..=end).step_by(sweep.fine_step as usize).collect();
         sweep.scores.clear();
         sweep.next = 0;
     }

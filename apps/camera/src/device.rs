@@ -409,8 +409,8 @@ impl Device {
         set_pad_format(&rdi, 1, sensor)?;
         // The focus motor powers down a second after its node closes, so the
         // device holds it open while it streams.
-        let lens = match sensor.lens {
-            Some(lens) => Some(graph.node(&graph.find(|name| name.starts_with(lens))?.name.clone())?),
+        let lens = match &sensor.lens {
+            Some(lens) => Some(graph.node(&graph.find(|name| name.starts_with(lens.entity))?.name.clone())?),
             None => None,
         };
 
@@ -563,10 +563,6 @@ impl Device {
             Some(lens) => Self::control(lens, CID_FOCUS_ABSOLUTE, position as i32),
             None => Ok(()),
         }
-    }
-
-    pub fn has_lens(&self) -> bool {
-        self.lens.is_some()
     }
 }
 
