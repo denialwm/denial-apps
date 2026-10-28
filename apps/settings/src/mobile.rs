@@ -84,10 +84,28 @@ pub struct State {
     pub sim_slot: u8,
     /// The SIM's own number as it holds it; empty when it holds none.
     pub number: String,
+    /// Registered with packet service: data can start.
+    pub attached: bool,
+    /// The last registration the network refused, in dmail's words, and
+    /// when (Unix time, 0 for none).
+    pub last_reject: (String, i64),
     /// Whether mobile data is on, and where its session is.
     pub data_enabled: bool,
     pub data: Data,
     pub interface: String,
+    pub apn: String,
+    /// "10.0.0.2/30", while connected.
+    pub address: String,
+    pub dns: Vec<String>,
+    pub mtu: u32,
+    /// When the session came up, Unix time; 0 unless connected.
+    pub since: i64,
+    /// When dmail tries again, Unix time; 0 for no waiting try.
+    pub retry_at: i64,
+    /// Sessions the network ended since dmail started.
+    pub drops: u32,
+    /// Why the last session ended or did not start, and when.
+    pub last_failure: (String, i64),
 }
 
 impl State {
@@ -151,6 +169,22 @@ impl Link {
         self.call(MODEM, "SetSimSlot", &(slot,)).await
     }
 
+    /// A new data session at once, also after the network refused one.
+    pub async fn reconnect(&self) -> Result<(), Refusal> {
+        self.call(DATA, "Reconnect", &()).await
+    }
+
+    /// Radio off and on: the phone registers anew. Answers once the radio
+    /// is back on.
+    pub async fn restart_radio(&self) -> Result<(), Refusal> {
+        self.call(MODEM, "RestartRadio", &()).await
+    }
+
+    /// dmail sets the modem up again from the start.
+    pub async fn restart(&self) -> Result<(), Refusal> {
+        self.call(MODEM, "Restart", &()).await
+    }
+
     async fn read(&self) -> zbus::Result<State> {
         let all = |interface: &'static str| async move {
             let reply = self
@@ -185,11 +219,33 @@ impl Link {
             pin_retries: get(&modem, "PinRetries").unwrap_or(0),
             sim_slot: get(&modem, "SimSlot").unwrap_or(1),
             number: get(&modem, "Number").unwrap_or_default(),
+            attached: get(&modem, "Attached").unwrap_or(false),
+            last_reject: get(&modem, "LastReject").unwrap_or_default(),
             data_enabled: get(&data, "Enabled").unwrap_or(false),
             data: Data::parse(&get::<String>(&data, "State").unwrap_or_default()),
             interface: get(&data, "Interface").unwrap_or_default(),
+            apn: get(&data, "Apn").unwrap_or_default(),
+            address: get(&data, "Address").unwrap_or_default(),
+            dns: get(&data, "Dns").unwrap_or_default(),
+            mtu: get(&data, "Mtu").unwrap_or(0),
+            since: get(&data, "Since").unwrap_or(0),
+            retry_at: get(&data, "RetryAt").unwrap_or(0),
+            drops: get(&data, "Drops").unwrap_or(0),
+            last_failure: get(&data, "LastFailure").unwrap_or_default(),
         })
     }
+}
+
+/// Bytes received and sent on `interface` since it came up.
+pub fn traffic(interface: &str) -> Option<(u64, u64)> {
+    if interface.is_empty() || interface.contains('/') {
+        return None;
+    }
+    let read = |what: &str| {
+        let path = format!("/sys/class/net/{interface}/statistics/{what}");
+        std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    };
+    Some((read("rx_bytes")?, read("tx_bytes")?))
 }
 
 /// Follows dmail for as long as `updates` is heard: what it reports, or

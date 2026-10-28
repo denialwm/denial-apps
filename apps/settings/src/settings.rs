@@ -134,6 +134,10 @@ impl Screen {
         matches!(self, Screen::Page(page) if matches!(page.content, Content::Display))
     }
 
+    fn shows_mobile(&self) -> bool {
+        matches!(self, Screen::Page(page) if matches!(page.content, Content::Mobile))
+    }
+
     /// Bluetooth shows devices nearby here, so it keeps looking for them.
     fn looks(&self) -> bool {
         matches!(self, Screen::Page(page) if matches!(page.content, Content::Bluetooth))
@@ -455,6 +459,10 @@ struct Mobile {
     link: Option<mobile::Link>,
     /// Heard from dmail once at least; until then the page shows nothing.
     read: bool,
+    /// The recovery step running, as its row says it meanwhile.
+    busy: Option<&'static str>,
+    /// Bytes received and sent on the data link, read while the page shows.
+    traffic: Option<(u64, u64)>,
 }
 
 /// Bluetooth as Settings knows it.
@@ -541,6 +549,9 @@ pub struct Settings {
     reading_volume: Option<Task<()>>,
     /// Reading the clock again every second, while Date and time shows.
     reading_clock: Option<Task<()>>,
+    /// Reading the data link's traffic every two seconds, while Mobile
+    /// network shows; its times move on meanwhile.
+    reading_mobile: Option<Task<()>>,
     /// Unlocking the SIM, until dmail answers.
     _unlocking: Task<()>,
     _bluetooth: Task<()>,
@@ -702,6 +713,7 @@ impl Settings {
             reading_panel: None,
             reading_volume: None,
             reading_clock: None,
+            reading_mobile: None,
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
             android: android::Android::default(),
@@ -782,11 +794,11 @@ impl Settings {
         while let Ok(update) = received.recv().await {
             let taken = this.update(cx, |view, cx| {
                 let (link, state) = update.unzip();
-                view.mobile = Mobile {
-                    state: state.unwrap_or_default(),
-                    link,
-                    read: true,
-                };
+                let mobile = &mut view.mobile;
+                mobile.state = state.unwrap_or_default();
+                mobile.traffic = mobile::traffic(&mobile.state.interface);
+                mobile.link = link;
+                mobile.read = true;
                 cx.notify();
             });
             if taken.is_err() {
@@ -903,6 +915,7 @@ impl Settings {
         self.follow_panel(cx);
         self.follow_volume(cx);
         self.follow_clock(cx);
+        self.follow_traffic(cx);
         self.follow_android(cx);
         if self.screen.is_page("storage") {
             self.read_storage(cx);

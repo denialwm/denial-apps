@@ -528,6 +528,53 @@ pub static CHINESE: &[(&str, &str)] = &[
     ),
     ("{count} tries left", "还剩 {count} 次机会"),
     ("Unlock the SIM", "解锁 SIM 卡"),
+    ("Trying again in {seconds} s", "{seconds} 秒后重试"),
+    (
+        "Waiting for the network to allow data",
+        "正在等待网络允许数据连接",
+    ),
+    (
+        "The network turned data down. Restart the radio to ask again",
+        "网络拒绝了数据连接。重启无线电即可再次请求",
+    ),
+    ("Signal", "信号"),
+    ("Packet service", "分组数据服务"),
+    ("Attached", "已附着"),
+    ("Not attached", "未附着"),
+    ("Last refusal", "上次被拒"),
+    ("Address", "地址"),
+    ("Connected for", "已连接时长"),
+    ("Received and sent", "接收和发送"),
+    ("Drops since dmail started", "dmail 启动以来的断开次数"),
+    ("Last drop", "上次断开"),
+    ("If the network goes away", "如果网络断开"),
+    ("Reconnect mobile data", "重新连接移动数据"),
+    (
+        "Ends the data session and starts a new one",
+        "结束数据会话并重新建立",
+    ),
+    ("Reconnecting…", "正在重新连接…"),
+    ("Could not reconnect: {why}", "无法重新连接：{why}"),
+    ("Restart the radio", "重启无线电"),
+    (
+        "Calls and data stop for a few seconds while the phone registers again",
+        "手机重新注册网络时，通话和数据会中断几秒",
+    ),
+    ("Restarting the radio…", "正在重启无线电…"),
+    (
+        "Could not restart the radio: {why}",
+        "无法重启无线电：{why}",
+    ),
+    ("Start the modem over", "重新启动调制解调器"),
+    (
+        "dmail sets the modem up again from the beginning",
+        "dmail 从头重新设置调制解调器",
+    ),
+    ("Starting the modem over…", "正在重新启动调制解调器…"),
+    (
+        "Could not start the modem over: {why}",
+        "无法重新启动调制解调器：{why}",
+    ),
     // Bluetooth.
     ("Bluetooth is not available", "蓝牙不可用"),
     (

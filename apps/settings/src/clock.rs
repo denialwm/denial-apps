@@ -143,12 +143,19 @@ pub fn now() -> libc::tm {
     local(seconds)
 }
 
+/// Seconds since the epoch, now.
+pub fn seconds_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs() as i64)
+}
+
 unsafe extern "C" {
     /// The C library's; the libc crate does not bind it.
     fn tzset();
 }
 
-fn local(seconds: libc::time_t) -> libc::tm {
+pub fn local(seconds: libc::time_t) -> libc::tm {
     // SAFETY: tzset reads the environment and /etc/localtime again, which
     // localtime_r alone does once only; localtime_r writes only into `tm`.
     unsafe {

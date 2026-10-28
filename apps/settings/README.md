@@ -38,6 +38,13 @@ on (operator, type, signal, roaming) or why there is none (SIM locked or
 blocked, no SIM, searching, the modem stopped), the Mobile data switch, which
 SIM slot is used, and the network's details. A locked SIM is unlocked with
 its PIN in a dialog, which comes back with the tries left after a wrong one.
+Below them, what dmail knows when something is wrong: packet service and the
+network's last refusal; the session's APN, address, DNS, MTU, how long it has
+been up and its traffic (read from sysfs every two seconds while the page
+shows); how many sessions the network ended and why the last one went. Then
+three ways back, smallest first: reconnect mobile data (`Data1.Reconnect`),
+restart the radio (`Modem1.RestartRadio`) and start the modem over
+(`Modem1.Restart`, also the way out of "The modem stopped").
 The bus is open to root and the `dmail` group only. dmail has no roaming,
 network type, APN or airplane mode settings yet, so the page has none.
 
