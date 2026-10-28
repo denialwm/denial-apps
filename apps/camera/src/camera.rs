@@ -23,9 +23,8 @@ use gpui::{
     prelude::*, px, radians, relative,
 };
 
-use crate::engine::{Command, Event};
+use crate::engine::{Command, Commands, Event, Facing};
 use crate::library::{self, Loaded, Request};
-use crate::sensor::{self, Facing, turned};
 
 use gallery::Viewer;
 
@@ -93,7 +92,7 @@ pub struct Camera {
     look: Look,
     font: Font,
     focus_handle: FocusHandle,
-    commands: async_channel::Sender<Command>,
+    commands: Commands,
     library: async_channel::Sender<Request>,
     screen: Screen,
     /// The screen fading in.
@@ -104,6 +103,11 @@ pub struct Camera {
     closed: bool,
 
     facing: Facing,
+    /// How many times as tall as it is wide the open camera's frame is,
+    /// upright.
+    aspect: f32,
+    /// The open camera can focus.
+    lens: bool,
     state: State,
     preview: Option<Arc<RenderImage>>,
     zoom: f32,
@@ -162,7 +166,7 @@ fn camera_look() -> Look {
 
 impl Camera {
     pub fn new(
-        commands: async_channel::Sender<Command>,
+        commands: Commands,
         events: async_channel::Receiver<Event>,
         library: async_channel::Sender<Request>,
         loaded: async_channel::Receiver<Loaded>,
@@ -181,6 +185,8 @@ impl Camera {
             shown: true,
             closed: false,
             facing: Facing::Back,
+            aspect: 4.0 / 3.0,
+            lens: false,
             state: State::Opening,
             preview: None,
             zoom: 1.0,
@@ -271,7 +277,11 @@ impl Camera {
         match event {
             // Opening lasts until the first frame: the last frame shown
             // stays blurred until then.
-            Event::Opened(facing) => self.facing = facing,
+            Event::Opened { facing, aspect, lens } => {
+                self.facing = facing;
+                self.aspect = aspect;
+                self.lens = lens;
+            }
             Event::Preview(image) => {
                 if let Some(old) = self.preview.replace(image) {
                     let _ = window.drop_image(old);
@@ -292,15 +302,12 @@ impl Camera {
                 self.arrival = Some(self.look.tween(motion::NEW_MESSAGE));
                 self.note(tr("Saved to Pictures"));
             }
-            Event::Failed(error) => {
-                if self.capturing || self.developing > 0 {
-                    self.capturing = false;
-                    self.developing = self.developing.saturating_sub(1);
-                    self.note(error);
-                } else {
-                    self.state = State::Failed(error.into());
-                }
+            Event::PhotoFailed(error) => {
+                self.capturing = false;
+                self.developing = self.developing.saturating_sub(1);
+                self.note(error);
             }
+            Event::Failed(error) => self.state = State::Failed(error.into()),
         }
         cx.notify();
     }
@@ -448,7 +455,7 @@ impl Camera {
     }
 
     fn focus_at(&mut self, x: f32, y: f32, cx: &mut Context<Self>) {
-        if self.facing != Facing::Back || !matches!(self.state, State::Live) {
+        if !self.lens || !matches!(self.state, State::Live) {
             return;
         }
         if self.commands.try_send(Command::Focus(x, y)).is_ok() {
@@ -471,12 +478,10 @@ impl Camera {
     }
 
     /// The preview's place: centred in the window, as wide as the window
-    /// allows, in the sensor's upright aspect, leaving room for the top
+    /// allows, in the camera's upright aspect, leaving room for the top
     /// pill above and the controls below.
     fn preview_bounds(&self, width: f32, height: f32) -> (f32, f32, f32, f32) {
-        let sensor = sensor::of(self.facing);
-        let (w, h) = turned(sensor.width as usize, sensor.height as usize, sensor.rotation);
-        let aspect = h as f32 / w as f32;
+        let aspect = self.aspect;
         let above = 2.0 * INSET + f32::from(dp(BAR));
         let below = GESTURE_INSET + f32::from(dp(SHUTTER + 2.0 * CHIP_ROOM));
         let room = (height - above - below).max(0.0);

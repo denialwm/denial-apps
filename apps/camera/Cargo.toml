@@ -7,6 +7,8 @@ publish.workspace = true
 
 [dependencies]
 async-channel = "2.5"
+# Phonewave's camera service: the client side only.
+braun = { path = "../../../phonewave/services/camera/braun", default-features = false }
 denial-look = { path = "../../libraries/denial-look" }
 denial-look-gpui = { path = "../../libraries/denial-look-gpui" }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }

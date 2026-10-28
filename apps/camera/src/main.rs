@@ -1,11 +1,6 @@
 mod camera;
-mod device;
 mod engine;
-mod isp;
 mod library;
-mod photo;
-mod sensor;
-mod shading;
 mod words;
 
 use gpui::{
@@ -20,13 +15,13 @@ const APP_ID: &str = "org.denialwm.Camera";
 
 fn main() {
     denial_look::words::register_chinese(words::CHINESE);
-    let (commands, engine_commands) = async_channel::bounded(8);
+    let (commands, inbox) = engine::commands();
     // One preview frame waits at most; the camera drops frames the window
     // has no time for.
     let (engine_events, events) = async_channel::bounded(1);
     std::thread::Builder::new()
         .name("camera".into())
-        .spawn(move || engine::run(engine_commands, engine_events))
+        .spawn(move || engine::run(inbox, engine_events))
         .expect("camera thread");
     let (library, library_requests) = async_channel::unbounded();
     let (library_loaded, loaded) = async_channel::bounded(4);

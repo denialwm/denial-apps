@@ -590,6 +590,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "braun"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "zbus",
+]
+
+[[package]]
 name = "built"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -683,6 +691,7 @@ name = "camera"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "braun",
  "denial-look",
  "denial-look-gpui",
  "gpui",
