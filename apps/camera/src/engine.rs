@@ -1,6 +1,6 @@
 //! The camera thread. braun (Phonewave's camera service) finds the cameras,
-//! streams them and develops the photos; this thread picks the camera the
-//! window faces, passes on what the window asks, turns braun's previews into
+//! streams them and develops the photos; this thread opens the camera the
+//! window picks, passes on what the window asks, turns braun's previews into
 //! images and names the photos. The window talks to it through `Command`s
 //! and hears back through `Event`s.
 
@@ -34,10 +34,34 @@ impl Facing {
             Facing::Front => "front",
         }
     }
+
+    pub fn of(camera: &Info) -> Self {
+        if camera.facing == Facing::Front.name() {
+            Facing::Front
+        } else {
+            Facing::Back
+        }
+    }
+
+    /// The cameras facing this way that are cameras to show: not auxiliary
+    /// ones.
+    pub fn cameras(self, cameras: &[Info]) -> impl Iterator<Item = &Info> {
+        cameras
+            .iter()
+            .filter(move |camera| Facing::of(camera) == self && camera.role != "auxiliary")
+    }
+
+    /// The camera to open facing this way: its main one, else the first.
+    pub fn camera(self, cameras: &[Info]) -> Option<&Info> {
+        self.cameras(cameras)
+            .find(|camera| camera.role == "main")
+            .or_else(|| self.cameras(cameras).next())
+    }
 }
 
 pub enum Command {
-    Switch(Facing),
+    /// Open camera `id`.
+    Open(String),
     /// The window is hidden (true) or shown again: the camera closes while
     /// no one can see it.
     Hide(bool),
@@ -50,9 +74,11 @@ pub enum Command {
 }
 
 pub enum Event {
-    /// The camera facing this way is open: its frame upright is `aspect`
-    /// times as tall as it is wide, and it can focus if it has a `lens`.
-    Opened { facing: Facing, aspect: f32, lens: bool },
+    /// The cameras braun offers.
+    Cameras(Vec<Info>),
+    /// Camera `id` is open: its frame upright is `aspect` times as tall as
+    /// it is wide, and it can focus if it has a `lens`.
+    Opened { id: String, aspect: f32, lens: bool },
     Preview(Arc<RenderImage>),
     /// The burst is in; the photo is being developed.
     Captured,
@@ -112,7 +138,8 @@ struct Engine {
     events: async_channel::Sender<Event>,
     session: Option<Session>,
     cameras: Vec<Info>,
-    facing: Facing,
+    /// The camera the window picked; until it does, the main back one.
+    wanted: Option<String>,
     zoom: f32,
     shown: bool,
     /// The camera asked for and not failed since.
@@ -130,7 +157,7 @@ pub fn run(inbox: Inbox, events: async_channel::Sender<Event>) {
         events,
         session: None,
         cameras: Vec::new(),
-        facing: Facing::Back,
+        wanted: None,
         zoom: 1.0,
         shown: true,
         open: None,
@@ -181,6 +208,7 @@ impl Engine {
         if self.session.is_none() {
             match Session::connect().and_then(|session| Ok((session, client::cameras()?))) {
                 Ok((session, cameras)) => {
+                    let _ = self.events.send_blocking(Event::Cameras(cameras.clone()));
                     self.cameras = cameras;
                     let _ = session.send(&Request::Zoom(self.zoom), &[]);
                     self.session = Some(session);
@@ -189,24 +217,14 @@ impl Engine {
             }
         }
         if self.shown && self.open.is_none() {
-            self.open_facing();
+            self.open_wanted();
         }
     }
 
-    /// The camera facing `facing`: its main one, else the first that is not
-    /// an auxiliary camera.
-    fn camera(&self, facing: Facing) -> Option<&Info> {
-        let facing_this = |camera: &&Info| camera.facing == facing.name() && camera.role != "auxiliary";
-        self.cameras
-            .iter()
-            .filter(facing_this)
-            .find(|camera| camera.role == "main")
-            .or_else(|| self.cameras.iter().find(facing_this))
-    }
-
-    fn open_facing(&mut self) {
-        let Some(id) = self.camera(self.facing).map(|camera| camera.id.clone()) else {
-            return self.failed(format!("no {} camera", self.facing.name()));
+    fn open_wanted(&mut self) {
+        let wanted = self.wanted.clone().or_else(|| Facing::Back.camera(&self.cameras).map(|camera| camera.id.clone()));
+        let Some(id) = wanted else {
+            return self.failed("no camera".into());
         };
         if self.send(&Request::Open(id.clone()), &[]) {
             self.open = Some(id);
@@ -228,10 +246,10 @@ impl Engine {
     fn command(&mut self, command: Command) {
         self.stalled = false;
         match command {
-            Command::Switch(facing) => {
-                self.facing = facing;
+            Command::Open(id) => {
+                self.wanted = Some(id);
                 if self.shown && self.session.is_some() {
-                    self.open_facing();
+                    self.open_wanted();
                 }
             }
             Command::Hide(hidden) => {
@@ -304,7 +322,7 @@ impl Engine {
             match reply {
                 Reply::Opened { width, height, lens, .. } => {
                     let _ = self.events.send_blocking(Event::Opened {
-                        facing: self.facing,
+                        id: self.open.clone().unwrap_or_default(),
                         aspect: height as f32 / width.max(1) as f32,
                         lens,
                     });

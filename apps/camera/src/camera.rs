@@ -2,7 +2,7 @@
 //! Denial's mobile materials (denial/docs/MOBILE_APP_MATERIALS.md) as an
 //! opaque window: always the dark palette on black, raised islands for the
 //! controls, glass only over its own picture. The preview is centred, the
-//! top pill holds the timer and the grid, the zoom sits on the preview, and
+//! top pill holds the timer and the grid, the lenses sit on the preview, and
 //! the last photo, the shutter and the camera switch are centred under it.
 //! The gallery (`gallery`) shows the photos one by one and as a grid.
 
@@ -22,6 +22,8 @@ use gpui::{
     RenderImage, SharedString, Stateful, Subscription, Task, Transformation, WeakEntity, Window, actions, div, img,
     prelude::*, px, radians, relative,
 };
+
+use braun::client::Info;
 
 use crate::engine::{Command, Commands, Event, Facing};
 use crate::library::{self, Loaded, Request};
@@ -46,9 +48,10 @@ const SIDE_RADIUS: f32 = 12.0;
 const ICON: f32 = 24.0;
 /// Room under the preview for a chip above the shutter, dp.
 const CHIP_ROOM: f32 = 30.0;
-/// The zoom buttons on the preview, dp, and their glass.
+/// The lens buttons on the preview, dp, and their glass.
 const ZOOM: f32 = 38.0;
 const ZOOM_TINT: f32 = 0.35;
+/// The crops each way's own camera offers.
 const ZOOMS: [f32; 2] = [1.0, 2.0];
 /// The timer's choices, seconds; 0 is off.
 const TIMERS: [u32; 3] = [0, 3, 10];
@@ -102,6 +105,10 @@ pub struct Camera {
     /// What the camera was last told: closed (true) or open.
     closed: bool,
 
+    /// The cameras braun offers.
+    cameras: Vec<Info>,
+    /// The camera open or opening.
+    camera: Option<String>,
     facing: Facing,
     /// How many times as tall as it is wide the open camera's frame is,
     /// upright.
@@ -184,6 +191,8 @@ impl Camera {
             entered: None,
             shown: true,
             closed: false,
+            cameras: Vec::new(),
+            camera: None,
             facing: Facing::Back,
             aspect: 4.0 / 3.0,
             lens: false,
@@ -277,8 +286,19 @@ impl Camera {
         match event {
             // Opening lasts until the first frame: the last frame shown
             // stays blurred until then.
-            Event::Opened { facing, aspect, lens } => {
-                self.facing = facing;
+            Event::Cameras(cameras) => {
+                // The camera thread opens the main back camera until told
+                // otherwise.
+                if self.camera.is_none() {
+                    self.camera = Facing::Back.camera(&cameras).map(|camera| camera.id.clone());
+                }
+                self.cameras = cameras;
+            }
+            Event::Opened { id, aspect, lens } => {
+                if let Some(camera) = self.cameras.iter().find(|camera| camera.id == id) {
+                    self.facing = Facing::of(camera);
+                }
+                self.camera = Some(id);
                 self.aspect = aspect;
                 self.lens = lens;
             }
@@ -432,18 +452,57 @@ impl Camera {
         }
     }
 
+    /// Turns to the other way's own camera.
     fn switch(&mut self, cx: &mut Context<Self>) {
-        if self.capturing {
-            return;
-        }
         let next = self.facing.other();
-        if self.commands.try_send(Command::Switch(next)).is_ok() {
+        let Some(id) = next.camera(&self.cameras).map(|camera| camera.id.clone()) else {
+            return;
+        };
+        if self.open(id) {
             self.facing = next;
-            self.state = State::Opening;
-            self.mark = None;
             self.turn = Some(self.look.tween(motion::SLIDE));
             cx.notify();
         }
+    }
+
+    /// Opens camera `id`, unless a burst is being taken; true if asked.
+    fn open(&mut self, id: String) -> bool {
+        if self.capturing || self.commands.try_send(Command::Open(id.clone())).is_err() {
+            return false;
+        }
+        self.camera = Some(id);
+        self.state = State::Opening;
+        self.mark = None;
+        true
+    }
+
+    /// A lens button: camera `id` at `crop`.
+    fn pick(&mut self, id: &str, crop: f32, cx: &mut Context<Self>) {
+        if self.camera.as_deref() != Some(id) && !self.open(id.to_string()) {
+            return;
+        }
+        self.set_zoom(crop, cx);
+        cx.notify();
+    }
+
+    /// The lens buttons facing this way, widest first: this way's own
+    /// camera at each of `ZOOMS`, and each other camera the device places
+    /// against the main one. Each is the camera, its crop and the main
+    /// camera's zoom that shows the same.
+    fn lenses(&self) -> Vec<(String, f32, f32)> {
+        let Some(own) = self.facing.camera(&self.cameras) else {
+            return Vec::new();
+        };
+        let base = own.zoom.unwrap_or(1.0);
+        let mut lenses: Vec<_> = ZOOMS.iter().map(|&crop| (own.id.clone(), crop, base * crop)).collect();
+        lenses.extend(
+            self.facing
+                .cameras(&self.cameras)
+                .filter(|camera| camera.id != own.id)
+                .filter_map(|camera| Some((camera.id.clone(), 1.0, camera.zoom?))),
+        );
+        lenses.sort_by(|a, b| a.2.total_cmp(&b.2));
+        lenses
     }
 
     fn set_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
@@ -676,17 +735,20 @@ impl Camera {
                     .child(message),
             )
         }));
-        area.child(self.zoom_buttons(cx))
+        area.child(self.lens_buttons(cx))
     }
 
-    /// 1x and 2x on the preview, on glass over the picture.
-    fn zoom_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The lenses on the preview, on glass over the picture: .6, 1 and 2
+    /// with an ultrawide.
+    fn lens_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let look = &self.look;
-        let buttons = ZOOMS.map(|zoom| {
-            let chosen = zoom == self.zoom;
+        let buttons = self.lenses().into_iter().enumerate().map(|(index, (id, crop, zoom))| {
+            let chosen = self.camera.as_deref() == Some(id.as_str()) && crop == self.zoom;
             div()
-                .id(("zoom", zoom as usize))
-                .size(dp(ZOOM))
+                .id(("lens", index))
+                .h(dp(ZOOM))
+                .min_w(dp(ZOOM))
+                .px(dp(6.))
                 .rounded_full()
                 .flex()
                 .items_center()
@@ -696,10 +758,10 @@ impl Camera {
                 .text_size(dp(if chosen { 13. } else { 12. }))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(if chosen { look.accent } else { look.palette.foreground }))
-                .child(if chosen { format!("{zoom}×") } else { format!("{zoom}") })
+                .child(zoom_label(zoom, chosen))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
-                    this.set_zoom(zoom, cx);
+                    this.pick(&id, crop, cx);
                 }))
         });
         div()
@@ -850,6 +912,17 @@ impl Camera {
             .child(self.preview(bounds, now, cx))
             .children(self.notice(below, now))
             .child(self.controls((below, height - GESTURE_INSET), now, cx))
+    }
+}
+
+/// A zoom as a lens button shows it: ".6" and "2", and chosen "0.6×" and
+/// "2×".
+fn zoom_label(zoom: f32, chosen: bool) -> String {
+    let number = if zoom.fract() == 0.0 { format!("{zoom}") } else { format!("{zoom:.1}") };
+    if chosen {
+        format!("{number}×")
+    } else {
+        number.trim_start_matches('0').to_string()
     }
 }
 

@@ -3,9 +3,9 @@
 Camera app for Denial phones, written with GPUI. The cameras are braun's,
 Phonewave's camera service (phonewave/services/camera/braun): it finds
 them, streams them, runs exposure, white balance and focus, renders the
-preview and develops the photos. The app picks the camera it faces (the
-main back camera, the front one), shows braun's previews, and names and
-keeps the photos.
+preview and develops the photos. The app opens the camera picked (the
+main back camera first), shows braun's previews, and names and keeps the
+photos.
 
 It keeps to Denial's mobile materials
 (denial/docs/MOBILE_APP_MATERIALS.md) as an opaque window: a camera is judged
@@ -13,9 +13,13 @@ on its picture, so it is always dark, on black, whatever the appearance, with
 raised islands for its controls and glass only over its own picture. The
 preview is centred in the camera's upright aspect. Above it, a pill holds the
 timer (off, 3 s, 10 s; the shutter shows a stop while it counts) and the
-rule-of-thirds grid. On the preview, 1x and 2x: 2x crops the middle of the
-frame in the preview, its metering and the photo. Under it: the last photo,
-with a turning arc while photos develop, the shutter and the camera switch.
+rule-of-thirds grid. On the preview, the lenses facing that way, by the
+main camera's zoom each shows: the way's own camera at 1x and 2x, where 2x
+crops the middle of the frame in the preview, its metering and the photo,
+and each other camera the device places against the main one in braun's
+calibration, such as an ultrawide at .6. Under it: the last photo, with a
+turning arc while photos develop, the shutter and the camera switch, which
+opens the other way's own camera.
 A tap on the preview focuses there, on a camera that can focus.
 
 The gallery (`src/camera/gallery.rs`, `src/library.rs`) shows the photos one
