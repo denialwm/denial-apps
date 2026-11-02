@@ -310,10 +310,8 @@ impl Link {
     /// Moves the screen named `name` to `rate` until it is kept: Denial goes back by itself
     /// after `KEEP`. Answers the change's token.
     pub async fn try_rate(&self, name: &str, rate: u32) -> Result<u64, Refusal> {
-        self.try_outputs(name, |mode, _| {
-            mode["refresh_millihz"] = json!(rate)
-        })
-        .await
+        self.try_outputs(name, |mode, _| mode["refresh_millihz"] = json!(rate))
+            .await
     }
 
     /// Scales the screen named `name` to `scale` until it is kept, as

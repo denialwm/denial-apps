@@ -186,7 +186,10 @@ pub async fn unit() -> Result<UnitState, String> {
         )
         .await
     {
-        Ok(reply) => reply.body().deserialize().map_err(|error| error.to_string())?,
+        Ok(reply) => reply
+            .body()
+            .deserialize()
+            .map_err(|error| error.to_string())?,
         Err(_) => return Ok(UnitState::default()),
     };
     let unit = zbus::proxy::Builder::<zbus::Proxy>::new(&bus)
@@ -223,7 +226,13 @@ pub fn failure(state: UnitState) -> Option<String> {
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let output = std::process::Command::new("journalctl")
-        .args(["--user", "--quiet", "--no-pager", "--output=cat", "--lines=1"])
+        .args([
+            "--user",
+            "--quiet",
+            "--no-pager",
+            "--output=cat",
+            "--lines=1",
+        ])
         .arg(format!("_SYSTEMD_USER_UNIT={UNIT}"))
         .arg(format!("_SYSTEMD_INVOCATION_ID={invocation}"))
         .stderr(std::process::Stdio::null())

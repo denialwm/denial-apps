@@ -109,16 +109,20 @@ impl Settings {
             )
             .child(self.value(percent(monitor.scale)))
             .child(self.chevron());
-        let mut screen = island(&self.look)
-            .child(self.live(scale, layer.live(), cx, |this, _, cx| this.choose_scale(cx)));
+        let mut screen =
+            island(&self.look)
+                .child(self.live(scale, layer.live(), cx, |this, _, cx| this.choose_scale(cx)));
         if monitor.rates.len() > 1 {
             let rate = self
                 .row("monitor.rate", None, "Refresh rate", None, (false, true))
                 .child(self.value(hertz(monitor.rate)))
                 .child(self.chevron());
-            screen = screen
-                .child(self.separator(0.))
-                .child(self.live(rate, layer.live(), cx, |this, _, cx| this.choose_monitor_rate(cx)));
+            screen = screen.child(self.separator(0.)).child(self.live(
+                rate,
+                layer.live(),
+                cx,
+                |this, _, cx| this.choose_monitor_rate(cx),
+            ));
         }
         let mut parts = vec![screen];
         if droidloom::installed() {
