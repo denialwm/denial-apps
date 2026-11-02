@@ -89,6 +89,8 @@ pub struct State {
     /// The last registration the network refused, in dmail's words, and
     /// when (Unix time, 0 for none).
     pub last_reject: (String, i64),
+    /// VoLTE: off, registering or registered; empty from a dmail without it.
+    pub ims: String,
     /// Whether mobile data is on, and where its session is.
     pub data_enabled: bool,
     pub data: Data,
@@ -221,6 +223,7 @@ impl Link {
             number: get(&modem, "Number").unwrap_or_default(),
             attached: get(&modem, "Attached").unwrap_or(false),
             last_reject: get(&modem, "LastReject").unwrap_or_default(),
+            ims: get(&modem, "Ims").unwrap_or_default(),
             data_enabled: get(&data, "Enabled").unwrap_or(false),
             data: Data::parse(&get::<String>(&data, "State").unwrap_or_default()),
             interface: get(&data, "Interface").unwrap_or_default(),

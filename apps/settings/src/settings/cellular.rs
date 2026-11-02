@@ -212,6 +212,15 @@ impl Settings {
                 "Roaming",
                 tr(if state.roaming { "Yes" } else { "No" }).to_owned(),
             ));
+            let volte = match state.ims.as_str() {
+                "registered" => Some("Working"),
+                "registering" => Some("Starting…"),
+                "off" => Some("Off"),
+                _ => None,
+            };
+            if let Some(volte) = volte {
+                network.push(Info::Value("VoLTE", tr(volte).to_owned()));
+            }
             network.push(Info::Value(
                 "Packet service",
                 tr(if state.attached {

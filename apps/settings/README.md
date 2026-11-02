@@ -34,7 +34,7 @@ has it, one started over SSH does not.
 Mobile network is real too (`src/mobile.rs`, `src/settings/cellular.rs`):
 it reads dmail, Phonewave's modem service (`org.dmail` on the system bus),
 and follows its property changes. The page shows the network the phone is
-on (operator, type, signal, roaming) or why there is none (SIM locked or
+on (operator, type, signal, roaming, VoLTE working, starting or off) or why there is none (SIM locked or
 blocked, no SIM, searching, the modem stopped), the Mobile data switch, which
 SIM slot is used, and the network's details. A locked SIM is unlocked with
 its PIN in a dialog, which comes back with the tries left after a wrong one.

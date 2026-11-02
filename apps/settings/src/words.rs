@@ -588,6 +588,8 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Packet service", "分组数据服务"),
     ("Attached", "已附着"),
     ("Not attached", "未附着"),
+    ("VoLTE", "VoLTE"),
+    ("Working", "正常工作"),
     ("Last refusal", "上次被拒"),
     ("Address", "地址"),
     ("Connected for", "已连接时长"),
