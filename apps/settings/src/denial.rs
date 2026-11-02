@@ -40,6 +40,42 @@ pub struct Monitor {
     pub size: (u32, u32),
     /// The phone's own panel's scale, beside it.
     pub panel_scale: f64,
+    /// The current refresh rate, and the ones its resolution offers, in
+    /// millihertz.
+    pub rate: u32,
+    pub rates: Vec<u32>,
+}
+
+/// A screen's current refresh rate and the ones its resolution offers, in
+/// millihertz. Rates that round to the same hertz show as one: the current
+/// one, else the highest.
+fn rates(output: &Value) -> (u32, Vec<u32>) {
+    let current = &output["current_mode"];
+    let rate = current["refresh_millihz"].as_u64().unwrap_or(0) as u32;
+    let mut rates: Vec<u32> = output["modes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|mode| mode["width"] == current["width"] && mode["height"] == current["height"])
+        .filter_map(|mode| mode["refresh_millihz"].as_u64())
+        .map(|rate| rate as u32)
+        .collect();
+    rates.sort_unstable_by(|a, b| b.cmp(a));
+    rates.dedup();
+    let hertz = |rate: u32| (rate + 500) / 1000;
+    let mut shown: Vec<u32> = Vec::with_capacity(rates.len());
+    for each in rates {
+        match shown.last_mut() {
+            Some(last) if hertz(*last) == hertz(each) => {
+                if each == rate {
+                    *last = each;
+                }
+            }
+            _ => shown.push(each),
+        }
+    }
+    shown.reverse();
+    (rate, shown)
 }
 
 /// Whether the screen named `name` is built in: the phone's own panel.
@@ -160,23 +196,11 @@ impl Link {
             .find(|output| internal(output["name"].as_str().unwrap_or_default()))
             .or(shown.first());
         Ok(panel.map(|output| {
-            let current = &output["current_mode"];
-            let mut rates: Vec<u32> = output["modes"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|mode| {
-                    mode["width"] == current["width"] && mode["height"] == current["height"]
-                })
-                .filter_map(|mode| mode["refresh_millihz"].as_u64())
-                .map(|rate| rate as u32)
-                .collect();
-            rates.sort_unstable();
-            rates.dedup();
+            let (rate, rates) = rates(output);
             Output {
                 monitor_id: output["monitor_id"].as_i64().unwrap_or(0),
                 name: output["name"].as_str().unwrap_or_default().to_owned(),
-                rate: current["refresh_millihz"].as_u64().unwrap_or(0) as u32,
+                rate,
                 rates,
             }
         }))
@@ -200,6 +224,7 @@ impl Link {
             .unwrap_or(1.0);
         Ok(shown.iter().find(|output| !built_in(output)).map(|output| {
             let mode = &output["current_mode"];
+            let (rate, rates) = rates(output);
             Monitor {
                 name: output["name"].as_str().unwrap_or_default().to_owned(),
                 scale: output["scale"].as_f64().unwrap_or(1.0),
@@ -208,6 +233,8 @@ impl Link {
                     mode["height"].as_u64().unwrap_or(0) as u32,
                 ),
                 panel_scale,
+                rate,
+                rates,
             }
         }))
     }
@@ -280,10 +307,10 @@ impl Link {
         }
     }
 
-    /// Moves `output` to `rate` until it is kept: Denial goes back by itself
+    /// Moves the screen named `name` to `rate` until it is kept: Denial goes back by itself
     /// after `KEEP`. Answers the change's token.
-    pub async fn try_rate(&self, output: &Output, rate: u32) -> Result<u64, Refusal> {
-        self.try_outputs(&output.name, |mode, _| {
+    pub async fn try_rate(&self, name: &str, rate: u32) -> Result<u64, Refusal> {
+        self.try_outputs(name, |mode, _| {
             mode["refresh_millihz"] = json!(rate)
         })
         .await
@@ -540,4 +567,18 @@ fn paths_reach_into_the_document() {
     set_dark(&mut document, false);
     assert_eq!(at(&document, "appearance.glass.appearance"), "light");
     assert!(!Prefs::of(&document).dark);
+}
+
+#[cfg(test)]
+#[test]
+fn rates_that_sound_alike_show_once() {
+    let mode = |rate: u32| json!({"width": 2560, "height": 1440, "refresh_millihz": rate});
+    let output = json!({
+        "current_mode": mode(59_951),
+        "modes": [
+            mode(240_001), mode(60_000), mode(59_951), mode(144_000),
+            {"width": 1920, "height": 1080, "refresh_millihz": 75_000},
+        ],
+    });
+    assert_eq!(rates(&output), (59_951, vec![59_951, 144_000, 240_001]));
 }

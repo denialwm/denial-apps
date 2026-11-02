@@ -145,8 +145,10 @@ uninstalls it unless it is part of Android.
 
 Monitor is listed only while deniald shows an enabled screen that is not
 built in (`DSI-`, `eDP-`, `LVDS-`), asked every two seconds; it leaves the
-page when the monitor goes. Scale sets that screen's scale through
-`outputs.apply` and asks to keep it, as the refresh rate does. Android apps
+page when the monitor goes. Scale and Refresh rate set that screen's scale
+and rate through `outputs.apply` and ask to keep them, as the panel's refresh
+rate does; rates of its current resolution that round to the same hertz show
+once. Android apps
 sets the monitor's own size in Droidloom's density file (`outputs`, by
 connector); until a size is set for every screen, the page works it out from
 Android's density and the panel's scale. Windows, Roundness and Wallpaper

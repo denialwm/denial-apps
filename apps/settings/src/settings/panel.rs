@@ -226,7 +226,7 @@ impl Settings {
         }
         let (link, output, back) = (self.denial.link.clone(), output.clone(), output.rate);
         cx.spawn(async move |this, cx| {
-            let tried = link.try_rate(&output, rate).await;
+            let tried = link.try_rate(&output.name, rate).await;
             let _ = this.update(cx, |view, cx| match tried {
                 Ok(token) => view.ask_keep(token, hertz(rate), hertz(back), cx),
                 Err(denial::Refusal(said)) => view.note(
