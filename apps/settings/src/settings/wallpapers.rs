@@ -52,8 +52,6 @@ pub(in crate::settings) struct Online {
     thumbs: HashMap<String, PathBuf>,
     /// The wallpaper being downloaded, by id, and the share received.
     downloading: Option<(String, f32)>,
-    /// The screen in pixels, wide by high: what Wallhaven's are at least.
-    pub(in crate::settings) screen: (u32, u32),
     /// Reading a page and its thumbnails.
     reading: Option<Task<()>>,
     /// Waits for typing to rest.
@@ -76,6 +74,15 @@ fn rows(tiles: Vec<Stateful<Div>>) -> Vec<Div> {
 }
 
 impl Settings {
+    /// The screen the wallpapers are for, in pixels, wide by high: what
+    /// Wallhaven's are at least, and the placement preview's shape.
+    fn wallpaper_screen(&self) -> (u32, u32) {
+        match (&self.wallpapers.output, &self.monitor) {
+            (Some(_), Some(monitor)) => monitor.size,
+            _ => self.window_pixels,
+        }
+    }
+
     /// Your pictures in one island, then Wallhaven's under its chip;
     /// `width` is the window's.
     pub(super) fn wallpapers_screen(
@@ -128,7 +135,7 @@ impl Settings {
     fn placement_island(&self, live: bool, cx: &mut Context<Self>) -> Div {
         let shown = &self.wallpapers;
         let placement = shown.placement;
-        let (screen_w, screen_h) = match shown.online.screen {
+        let (screen_w, screen_h) = match self.wallpaper_screen() {
             (w, h) if w > 0 && h > 0 => (w as f32, h as f32),
             _ => (270.0, 585.0),
         };
@@ -234,14 +241,16 @@ impl Settings {
     /// Writes the placement the sliders have into the shell's file.
     fn place_wallpaper(&mut self, cx: &mut Context<Self>) {
         let placement = self.wallpapers.placement;
+        let output = self.wallpapers.output.clone();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let placed = cx
-                .background_spawn(async move { wallpaper::place(placement) })
+                .background_spawn(async move { wallpaper::place(placement, output.as_deref()) })
                 .await;
             if let Err(error) = placed {
                 let _ = this.update(cx, |view, cx| {
-                    view.wallpapers.placement = wallpaper::placement();
+                    view.wallpapers.placement =
+                        wallpaper::placement(view.wallpapers.output.as_deref());
                     view.note(
                         fill(
                             "Could not place the wallpaper: {why}",
@@ -448,11 +457,16 @@ impl Settings {
 
     /// Lists the pictures, then makes their thumbnails one by one, showing
     /// each as it comes; Wallhaven's first page comes meanwhile.
-    pub(super) fn read_wallpapers(&mut self, cx: &mut Context<Self>) {
-        self.wallpapers.current = wallpaper::current();
-        self.wallpapers.placement = wallpaper::placement();
+    /// `output` is the monitor they are for, None for the phone; Wallhaven
+    /// is asked afresh when it changes, for that screen's size.
+    pub(super) fn read_wallpapers(&mut self, output: Option<String>, cx: &mut Context<Self>) {
+        let moved = self.wallpapers.output != output;
+        self.wallpapers.current = wallpaper::current(output.as_deref());
+        self.wallpapers.placement = wallpaper::placement(output.as_deref());
+        self.wallpapers.output = output;
         let online = &self.wallpapers.online;
-        if online.reading.is_none() && (online.asked.is_none() || online.failed.is_some()) {
+        if moved || online.reading.is_none() && (online.asked.is_none() || online.failed.is_some())
+        {
             self.read_wallhaven(true, cx);
         }
         if self.wallpapers.reading.is_some() {
@@ -511,7 +525,8 @@ impl Settings {
         online.asked = Some(text.clone());
         online.failed = None;
         let page = online.pages + 1;
-        let screen = online.screen;
+        let screen = self.wallpaper_screen();
+        let online = &mut self.wallpapers.online;
         cx.notify();
         online.reading = Some(cx.spawn(async move |this, cx| {
             let asked = text.clone();
@@ -660,7 +675,8 @@ impl Settings {
                         view.set_wallpaper(&choice, cx);
                         // It is one of yours now: list the folder again.
                         view.wallpapers.reading = None;
-                        view.read_wallpapers(cx);
+                        let output = view.wallpapers.output.clone();
+                        view.read_wallpapers(output, cx);
                     }
                     Err(why) => view.note(
                         fill("Could not download the wallpaper: {why}", &[("why", &why)]),
@@ -673,14 +689,18 @@ impl Settings {
         .detach();
     }
 
-    /// Shows `choice` on every screen, and gives the lock screen its depth.
+    /// Shows `choice` on the phone, and on every screen without its own,
+    /// and gives the lock screen its depth; or on the monitor alone.
     fn set_wallpaper(&mut self, choice: &Choice, cx: &mut Context<Self>) {
         let choice = choice.clone();
+        let output = self.wallpapers.output.clone();
         // The lock screen draws the home wallpaper, with depth, unless the
         // user told it otherwise.
-        let depth = self.denial.document.as_ref().is_none_or(|document| {
-            crate::denial::at(document, "lockScreen.useSystemWallpaper") != false
-        }) && wallpaper::depth_installed();
+        let depth = output.is_none()
+            && self.denial.document.as_ref().is_none_or(|document| {
+                crate::denial::at(document, "lockScreen.useSystemWallpaper") != false
+            })
+            && wallpaper::depth_installed();
         self.wallpapers.current = Some(choice.resource.clone());
         self.wallpapers.placement = Placement::default();
         self.read_preview(cx);
@@ -688,7 +708,7 @@ impl Settings {
         cx.spawn(async move |this, cx| {
             let set = cx
                 .background_spawn(async move {
-                    wallpaper::set(&choice)?;
+                    wallpaper::set(&choice, output.as_deref())?;
                     if let (true, Some(file)) = (depth, choice.file.as_ref()) {
                         wallpaper::make_depth(file);
                     }
@@ -698,7 +718,7 @@ impl Settings {
             let _ = this.update(cx, |view, cx| match set {
                 Ok(()) => view.note("Wallpaper set", cx),
                 Err(error) => {
-                    view.wallpapers.current = wallpaper::current();
+                    view.wallpapers.current = wallpaper::current(view.wallpapers.output.as_deref());
                     view.note(
                         fill(
                             "Could not set the wallpaper: {why}",

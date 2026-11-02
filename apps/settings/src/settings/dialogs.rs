@@ -15,7 +15,6 @@ use gpui::{
 };
 
 use super::bound::PinRequest;
-use super::panel::hertz;
 use super::parts::{Fill, ROW_GAP};
 use super::{Dialog, Settings};
 use crate::bluetooth::Ask;
@@ -156,14 +155,14 @@ impl Settings {
                     })
                     .child(answers)
             }
-            Dialog::Keep { rate, back, .. } => self
+            Dialog::Keep { value, back, .. } => self
                 .form(island)
-                .child(self.dialog_title(fill("Keep {rate}?", &[("rate", &hertz(*rate))])))
+                .child(self.dialog_title(fill("Keep {rate}?", &[("rate", value.as_ref())])))
                 .child(self.said(
                     fill(
                         "Goes back to {rate} in {count} seconds",
                         &[
-                            ("rate", &hertz(*back)),
+                            ("rate", back.as_ref()),
                             ("count", &denial::KEEP.as_secs().to_string()),
                         ],
                     ),

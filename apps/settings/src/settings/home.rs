@@ -27,7 +27,7 @@ impl Settings {
                 let pages: Vec<&'static Page> = group
                     .pages
                     .iter()
-                    .filter(|page| !matches!(page.content, Content::Hidden(_)))
+                    .filter(|page| catalog::shown(page))
                     .collect();
                 let count = pages.len();
                 let rows = pages.into_iter().enumerate().map(|(ix, page)| {
@@ -39,6 +39,7 @@ impl Settings {
                         Content::About => self.about_summary(),
                         Content::Storage => self.storage_summary(),
                         Content::Android(_) => Some(self.android_summary()),
+                        Content::Monitor(_) => self.monitor_summary(),
                         Content::Settings(_)
                         | Content::Apps(_)
                         | Content::Display

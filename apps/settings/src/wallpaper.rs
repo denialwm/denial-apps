@@ -91,30 +91,41 @@ fn cache() -> Option<PathBuf> {
         .map(|dir| dir.join("denial/settings/wallpapers"))
 }
 
-/// The wallpaper every screen shows, as the shell names it.
-pub fn current() -> Option<String> {
-    let state: Value = serde_json::from_slice(&std::fs::read(state_file()?).ok()?).ok()?;
-    state["all"].as_str().map(str::to_owned)
+fn read_state() -> Option<Value> {
+    serde_json::from_slice(&std::fs::read(state_file()?).ok()?).ok()
 }
 
-/// Where the wallpaper sits, as the shell's file says.
-pub fn placement() -> Placement {
-    let state: Option<Value> = state_file()
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
-    let Some(state) = state else {
+/// The wallpaper the phone shows, or the monitor named `output`, as the
+/// shell names it.
+pub fn current(output: Option<&str>) -> Option<String> {
+    let state = read_state()?;
+    output
+        .and_then(|name| state["outputs"][name].as_str())
+        .or_else(|| state["all"].as_str())
+        .map(str::to_owned)
+}
+
+/// Where the wallpaper sits on the phone, or on the monitor named
+/// `output`, as the shell's file says.
+pub fn placement(output: Option<&str>) -> Placement {
+    let Some(state) = read_state() else {
         return Placement::default();
     };
-    let number = |key: &str| {
-        state[key]
-            .as_f64()
-            .filter(|n| n.is_finite())
-            .map(|n| n as f32)
-    };
+    let number = |value: &Value| value.as_f64().filter(|n| n.is_finite()).map(|n| n as f32);
+    let own = |key: &str| output.map_or(&Value::Null, |name| &state[key][name]);
     Placement {
-        x: number("alignmentX").unwrap_or(0.0).clamp(-1.0, 1.0),
-        y: number("alignmentY").unwrap_or(0.0).clamp(-1.0, 1.0),
-        zoom: number("zoom").unwrap_or(1.0).clamp(1.0, MAX_ZOOM),
+        x: number(&own("outputAlignments")["x"])
+            .or_else(|| number(&state["alignmentX"]))
+            .unwrap_or(0.0)
+            .clamp(-1.0, 1.0),
+        y: number(&own("outputAlignments")["y"])
+            .or_else(|| number(&state["alignmentY"]))
+            .unwrap_or(0.0)
+            .clamp(-1.0, 1.0),
+        zoom: number(own("outputZooms"))
+            .or_else(|| number(&state["zoom"]))
+            .unwrap_or(1.0)
+            .clamp(1.0, MAX_ZOOM),
     }
 }
 
@@ -192,32 +203,59 @@ fn denial_file() -> Option<PathBuf> {
         .find(|file| file.is_file())
 }
 
-/// Makes every screen show `choice`: the shell's file is rewritten beside
-/// itself and renamed over, keeping its version and dimming, and each
-/// screen's own picture and placement go.
-pub fn set(choice: &Choice) -> std::io::Result<()> {
+/// Makes the phone show `choice`, or the monitor named `output`, placed
+/// afresh: the shell's file is rewritten beside itself and renamed over,
+/// keeping its version and dimming. The phone's picture goes on every
+/// screen without one of its own; monitors keep theirs.
+pub fn set(choice: &Choice, output: Option<&str>) -> std::io::Result<()> {
     let path = state_file().ok_or(std::io::ErrorKind::NotFound)?;
-    let mut state = std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({"version": 5}));
-    state["all"] = json!(choice.resource);
-    state["outputs"] = json!({});
-    write_placement(&mut state, Placement::default());
+    let mut state = read_file(&path).unwrap_or_else(|| json!({"version": 5}));
+    match output {
+        Some(name) => {
+            entry(&mut state, "outputs", name, json!(choice.resource));
+            write_own_placement(&mut state, name, Placement::default());
+        }
+        None => {
+            state["all"] = json!(choice.resource);
+            forget_built_in(&mut state, "outputs");
+            write_placement(&mut state, Placement::default());
+        }
+    }
     write_state(&path, &state)
 }
 
-/// Places the wallpaper on every screen: each screen's own placement goes.
-pub fn place(placement: Placement) -> std::io::Result<()> {
+/// Places the wallpaper on the phone, or on the monitor named `output`.
+pub fn place(placement: Placement, output: Option<&str>) -> std::io::Result<()> {
     let path = state_file().ok_or(std::io::ErrorKind::NotFound)?;
-    let mut state = std::fs::read(&path)
+    let mut state = read_file(&path).unwrap_or_else(|| json!({"version": 5, "all": DENIAL}));
+    match output {
+        Some(name) => write_own_placement(&mut state, name, placement),
+        None => write_placement(&mut state, placement),
+    }
+    write_state(&path, &state)
+}
+
+fn read_file(path: &Path) -> Option<Value> {
+    std::fs::read(path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         .filter(Value::is_object)
-        .unwrap_or_else(|| json!({"version": 5, "all": DENIAL}));
-    write_placement(&mut state, placement);
-    write_state(&path, &state)
+}
+
+/// Sets `name`'s entry in the map at `key`, making the map when missing.
+fn entry(state: &mut Value, key: &str, name: &str, value: Value) {
+    if !state[key].is_object() {
+        state[key] = json!({});
+    }
+    state[key][name] = value;
+}
+
+/// Drops the built-in screens' entries from the map at `key`: the phone's
+/// own picture and placement follow the phone's settings.
+fn forget_built_in(state: &mut Value, key: &str) {
+    if let Some(map) = state[key].as_object_mut() {
+        map.retain(|name, _| !crate::denial::internal(name));
+    }
 }
 
 fn write_placement(state: &mut Value, placement: Placement) {
@@ -232,7 +270,19 @@ fn write_placement(state: &mut Value, placement: Placement) {
     state["horizontalAlignment"] = json!(anchor(placement.x, ["left", "center", "right"]));
     state["verticalAlignment"] = json!(anchor(placement.y, ["top", "center", "bottom"]));
     state["zoom"] = json!(placement.zoom);
-    state["outputAlignments"] = json!({});
+    forget_built_in(state, "outputAlignments");
+    forget_built_in(state, "outputZooms");
+}
+
+/// A monitor's own placement, apart from the phone's.
+fn write_own_placement(state: &mut Value, name: &str, placement: Placement) {
+    entry(
+        state,
+        "outputAlignments",
+        name,
+        json!({"x": placement.x, "y": placement.y}),
+    );
+    entry(state, "outputZooms", name, json!(placement.zoom));
 }
 
 /// Writes the shell's file beside itself and renames it over.
@@ -369,9 +419,35 @@ mod tests {
     }
 
     #[test]
+    fn the_phone_keeps_the_monitors_own() {
+        let mut state = json!({
+            "all": "a",
+            "outputs": {"DSI-1": "b", "DP-1": "c"},
+            "outputAlignments": {"DSI-1": {"x": 1, "y": 0}, "DP-1": {"x": -1, "y": 0}},
+        });
+        forget_built_in(&mut state, "outputs");
+        write_placement(&mut state, Placement::default());
+        assert_eq!(state["outputs"], json!({"DP-1": "c"}));
+        assert_eq!(
+            state["outputAlignments"],
+            json!({"DP-1": {"x": -1, "y": 0}})
+        );
+        write_own_placement(
+            &mut state,
+            "DP-1",
+            Placement {
+                x: 0.5,
+                y: 0.0,
+                zoom: 2.0,
+            },
+        );
+        assert_eq!(state["outputZooms"]["DP-1"], json!(2.0));
+        assert_eq!(state["alignmentX"], json!(0.0));
+    }
+
+    #[test]
     fn names_come_from_files() {
         assert_eq!(name("file:/home/a/Pictures/Wallpapers/dunes.jpg"), "dunes");
         assert_eq!(name(DENIAL), "Denial");
     }
 }
-

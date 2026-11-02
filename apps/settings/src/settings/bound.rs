@@ -144,6 +144,15 @@ impl Settings {
             )
             .into();
         }
+        if item.key == "monitor.wallpaper" {
+            return wallpaper::name(
+                self.wallpapers
+                    .monitor
+                    .as_deref()
+                    .unwrap_or(wallpaper::DENIAL),
+            )
+            .into();
+        }
         if let Some(shown) = self.own_shown(item) {
             return shown;
         }
@@ -308,6 +317,9 @@ impl Settings {
             Kind::Action(said) => self.note(said, cx),
             Kind::Opens if item.key == "style.wallpaper" => {
                 self.open(Screen::Wallpapers, window, cx)
+            }
+            Kind::Opens if item.key == "monitor.wallpaper" => {
+                self.open(Screen::MonitorWallpapers, window, cx)
             }
             Kind::Opens if item.key == "security.fingerprint" => self.open_fingers(window, cx),
             Kind::Opens if item.key == "security.pin" => self.ask_change_pin(None, window, cx),

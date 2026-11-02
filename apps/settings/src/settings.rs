@@ -12,6 +12,7 @@ mod devices;
 mod dialogs;
 mod fingers;
 mod home;
+mod monitor;
 mod networks;
 mod page;
 mod panel;
@@ -75,6 +76,8 @@ enum Screen {
     },
     /// The wallpapers to pick from.
     Wallpapers,
+    /// The wallpapers to pick from for the monitor beside the phone.
+    MonitorWallpapers,
     /// The fingers that unlock the phone.
     Fingers,
     /// The time zones to pick from.
@@ -91,6 +94,7 @@ impl PartialEq for Screen {
             (Screen::Home, Screen::Home)
             | (Screen::SavedNetworks, Screen::SavedNetworks)
             | (Screen::Wallpapers, Screen::Wallpapers)
+            | (Screen::MonitorWallpapers, Screen::MonitorWallpapers)
             | (Screen::Fingers, Screen::Fingers)
             | (Screen::Zones, Screen::Zones) => true,
             (Screen::Page(a), Screen::Page(b)) => std::ptr::eq(*a, *b),
@@ -112,6 +116,7 @@ impl Screen {
             Screen::Network { .. } => "network",
             Screen::Device { .. } => "device",
             Screen::Wallpapers => "wallpapers",
+            Screen::MonitorWallpapers => "monitor-wallpapers",
             Screen::Fingers => "fingers",
             Screen::Zones => "zones",
             Screen::AndroidApp { .. } => "android-app",
@@ -302,9 +307,13 @@ enum Dialog {
     },
     /// The phone's name, as nearby devices see it.
     Rename,
-    /// Whether to keep the panel's new refresh rate, `rate`, or go back to
-    /// `back`; Denial keeps the change under `token`.
-    Keep { token: u64, rate: u32, back: u32 },
+    /// Whether to keep a screen's new refresh rate or scale, `value`, or go
+    /// back to `back`; Denial keeps the change under `token`.
+    Keep {
+        token: u64,
+        value: SharedString,
+        back: SharedString,
+    },
     /// The account password and a new lock PIN, twice: the first PIN, or
     /// one forgotten. `fingers` when the fingerprints asked for it, which
     /// open once it is set. `error` says why it is asked again.
@@ -427,6 +436,11 @@ struct Wallpapers {
     online: wallpapers::Online,
     /// Where the shown wallpaper sits, as the sliders have it.
     placement: wallpaper::Placement,
+    /// The screen they are for: the monitor by its connector, or None for
+    /// the phone.
+    output: Option<String>,
+    /// What the monitor shows, for its page's row.
+    monitor: Option<String>,
     /// The shown wallpaper whole, for the placement preview: its resource,
     /// the picture and its size.
     preview: Option<(String, std::path::PathBuf, (u32, u32))>,
@@ -558,8 +572,14 @@ pub struct Settings {
     wallpapers: Wallpapers,
     bluetooth: Bluetooth,
     android: android::Android,
+    /// The monitor beside the phone, read every few seconds; None without
+    /// one.
+    monitor: Option<denial::Monitor>,
+    _monitor: Task<()>,
     /// Device pixels per pixel of the window, as the compositor scales it.
     scale: f32,
+    /// The window in device pixels, wide by high: the phone's screen.
+    window_pixels: (u32, u32),
     _settings: Task<()>,
     _wifi: Task<()>,
     /// Joining a network, until it is joined or fails.
@@ -761,7 +781,7 @@ impl Settings {
             storage: Storage::default(),
             installed: Installed::default(),
             wallpapers: Wallpapers {
-                current: wallpaper::current(),
+                current: wallpaper::current(None),
                 ..Wallpapers::default()
             },
             _display: cx.spawn(async move |this, cx| Self::follow_display(this, cx).await),
@@ -772,7 +792,12 @@ impl Settings {
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
             android: android::Android::default(),
+            monitor: None,
+            _monitor: cx.spawn_in(window, async move |this, cx| {
+                Self::follow_monitor(this, cx).await
+            }),
             scale: 1.0,
+            window_pixels: (0, 0),
             _bluetooth: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_bluetooth(this, cx).await
             }),
@@ -986,10 +1011,18 @@ impl Settings {
             self.read_about(cx);
         }
         if self.screen.is_page("style") {
-            self.wallpapers.current = wallpaper::current();
+            self.wallpapers.current = wallpaper::current(None);
         }
-        if self.screen == Screen::Wallpapers {
-            self.read_wallpapers(cx);
+        if self.screen.is_page("monitor") {
+            self.read_monitor_wallpaper();
+        }
+        match self.screen {
+            Screen::Wallpapers => self.read_wallpapers(None, cx),
+            Screen::MonitorWallpapers => {
+                let output = self.monitor.as_ref().map(|monitor| monitor.name.clone());
+                self.read_wallpapers(output, cx)
+            }
+            _ => {}
         }
         if self.screen == Screen::Fingers {
             self.read_fingers(cx);
@@ -1104,6 +1137,9 @@ impl Settings {
             Screen::Network { .. } | Screen::SavedNetworks => wifi,
             Screen::Device { .. } => catalog::page("bluetooth").map_or(Screen::Home, Screen::Page),
             Screen::Wallpapers => catalog::page("style").map_or(Screen::Home, Screen::Page),
+            Screen::MonitorWallpapers => {
+                catalog::page("monitor").map_or(Screen::Home, Screen::Page)
+            }
             Screen::Fingers => catalog::page("security").map_or(Screen::Home, Screen::Page),
             Screen::Zones => catalog::page("time").map_or(Screen::Home, Screen::Page),
             Screen::AndroidApp { .. } => {
@@ -1289,12 +1325,15 @@ impl Settings {
                 Content::Storage => self.storage_page(),
                 Content::Apps(sections) => self.apps_page(sections, layer, cx),
                 Content::Android(sections) => self.android_page(sections, layer, cx),
+                Content::Monitor(sections) => self.monitor_page(sections, layer, cx),
                 Content::Hidden(_) | Content::Unavailable => Vec::new(),
             },
             Screen::SavedNetworks => self.saved_networks(layer, cx),
             Screen::Network { id, .. } => self.network(id, layer, cx),
             Screen::Device { path } => self.device_screen(path, layer, cx),
-            Screen::Wallpapers => self.wallpapers_screen(width, layer, cx),
+            Screen::Wallpapers | Screen::MonitorWallpapers => {
+                self.wallpapers_screen(width, layer, cx)
+            }
             Screen::Fingers => self.fingers_screen(layer, cx),
             Screen::Zones => self.zones_screen(layer, cx),
             Screen::AndroidApp { package } => self.android_app_screen(package, layer, cx),
@@ -1437,6 +1476,7 @@ impl Settings {
                 .map(|device| device.name.clone().into())
                 .unwrap_or_default(),
             Screen::Wallpapers => "Wallpaper".into(),
+            Screen::MonitorWallpapers => "Monitor wallpaper".into(),
             Screen::Fingers => "Fingerprint".into(),
             Screen::Zones => "Time zone".into(),
             Screen::AndroidApp { package } => self
@@ -1455,7 +1495,7 @@ impl Render for Settings {
         let now = Instant::now();
         self.scale = window.scale_factor();
         let viewport = window.viewport_size();
-        self.wallpapers.online.screen = (
+        self.window_pixels = (
             (f32::from(viewport.width) * self.scale).round() as u32,
             (f32::from(viewport.height) * self.scale).round() as u32,
         );

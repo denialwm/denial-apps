@@ -29,6 +29,24 @@ pub struct Output {
     pub rates: Vec<u32>,
 }
 
+/// A monitor beside the phone, as Denial shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Monitor {
+    /// Its connector: `DP-1`.
+    pub name: String,
+    /// Device pixels per logical pixel.
+    pub scale: f64,
+    /// Its mode, in pixels, wide by high.
+    pub size: (u32, u32),
+}
+
+/// Whether the screen named `name` is built in: the phone's own panel.
+pub fn internal(name: &str) -> bool {
+    ["DSI-", "eDP-", "LVDS-"]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
 /// What Denial's settings document says about the display.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Prefs {
@@ -125,33 +143,62 @@ impl Link {
         Ok(self.ask(method, params).await?.0)
     }
 
-    /// The first enabled panel, with its refresh rates.
+    /// The phone's panel, with its refresh rates: the enabled internal
+    /// screen, else the first enabled one.
     pub async fn output(&self) -> Result<Option<Output>, Refusal> {
+        let outputs = self.call("outputs.get", None).await?;
+        let shown: Vec<&Value> = outputs["outputs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|output| output["enabled"] == true && output["connected"] == true)
+            .collect();
+        let panel = shown
+            .iter()
+            .find(|output| internal(output["name"].as_str().unwrap_or_default()))
+            .or(shown.first());
+        Ok(panel.map(|output| {
+            let current = &output["current_mode"];
+            let mut rates: Vec<u32> = output["modes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|mode| {
+                    mode["width"] == current["width"] && mode["height"] == current["height"]
+                })
+                .filter_map(|mode| mode["refresh_millihz"].as_u64())
+                .map(|rate| rate as u32)
+                .collect();
+            rates.sort_unstable();
+            rates.dedup();
+            Output {
+                monitor_id: output["monitor_id"].as_i64().unwrap_or(0),
+                name: output["name"].as_str().unwrap_or_default().to_owned(),
+                rate: current["refresh_millihz"].as_u64().unwrap_or(0) as u32,
+                rates,
+            }
+        }))
+    }
+
+    /// The monitor plugged in beside the phone: the first enabled screen
+    /// that is not built in. None without one.
+    pub async fn monitor(&self) -> Result<Option<Monitor>, Refusal> {
         let outputs = self.call("outputs.get", None).await?;
         Ok(outputs["outputs"]
             .as_array()
             .into_iter()
             .flatten()
-            .find(|output| output["enabled"] == true && output["connected"] == true)
+            .filter(|output| output["enabled"] == true && output["connected"] == true)
+            .find(|output| !internal(output["name"].as_str().unwrap_or_default()))
             .map(|output| {
-                let current = &output["current_mode"];
-                let mut rates: Vec<u32> = output["modes"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|mode| {
-                        mode["width"] == current["width"] && mode["height"] == current["height"]
-                    })
-                    .filter_map(|mode| mode["refresh_millihz"].as_u64())
-                    .map(|rate| rate as u32)
-                    .collect();
-                rates.sort_unstable();
-                rates.dedup();
-                Output {
-                    monitor_id: output["monitor_id"].as_i64().unwrap_or(0),
+                let mode = &output["current_mode"];
+                Monitor {
                     name: output["name"].as_str().unwrap_or_default().to_owned(),
-                    rate: current["refresh_millihz"].as_u64().unwrap_or(0) as u32,
-                    rates,
+                    scale: output["scale"].as_f64().unwrap_or(1.0),
+                    size: (
+                        mode["width"].as_u64().unwrap_or(0) as u32,
+                        mode["height"].as_u64().unwrap_or(0) as u32,
+                    ),
                 }
             }))
     }
@@ -227,6 +274,27 @@ impl Link {
     /// Moves `output` to `rate` until it is kept: Denial goes back by itself
     /// after `KEEP`. Answers the change's token.
     pub async fn try_rate(&self, output: &Output, rate: u32) -> Result<u64, Refusal> {
+        self.try_outputs(&output.name, |mode, _| {
+            mode["refresh_millihz"] = json!(rate)
+        })
+        .await
+    }
+
+    /// Scales the screen named `name` to `scale` until it is kept, as
+    /// `try_rate` does.
+    pub async fn try_scale(&self, name: &str, scale: f64) -> Result<u64, Refusal> {
+        self.try_outputs(name, |_, scaled| *scaled = json!(scale))
+            .await
+    }
+
+    /// Applies every connected screen as it is, but for the one named
+    /// `name`, whose mode and scale `change` edits; Denial goes back by
+    /// itself unless the change is kept within `KEEP`.
+    async fn try_outputs(
+        &self,
+        name: &str,
+        change: impl Fn(&mut Value, &mut Value),
+    ) -> Result<u64, Refusal> {
         let snapshot = self.call("outputs.get", None).await?;
         let outputs: Vec<Value> = snapshot["outputs"]
             .as_array()
@@ -235,8 +303,9 @@ impl Link {
             .filter(|each| each["connected"] == true)
             .map(|each| {
                 let mut mode = each["current_mode"].clone();
-                if each["name"] == output.name.as_str() {
-                    mode["refresh_millihz"] = json!(rate);
+                let mut scale = each["scale"].clone();
+                if each["name"] == name {
+                    change(&mut mode, &mut scale);
                 }
                 json!({
                     "name": each["name"],
@@ -249,7 +318,7 @@ impl Link {
                         "height": mode["height"],
                         "refresh_millihz": mode["refresh_millihz"],
                     },
-                    "scale": each["scale"],
+                    "scale": scale,
                     "transform": each["transform"],
                     "adaptive_sync": each["adaptive_sync"],
                 })

@@ -7,6 +7,7 @@
 //! reaching nothing on the phone.
 
 use denial_look_gpui::Icon;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Pages of one kind, one island on the home screen.
 pub struct Group {
@@ -46,6 +47,9 @@ pub enum Content {
     /// Android through Droidloom: the switch in sections, then how it runs
     /// and its apps.
     Android(&'static [Section]),
+    /// The monitor beside the phone: its scale, then settings in sections.
+    /// Listed only while one is plugged in.
+    Monitor(&'static [Section]),
     /// Written, but shown nowhere until the phone has it.
     Hidden(#[expect(dead_code, reason = "shown once the phone has it")] &'static [Section]),
     /// Listed, but not on the phone yet: its row shows faint and opens
@@ -264,6 +268,32 @@ pub static GROUPS: &[Group] = &[
                 icon: Icon::Display,
                 summary: "Brightness, appearance, timeout",
                 content: Content::Display,
+            },
+            Page {
+                id: "monitor",
+                title: "Monitor",
+                icon: Icon::Computer,
+                summary: "Scale, windows, wallpaper",
+                content: Content::Monitor(&[section(
+                    "Desktop",
+                    &[
+                        item(
+                            "monitor.layout",
+                            "Windows",
+                            Kind::Segmented(&["Stacking", "Tiling", "Scrolling"], 0),
+                        )
+                        .from(Source::Words(
+                            "layout.windowLayout",
+                            &["stacking", "dwindle", "scrolling"],
+                        )),
+                        item("monitor.corners", "Roundness", Kind::Slider(0.25)).from(
+                            Source::Range("appearance.monitorCornerRadiusScale", 0.0, 2.0),
+                        ),
+                        item("monitor.wallpaper", "Wallpaper", Kind::Opens)
+                            .icon(Icon::Photos)
+                            .from(Source::Own),
+                    ],
+                )]),
             },
             Page {
                 id: "sound",
@@ -704,12 +734,29 @@ pub static GROUPS: &[Group] = &[
     },
 ];
 
+/// Whether a monitor is plugged in beside the phone, as Settings last
+/// found: its page is listed only then.
+static MONITOR: AtomicBool = AtomicBool::new(false);
+
+pub fn set_monitor(plugged: bool) {
+    MONITOR.store(plugged, Ordering::Relaxed);
+}
+
+/// Whether the home screen lists `page` now.
+pub fn shown(page: &Page) -> bool {
+    match page.content {
+        Content::Hidden(_) => false,
+        Content::Monitor(_) => MONITOR.load(Ordering::Relaxed),
+        _ => true,
+    }
+}
+
 /// The pages the home screen lists, in their groups' order.
 pub fn listed() -> impl Iterator<Item = &'static Page> {
     GROUPS
         .iter()
         .flat_map(|group| group.pages)
-        .filter(|page| !matches!(page.content, Content::Hidden(_)))
+        .filter(|page| shown(page))
 }
 
 /// The page with id `id`, if it opens.
@@ -728,9 +775,10 @@ pub fn find(key: &str) -> Option<&'static Item> {
 pub fn items() -> impl Iterator<Item = (&'static Page, &'static Section, &'static Item)> {
     listed().flat_map(|page| {
         let sections = match page.content {
-            Content::Settings(sections) | Content::Apps(sections) | Content::Android(sections) => {
-                sections
-            }
+            Content::Settings(sections)
+            | Content::Apps(sections)
+            | Content::Android(sections)
+            | Content::Monitor(sections) => sections,
             Content::Wifi
             | Content::Mobile
             | Content::Bluetooth
@@ -754,6 +802,7 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_start_with_their_page() {
+        set_monitor(true);
         let mut keys = std::collections::HashSet::new();
         for (page, _, item) in items() {
             assert!(keys.insert(item.key), "{} twice", item.key);
@@ -763,6 +812,7 @@ mod tests {
 
     #[test]
     fn defaults_are_options() {
+        set_monitor(true);
         for (_, _, item) in items() {
             match item.kind {
                 Kind::Segmented(options, start) | Kind::Choice(options, start) => {

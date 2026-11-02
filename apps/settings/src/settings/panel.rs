@@ -228,7 +228,7 @@ impl Settings {
         cx.spawn(async move |this, cx| {
             let tried = link.try_rate(&output, rate).await;
             let _ = this.update(cx, |view, cx| match tried {
-                Ok(token) => view.ask_keep(token, rate, back, cx),
+                Ok(token) => view.ask_keep(token, hertz(rate), hertz(back), cx),
                 Err(denial::Refusal(said)) => view.note(
                     fill(
                         "Could not change the refresh rate: {why}",
@@ -241,8 +241,14 @@ impl Settings {
         .detach();
     }
 
-    fn ask_keep(&mut self, token: u64, rate: u32, back: u32, cx: &mut Context<Self>) {
-        self.show(Dialog::Keep { token, rate, back }, cx);
+    pub(super) fn ask_keep(
+        &mut self,
+        token: u64,
+        value: SharedString,
+        back: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.show(Dialog::Keep { token, value, back }, cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(denial::KEEP).await;
             // Denial has gone back on its own; the question is moot.
@@ -251,6 +257,7 @@ impl Settings {
                 {
                     view.dialog = None;
                     view.reread_panel(cx);
+                    view.reread_monitor(cx);
                 }
             });
         })
@@ -283,6 +290,7 @@ impl Settings {
                     );
                 }
                 view.reread_panel(cx);
+                view.reread_monitor(cx);
             });
         })
         .detach();
