@@ -135,11 +135,24 @@ so, and the page shows the unit's last journal line from that run
 (`_SYSTEMD_INVOCATION_ID`); when the cell stopped on its own, droidloomd's
 reason. Display size draws Android apps at 85, 100, 115 or 130 percent of
 the size of Denial's own: 160 dpi times the scale Denial gives the Settings
-window, set through droidloomd's `set_dpi`. The apps are the
+window, set through droidloomd's `set_dpi`, and the same size per unit of
+scale for every screen in Droidloom's `$XDG_CONFIG_HOME/droidloom/density-v1.json`
+(`dpiPerScale`), which Droidloom watches. The apps are the
 launcher entries Droidloom exports (`X-Droidloom-Package`). An app's screen
 opens and stops it, shows its version, dates and storage, clears its cache or
 its storage, opens Android's App info for permissions and notifications, and
 uninstalls it unless it is part of Android.
+
+Monitor is listed only while deniald shows an enabled screen that is not
+built in (`DSI-`, `eDP-`, `LVDS-`), asked every two seconds; it leaves the
+page when the monitor goes. Scale sets that screen's scale through
+`outputs.apply` and asks to keep it, as the refresh rate does. Android apps
+sets the monitor's own size in Droidloom's density file (`outputs`, by
+connector); until a size is set for every screen, the page works it out from
+Android's density and the panel's scale. Windows, Roundness and Wallpaper
+are Denial's `layout.windowLayout` and `appearance.monitorCornerRadiusScale`
+and the monitor's entries in the shell's wallpaper file (`outputs`,
+`outputAlignments`, `outputZooms`).
 
 Accessibility and Updates are kept in the catalog but not listed.
 
@@ -193,7 +206,8 @@ where its value lives (`src/settings/bound.rs`):
   its zoom (100 to 400 percent, enlarged about the point its position
   names, past covering the screen) and its position left and right, up and
   down. The shell's file takes them as `zoom`, `alignmentX` and
-  `alignmentY` when the finger lets go; each screen's own placement goes. A
+  `alignmentY` when the finger lets go; the built-in panel's own placement
+  goes, and each monitor keeps its own. A
   new wallpaper starts centred at 100 percent. A tap
   rewrites the shell's `$XDG_STATE_HOME/denial/wallpaper`, which the shell
   follows, and when `wallpaper-depth` is installed starts the lock screen's
