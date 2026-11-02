@@ -576,6 +576,9 @@ pub struct Settings {
     /// one.
     monitor: Option<denial::Monitor>,
     _monitor: Task<()>,
+    /// The densities Droidloom gives Android apps by screen, read when the
+    /// Monitor page opens.
+    densities: crate::droidloom::Densities,
     /// Device pixels per pixel of the window, as the compositor scales it.
     scale: f32,
     /// The window in device pixels, wide by high: the phone's screen.
@@ -793,6 +796,7 @@ impl Settings {
             bluetooth: Bluetooth::default(),
             android: android::Android::default(),
             monitor: None,
+            densities: Default::default(),
             _monitor: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_monitor(this, cx).await
             }),
@@ -1015,6 +1019,7 @@ impl Settings {
         }
         if self.screen.is_page("monitor") {
             self.read_monitor_wallpaper();
+            self.read_densities(cx);
         }
         match self.screen {
             Screen::Wallpapers => self.read_wallpapers(None, cx),

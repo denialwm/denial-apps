@@ -8,13 +8,15 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use denial_look::words::fill;
-use denial_look_gpui::{Icon, island};
-use gpui::{AsyncWindowContext, Context, Div, SharedString, WeakEntity, prelude::*};
+use denial_look::words::{fill, tr};
+use denial_look_gpui::{Icon, island, solid};
+use gpui::{AsyncWindowContext, Context, Div, SharedString, WeakEntity, div, prelude::*};
 
+use super::android::{DEFAULT_DPI, SIZE_SCALES, SIZES};
 use super::{Dialog, Layer, Screen, Settings};
 use crate::catalog::{self, Section};
 use crate::denial;
+use crate::droidloom;
 use crate::wallpaper;
 
 /// How often Settings looks for a monitor.
@@ -109,8 +111,115 @@ impl Settings {
                 island(&self.look)
                     .child(self.live(scale, layer.live(), cx, |this, _, cx| this.choose_scale(cx))),
             ];
+        if droidloom::installed() {
+            parts.push(self.android_size_island(monitor, layer, cx));
+        }
         parts.extend(self.page(sections, layer, cx));
         parts
+    }
+
+    /// How large Android apps are on the monitor, apart from the phone.
+    fn android_size_island(
+        &self,
+        monitor: &denial::Monitor,
+        layer: Layer,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let per_scale = self
+            .densities
+            .outputs
+            .get(&monitor.name)
+            .copied()
+            .or(self.densities.every);
+        let picked = SIZE_SCALES
+            .iter()
+            .position(|share| per_scale.is_some_and(|per| (DEFAULT_DPI * share - per).abs() < 0.5))
+            .unwrap_or(SIZES.len());
+        let dpi = per_scale.map(|per| {
+            let dpi = (f64::from(per) * monitor.scale).round();
+            fill("{dpi} dpi", &[("dpi", &dpi.to_string())]).into()
+        });
+        island(&self.look).child(
+            self.options_row(
+                "monitor.android",
+                "Android apps",
+                dpi,
+                &SIZES,
+                picked,
+                layer.live(),
+                (true, true),
+                cx,
+                Rc::new(|this, option, _, cx| this.pick_monitor_android(option, cx)),
+            )
+            .child(
+                div()
+                    .text_color(solid(self.look.palette.secondary))
+                    .child(tr("Open Android apps may restart to take the new size")),
+            ),
+        )
+    }
+
+    /// Draws Android apps on the monitor at the size picked from `SIZES`.
+    fn pick_monitor_android(&mut self, option: usize, cx: &mut Context<Self>) {
+        let (Some(monitor), Some(share)) = (self.monitor.clone(), SIZE_SCALES.get(option)) else {
+            return;
+        };
+        let per_scale = DEFAULT_DPI * share;
+        self.densities
+            .outputs
+            .insert(monitor.name.clone(), per_scale);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let set = cx
+                .background_spawn(async move {
+                    droidloom::set_densities(Some(&monitor.name), Some(per_scale))
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if let Err(error) = set {
+                    view.densities = droidloom::densities();
+                    view.note(
+                        fill(
+                            "Could not change the size: {why}",
+                            &[("why", &error.to_string())],
+                        ),
+                        cx,
+                    );
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Reads the densities by screen. Until one is set for every screen,
+    /// it is worked out from Android's density on the phone, so the
+    /// monitor starts with apps the size they are there.
+    pub(super) fn read_densities(&mut self, cx: &mut Context<Self>) {
+        self.densities = droidloom::densities();
+        let Some(panel_scale) = self.monitor.as_ref().map(|monitor| monitor.panel_scale) else {
+            return;
+        };
+        if self.densities.every.is_some() || !droidloom::installed() {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let seeded = cx
+                .background_spawn(async move {
+                    let density = droidloom::density().ok()?;
+                    let per_scale = (f64::from(density.dpi) / panel_scale) as f32;
+                    droidloom::set_densities(None, Some(per_scale)).ok()?;
+                    Some(droidloom::densities())
+                })
+                .await;
+            if let Some(densities) = seeded {
+                let _ = this.update(cx, |view, cx| {
+                    view.densities = densities;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
     }
 
     fn choose_scale(&mut self, cx: &mut Context<Self>) {

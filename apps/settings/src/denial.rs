@@ -38,6 +38,8 @@ pub struct Monitor {
     pub scale: f64,
     /// Its mode, in pixels, wide by high.
     pub size: (u32, u32),
+    /// The phone's own panel's scale, beside it.
+    pub panel_scale: f64,
 }
 
 /// Whether the screen named `name` is built in: the phone's own panel.
@@ -184,23 +186,30 @@ impl Link {
     /// that is not built in. None without one.
     pub async fn monitor(&self) -> Result<Option<Monitor>, Refusal> {
         let outputs = self.call("outputs.get", None).await?;
-        Ok(outputs["outputs"]
+        let shown: Vec<&Value> = outputs["outputs"]
             .as_array()
             .into_iter()
             .flatten()
             .filter(|output| output["enabled"] == true && output["connected"] == true)
-            .find(|output| !internal(output["name"].as_str().unwrap_or_default()))
-            .map(|output| {
-                let mode = &output["current_mode"];
-                Monitor {
-                    name: output["name"].as_str().unwrap_or_default().to_owned(),
-                    scale: output["scale"].as_f64().unwrap_or(1.0),
-                    size: (
-                        mode["width"].as_u64().unwrap_or(0) as u32,
-                        mode["height"].as_u64().unwrap_or(0) as u32,
-                    ),
-                }
-            }))
+            .collect();
+        let built_in = |output: &&&Value| internal(output["name"].as_str().unwrap_or_default());
+        let panel_scale = shown
+            .iter()
+            .find(built_in)
+            .and_then(|panel| panel["scale"].as_f64())
+            .unwrap_or(1.0);
+        Ok(shown.iter().find(|output| !built_in(output)).map(|output| {
+            let mode = &output["current_mode"];
+            Monitor {
+                name: output["name"].as_str().unwrap_or_default().to_owned(),
+                scale: output["scale"].as_f64().unwrap_or(1.0),
+                size: (
+                    mode["width"].as_u64().unwrap_or(0) as u32,
+                    mode["height"].as_u64().unwrap_or(0) as u32,
+                ),
+                panel_scale,
+            }
+        }))
     }
 
     pub async fn set_brightness(&self, output: &Output, percent: u8) -> Result<(), Refusal> {

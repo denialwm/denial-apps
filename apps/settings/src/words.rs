@@ -496,6 +496,7 @@ pub static CHINESE: &[(&str, &str)] = &[
     ),
     ("Monitor wallpaper", "显示器壁纸"),
     ("Could not change the scale: {why}", "无法更改缩放：{why}"),
+    ("Could not change the size: {why}", "无法更改大小：{why}"),
     ("Could not answer Denial: {why}", "无法回应 Denial：{why}"),
     ("{count} minutes", "{count} 分钟"),
     ("{count} seconds", "{count} 秒"),

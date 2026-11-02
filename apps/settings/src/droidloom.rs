@@ -343,6 +343,73 @@ pub fn installed() -> bool {
     std::path::Path::new(INSTALLED).exists()
 }
 
+/// The densities Droidloom gives Android apps by the screen they are on, in
+/// dots per inch per unit of the screen's scale: one for every screen, and
+/// one for some screens by connector. Droidloom watches the file
+/// (`$XDG_CONFIG_HOME/droidloom/density-v1.json`), so open apps follow.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Densities {
+    pub every: Option<f32>,
+    pub outputs: std::collections::BTreeMap<String, f32>,
+}
+
+fn densities_file() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .map(|config| config.join("droidloom/density-v1.json"))
+}
+
+fn read_densities() -> Value {
+    densities_file()
+        .and_then(|file| std::fs::read(file).ok())
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
+pub fn densities() -> Densities {
+    let file = read_densities();
+    let number = |value: &Value| value.as_f64().map(|n| n as f32);
+    Densities {
+        every: number(&file["dpiPerScale"]),
+        outputs: file["outputs"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(name, value)| Some((name.clone(), number(value)?)))
+            .collect(),
+    }
+}
+
+/// Sets the density for every screen, or with `output` for that screen
+/// alone; None for a screen drops its own, so it takes every screen's.
+pub fn set_densities(output: Option<&str>, per_scale: Option<f32>) -> std::io::Result<()> {
+    let file = densities_file().ok_or(std::io::ErrorKind::NotFound)?;
+    let mut densities = read_densities();
+    match (output, per_scale) {
+        (None, per_scale) => densities["dpiPerScale"] = json!(per_scale),
+        (Some(name), Some(per_scale)) => {
+            if !densities["outputs"].is_object() {
+                densities["outputs"] = json!({});
+            }
+            densities["outputs"][name] = json!(per_scale);
+        }
+        (Some(name), None) => {
+            if let Some(outputs) = densities["outputs"].as_object_mut() {
+                outputs.remove(name);
+            }
+        }
+    }
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let temporary = file.with_extension("tmp");
+    std::fs::write(&temporary, serde_json::to_vec_pretty(&densities)?)?;
+    std::fs::rename(&temporary, &file)
+}
+
 /// Whether Droidloom starts with the session.
 pub fn starts() -> bool {
     link().is_some_and(|link| link.symlink_metadata().is_ok())

@@ -30,13 +30,13 @@ use crate::{about, clock};
 const READ_EVERY: Duration = Duration::from_secs(2);
 
 /// The sizes Android apps can be drawn at, as shares of the default density.
-const SIZES: [&str; 4] = ["Small", "Default", "Large", "Larger"];
-const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
+pub(super) const SIZES: [&str; 4] = ["Small", "Default", "Large", "Larger"];
+pub(super) const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
 
 /// Android's density for the default size, per unit of the scale Denial
 /// gives windows: 460 dpi at scale 2, which matches a stock Android phone
 /// side by side. Android's own 160 drew its apps smaller than Denial's.
-const DEFAULT_DPI: f32 = 230.0;
+pub(super) const DEFAULT_DPI: f32 = 230.0;
 
 /// Android's density at the size `option` of `SIZES`.
 fn size_dpi(scale: f32, option: usize) -> Option<u32> {
@@ -209,9 +209,16 @@ impl Settings {
         let before = density.dpi;
         self.android.density = Some(Density { dpi, ..density });
         cx.notify();
+        // Screens of another scale, such as a monitor, take the same size
+        // in their own units.
+        let per_scale = DEFAULT_DPI * SIZE_SCALES[option];
         cx.spawn(async move |this, cx| {
             let set = cx
-                .background_spawn(async move { droidloom::set_density(dpi) })
+                .background_spawn(async move {
+                    droidloom::set_density(dpi)?;
+                    droidloom::set_densities(None, Some(per_scale))
+                        .map_err(|error| error.to_string())
+                })
                 .await;
             let _ = this.update(cx, |view, cx| {
                 if let Err(why) = set {
