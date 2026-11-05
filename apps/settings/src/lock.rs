@@ -7,7 +7,7 @@
 //! its last output line is its answer, as JSON.
 //!
 //! Fingerprints need the PIN: Denial's lock screen leaves the reader off
-//! without one, and the PIN opens the session that changes them.
+//! without one, and Settings asks for it before it changes them.
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -38,11 +38,56 @@ pub enum Outcome {
     Failed,
 }
 
+/// What the lock holds.
+pub struct Status {
+    /// The PIN's length, 0 when the lock screen asks for the password.
+    pub length: u32,
+    /// The phone's Gatekeeper keeps the PIN, and its reader adds a finger
+    /// only once Denial's root session proves the PIN to it.
+    pub gatekeeper: bool,
+}
+
+/// What the lock holds; None when the helper does not answer.
+pub fn status() -> Option<Status> {
+    let answer = run(&["status"])?;
+    (answer["event"] == "status").then(|| Status {
+        length: answer["length"].as_u64().unwrap_or(0) as u32,
+        gatekeeper: answer["requires_current_pin"].as_bool().unwrap_or(false),
+    })
+}
+
 /// The PIN's length, 0 when the lock screen asks for the password; None
 /// when the helper does not answer.
 pub fn pin_length() -> Option<u32> {
-    let answer = run(&["status"])?;
-    (answer["event"] == "status").then(|| answer["length"].as_u64().unwrap_or(0) as u32)
+    status().map(|status| status.length)
+}
+
+/// What the helper made of a PIN to check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Checked {
+    Confirmed,
+    WrongPin,
+    /// Too many wrong PINs: the PIN is taken again after these seconds.
+    Wait(u32),
+    /// The helper did not run, or said nothing it should.
+    Failed,
+}
+
+/// Whether `pin` is the lock PIN.
+pub fn check_pin(pin: &str) -> Checked {
+    let answer = run(&["check", pin]);
+    match answer.as_ref().and_then(|answer| answer["event"].as_str()) {
+        Some("confirmed") => Checked::Confirmed,
+        Some("wrong-pin") => Checked::WrongPin,
+        Some("rate-limited") => {
+            let ms = answer
+                .as_ref()
+                .and_then(|a| a["retry_ms"].as_u64())
+                .unwrap_or(0);
+            Checked::Wait(ms.div_ceil(1000).max(1) as u32)
+        }
+        _ => Checked::Failed,
+    }
 }
 
 /// Sets the PIN, once `password` is the account's: the first PIN, or one

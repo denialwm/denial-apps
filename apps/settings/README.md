@@ -184,14 +184,16 @@ where its value lives (`src/settings/bound.rs`):
   before with 4 to 12 digits still works until it is changed.
 - The fingers (`src/fingerprint.rs`), on a screen of their own behind the
   PIN: the Fingerprint row asks for it, or sets one first when there is
-  none, since Denial's lock screen leaves the reader off without a PIN. The
-  PIN opens Denial's fingerprint session, `sudo -n deniald
-  --fingerprint-settings`, which adds and removes fingers; a PIN just set
-  opens it at once. The device's sudo rule lets the session's user start
-  that one command without a password. The session ends after five
-  minutes or when the screen closes; the next change asks for the PIN
-  again. The count on the Security page is fprintd's list. While the phone
-  is locked Denial holds the reader.
+  none, since Denial's lock screen leaves the reader off without a PIN.
+  `deniald --lock-pin check` proves the PIN; a PIN just set counts at once.
+  Settings then adds and removes fingers through fprintd itself, as the
+  session's user: the denial package's polkit rule lets the user at the
+  phone change their own fingers without the account password. Where a
+  Gatekeeper keeps the PIN, Denial's root session, `sudo -n deniald
+  --fingerprint-settings`, adds them instead, since the reader wants the
+  PIN proven to it. Either way the PIN is asked again after five minutes or
+  once the screen closes. The count on the Security page is fprintd's list.
+  While the phone is locked Denial holds the reader.
 - The wallpaper (`src/wallpaper.rs`): Denial's own and the pictures in the
   wallpaper folder (`$DENIAL_WALLPAPER_DIR`, else `~/Pictures/Wallpapers`, as
   the shell has it), three to a row on a screen of their own, from
