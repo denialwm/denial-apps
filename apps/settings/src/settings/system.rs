@@ -1,4 +1,5 @@
-//! The system's pages: Date and time with its time zones, Storage, the apps
+//! The system's pages: Date and time with its time zones and the country
+//! the Wi-Fi rules follow, Storage, the apps
 //! installed and whether Android apps run, and the language. Each reads
 //! what it shows when it opens; the clock again every second while it
 //! shows.
@@ -6,17 +7,18 @@
 use std::time::Duration;
 
 use denial_look::words::{self, tr};
-use denial_look_gpui::{Icon, dp};
+use denial_look_gpui::{Icon, dp, icon, solid};
 use gpui::{
     Context, Div, Focusable, ObjectFit, SharedString, Stateful, StyledImage, Window, div, img,
     prelude::*, px,
 };
 use serde_json::{Value, json};
 
-use super::parts::{ROW_GAP, ROW_PAD};
+use super::parts::{ICON, ROW_GAP, ROW_PAD};
 use super::{Dialog, Layer, Screen, Settings};
 use crate::catalog::{self, Item, Section};
-use crate::{about, apps, clock, denial, droidloom, language};
+use crate::countries::COUNTRIES;
+use crate::{about, apps, clock, country, denial, droidloom, language};
 
 /// An app's icon in the installed apps, in dp.
 pub(super) const APP_ICON: f32 = 36.0;
@@ -192,6 +194,10 @@ impl Settings {
             }),
             "time.date" => Some(clock::date_text(&now).into()),
             "time.time" => Some(clock::time_text(&now, twenty_four).into()),
+            "time.country" => Some(match self.country {
+                Some(code) => country::name(code).into(),
+                None => tr("Not set").into(),
+            }),
             _ => None,
         }
     }
@@ -201,6 +207,10 @@ impl Settings {
         match item.key {
             "time.zone" if self.clock.is_some() => self.open(Screen::Zones, window, cx),
             "time.zone" => self.note(tr("The clock does not answer"), cx),
+            "time.country" => {
+                self.country_field.update(cx, |input, cx| input.clear(cx));
+                self.open(Screen::Countries, window, cx);
+            }
             "time.date" => self.ask_clock(true, None, window, cx),
             "time.time" => self.ask_clock(false, None, window, cx),
             _ => {}
@@ -295,6 +305,11 @@ impl Settings {
         }
         let back = Self::parent(&self.screen);
         self.open_at(back, true, window, cx);
+        // A phone with no country takes the time zone's for its Wi-Fi.
+        let country = match self.country {
+            None => country::for_zone(&zone),
+            Some(_) => None,
+        };
         cx.spawn(async move |this, cx| {
             let set = clock::set_zone(&zone).await;
             let _ = this.update(cx, |view, cx| {
@@ -303,7 +318,73 @@ impl Settings {
                         tr("Could not change the time zone: {why}").replace("{why}", &said),
                         cx,
                     );
+                } else if let Some(code) = country {
+                    view.set_country(code, cx);
                 }
+            });
+        })
+        .detach();
+    }
+
+    /// The countries to pick from, the search field over them: the one set
+    /// first, else the time zone's.
+    pub(super) fn countries_screen(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
+        let typed = self.country_field.read(cx).text().to_owned();
+        let first = self.country.or_else(|| {
+            self.clock
+                .as_ref()
+                .and_then(|state| country::for_zone(&state.zone))
+        });
+        let mut codes: Vec<&'static str> = first.into_iter().collect();
+        codes.extend(
+            COUNTRIES
+                .iter()
+                .map(|(code, _, _)| *code)
+                .filter(|code| Some(*code) != first),
+        );
+        codes.retain(|code| country::matches(code, &typed));
+        let field = div()
+            .id("country-field")
+            .flex()
+            .child(self.field(
+                icon(Icon::Search, dp(ICON), solid(self.look.palette.secondary)),
+                &self.country_field,
+            ))
+            .on_click(cx.listener(|this, _, window, cx| {
+                window.focus(&this.country_field.focus_handle(cx), cx);
+            }));
+        let mut parts = vec![div().child(field)];
+        if !codes.is_empty() {
+            parts.push(self.rows_island(codes.into_iter(), 0., |code, ends| {
+                let picked = self.country == Some(code);
+                let row = self
+                    .row(code, None, country::name(code), None, ends)
+                    .child(self.radio(picked));
+                self.live(row, layer.live() && !picked, cx, move |this, window, cx| {
+                    let back = Self::parent(&this.screen);
+                    this.open_at(back, true, window, cx);
+                    this.set_country(code, cx);
+                })
+            }));
+        }
+        parts
+    }
+
+    /// Sets the country the Wi-Fi rules follow.
+    fn set_country(&mut self, code: &'static str, cx: &mut Context<Self>) {
+        let before = self.country.replace(code);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let set = cx.background_spawn(async move { country::set(code) }).await;
+            let _ = this.update(cx, |view, cx| {
+                if let Err(said) = set {
+                    view.country = before;
+                    view.note(
+                        tr("Could not change the country: {why}").replace("{why}", &said),
+                        cx,
+                    );
+                }
+                cx.notify();
             });
         })
         .detach();

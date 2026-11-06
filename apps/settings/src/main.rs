@@ -4,6 +4,8 @@ mod battery;
 mod bluetooth;
 mod catalog;
 mod clock;
+mod countries;
+mod country;
 mod denial;
 mod diagnostics;
 mod droidloom;

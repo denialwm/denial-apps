@@ -44,6 +44,7 @@ use crate::battery;
 use crate::bluetooth;
 use crate::catalog::{self, Content, Page};
 use crate::clock;
+use crate::country;
 use crate::denial;
 use crate::fingerprint;
 use crate::mobile;
@@ -82,6 +83,8 @@ enum Screen {
     Fingers,
     /// The time zones to pick from.
     Zones,
+    /// The countries the Wi-Fi rules can follow.
+    Countries,
     /// One Android app, by its package.
     AndroidApp {
         package: SharedString,
@@ -96,7 +99,8 @@ impl PartialEq for Screen {
             | (Screen::Wallpapers, Screen::Wallpapers)
             | (Screen::MonitorWallpapers, Screen::MonitorWallpapers)
             | (Screen::Fingers, Screen::Fingers)
-            | (Screen::Zones, Screen::Zones) => true,
+            | (Screen::Zones, Screen::Zones)
+            | (Screen::Countries, Screen::Countries) => true,
             (Screen::Page(a), Screen::Page(b)) => std::ptr::eq(*a, *b),
             (Screen::Network { id: a, .. }, Screen::Network { id: b, .. }) => a == b,
             (Screen::Device { path: a }, Screen::Device { path: b }) => a == b,
@@ -119,6 +123,7 @@ impl Screen {
             Screen::MonitorWallpapers => "monitor-wallpapers",
             Screen::Fingers => "fingers",
             Screen::Zones => "zones",
+            Screen::Countries => "countries",
             Screen::AndroidApp { .. } => "android-app",
         }
     }
@@ -549,6 +554,8 @@ pub struct Settings {
     clock_field: Entity<TextInput>,
     /// What to look for on Wallhaven.
     wallhaven_field: Entity<TextInput>,
+    /// What to look for among the countries.
+    country_field: Entity<TextInput>,
     /// The slider under a finger or the mouse.
     /// The key of the slider the finger holds.
     sliding: Option<&'static str>,
@@ -567,6 +574,8 @@ pub struct Settings {
     about: About,
     /// The clock as timedated says; None while it does not answer.
     clock: Option<clock::State>,
+    /// The country the Wi-Fi rules follow; None while none is set.
+    country: Option<&'static str>,
     storage: Storage,
     installed: Installed,
     wallpapers: Wallpapers,
@@ -634,6 +643,7 @@ impl Settings {
         let finger_field = cx.new(|cx| TextInput::new("Fingerprint name", &look, 1, cx));
         let clock_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
         let wallhaven_field = cx.new(|cx| TextInput::new("Search Wallhaven", &look, 1, cx));
+        let country_field = cx.new(|cx| TextInput::new("Search countries", &look, 1, cx));
         let secret = |hint: &str, cx: &mut Context<Self>| {
             cx.new(|cx| {
                 let mut input = TextInput::new(hint, &look, 1, cx);
@@ -658,6 +668,7 @@ impl Settings {
             cx.observe(&finger_field, |_, _, cx| cx.notify()),
             cx.observe(&clock_field, |_, _, cx| cx.notify()),
             cx.observe(&wallhaven_field, |this, _, cx| this.typed_wallhaven(cx)),
+            cx.observe(&country_field, |_, _, cx| cx.notify()),
             cx.subscribe_in(
                 &wallhaven_field,
                 window,
@@ -747,6 +758,7 @@ impl Settings {
             finger_field,
             clock_field,
             wallhaven_field,
+            country_field,
             sliding: None,
             notice: None,
             screen,
@@ -791,6 +803,7 @@ impl Settings {
             reading_panel: None,
             reading_volume: None,
             reading_clock: None,
+            country: country::read(),
             reading_mobile: None,
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
@@ -844,6 +857,7 @@ impl Settings {
             &self.finger_field,
             &self.clock_field,
             &self.wallhaven_field,
+            &self.country_field,
         ] {
             input.update(cx, |input, cx| input.restyle(&look, cx));
         }
@@ -1008,6 +1022,9 @@ impl Settings {
         if self.screen.is_page("apps") {
             self.read_apps(cx);
         }
+        if self.screen.is_page("time") || self.screen == Screen::Countries {
+            self.country = country::read();
+        }
         if self.screen.is_page("security") {
             self.read_lock(cx);
         }
@@ -1146,7 +1163,9 @@ impl Settings {
                 catalog::page("monitor").map_or(Screen::Home, Screen::Page)
             }
             Screen::Fingers => catalog::page("security").map_or(Screen::Home, Screen::Page),
-            Screen::Zones => catalog::page("time").map_or(Screen::Home, Screen::Page),
+            Screen::Zones | Screen::Countries => {
+                catalog::page("time").map_or(Screen::Home, Screen::Page)
+            }
             Screen::AndroidApp { .. } => {
                 catalog::page("android").map_or(Screen::Home, Screen::Page)
             }
@@ -1341,6 +1360,7 @@ impl Settings {
             }
             Screen::Fingers => self.fingers_screen(layer, cx),
             Screen::Zones => self.zones_screen(layer, cx),
+            Screen::Countries => self.countries_screen(layer, cx),
             Screen::AndroidApp { package } => self.android_app_screen(package, layer, cx),
         };
         let content = div()
@@ -1484,6 +1504,7 @@ impl Settings {
             Screen::MonitorWallpapers => "Monitor wallpaper".into(),
             Screen::Fingers => "Fingerprint".into(),
             Screen::Zones => "Time zone".into(),
+            Screen::Countries => "Country or region".into(),
             Screen::AndroidApp { package } => self
                 .android_app(package)
                 .map(|app| app.name.clone().into())

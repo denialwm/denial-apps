@@ -99,6 +99,17 @@ dialog; the time zone, picked by a city on a screen of their own; and the
 24-hour clock, Denial's `localization.twentyFourHourClock`, which the shell's
 clocks follow. The page reads timedated again every second while it shows.
 
+The country or region on the same page is the one whose rules the Wi-Fi
+radios follow (`src/country.rs`): wireless-regdb's
+`/etc/conf.d/wireless-regdom`, which its udev rule applies whenever the Wi-Fi
+stack loads. The `wifi-country` helper (`src/bin/wifi-country.rs`) writes it
+and applies it at once with `iw`; Settings runs it through pkexec, under the
+polkit action in `packaging/`. The list is every country the regulatory
+database knows, in English and Chinese, searchable by name or code;
+`tools/countries.py` writes it from wireless-regdb and iso-codes. The time
+zone's country comes first, and picking a time zone while no country is set
+sets that country too.
+
 Language is real (`src/language.rs`): English or Simplified Chinese. A pick
 sets Denial's `localization.locale`, which the shell and the native apps
 follow at once; `LANG` in Denial's application environment, for the apps

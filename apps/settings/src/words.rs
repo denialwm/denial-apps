@@ -167,6 +167,13 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Uses a little more battery", "会多耗一点电"),
     ("Reading…", "正在读取…"),
     ("Not set", "未设置"),
+    ("Region", "地区"),
+    ("Country or region", "国家或地区"),
+    ("Search countries", "搜索国家或地区"),
+    (
+        "Could not change the country: {why}",
+        "无法更改国家或地区：{why}",
+    ),
     ("Off", "关闭"),
     ("On", "开启"),
     ("No reader", "没有指纹传感器"),

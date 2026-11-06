@@ -660,6 +660,12 @@ pub static GROUPS: &[Group] = &[
                                 .denial("localization.twentyFourHourClock"),
                         ],
                     ),
+                    section(
+                        "Region",
+                        &[item("time.country", "Country or region", Kind::Opens)
+                            .icon(Icon::Wifi)
+                            .from(Source::Own)],
+                    ),
                 ]),
             },
             Page {
