@@ -53,9 +53,10 @@ other screens show it as a bar, over the tab bar on the tabs, with End, and a
 tap on the bar goes back to it. One call at a time.
 
 Contacts come from the contacts folder, `~/.local/share/contacts`, through
-`libraries/denial-contacts`, and follow its changes. Until there are real
-ones, 18 sample contacts and a sample call log are shown; the menu hides them
-and shows them again. Their numbers are in the ranges Ofcom keeps for
+`libraries/denial-contacts`, and follow its changes. The menu shows 18
+sample contacts and a sample call log to try Calls with, and hides them
+again; they are hidden at first, and the choice is kept in
+`$XDG_STATE_HOME/denial/calls/samples-shown`. Their numbers are in the ranges Ofcom keeps for
 fiction, and the first four are the people of Messages' sample
 conversations, on the same numbers. Favourites are kept on the phone, in
 `$XDG_STATE_HOME/denial/calls/favourites`; the call log is not kept.

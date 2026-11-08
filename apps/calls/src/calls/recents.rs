@@ -352,7 +352,7 @@ impl Calls {
         if !matches!(self.overlay, Some((Overlay::Menu, _))) {
             return None;
         }
-        let shown = !self.samples_hidden.on();
+        let shown = self.samples_shown.on();
         let item = |id: &'static str,
                     face: Face,
                     cx: &mut Context<Self>,
@@ -391,8 +391,8 @@ impl Calls {
                             cx,
                             |this, _, cx| {
                                 this.overlay = None;
-                                let shown = this.samples_hidden.on();
-                                this.show_samples(shown, cx);
+                                let shown = this.samples_shown.on();
+                                this.show_samples(!shown, cx);
                             },
                         )),
                 ),

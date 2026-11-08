@@ -1,4 +1,4 @@
-//! Made-up contacts and calls to try Calls with, shown until the menu hides
+//! Made-up contacts and calls to try Calls with, hidden until the menu shows
 //! them. They live only in the app: no card is written for them. Mobile
 //! numbers are in +44 7700 900000 to 900999 and landlines in +44 20 7946 0000
 //! to 0999, which Ofcom keeps for fiction, so none of them reaches a person.

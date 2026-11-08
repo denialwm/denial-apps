@@ -393,8 +393,8 @@ pub struct Calls {
     /// The id of the next call.
     next_id: u64,
     favourites: Favourites,
-    /// The sample contacts and calls are hidden.
-    samples_hidden: Flag,
+    /// The sample contacts and calls are shown.
+    samples_shown: Flag,
     /// The search bar's field, at the top of Recents and Contacts.
     search: Entity<TextInput>,
     /// The search bar and the menu button leave as Recents or Contacts
@@ -449,8 +449,8 @@ impl Calls {
                 this.keyboard_moved(window.keyboard_inset(), window, cx)
             }));
         }
-        let samples_hidden = Flag::load("samples-hidden");
-        let shown = !samples_hidden.on();
+        let samples_shown = Flag::load("samples-shown");
+        let shown = samples_shown.on();
         let folder = Contacts::folder();
         let people = People::read(folder.as_deref(), shown);
         let log = if shown {
@@ -491,7 +491,7 @@ impl Calls {
             log,
             next_id: samples::FIRST_LIVE_ID,
             favourites: Favourites::load(samples::FAVOURITES),
-            samples_hidden,
+            samples_shown,
             search,
             top_away: ScrollAway::default(),
             typed,
@@ -564,7 +564,7 @@ impl Calls {
 
     /// Reads the contacts again, with or without the samples.
     fn reread_people(&mut self, cx: &mut Context<Self>) {
-        self.people = People::read(self.folder.as_deref(), !self.samples_hidden.on());
+        self.people = People::read(self.folder.as_deref(), self.samples_shown.on());
         for list in [&self.recents, &self.contacts, &self.found] {
             list.reset(0);
         }
@@ -573,7 +573,7 @@ impl Calls {
 
     /// Shows the sample contacts and calls, or takes them away.
     fn show_samples(&mut self, shown: bool, cx: &mut Context<Self>) {
-        self.samples_hidden.set(!shown);
+        self.samples_shown.set(shown);
         self.log.retain(|call| !call.sample);
         if shown {
             self.log.extend(samples::calls(data::now()));

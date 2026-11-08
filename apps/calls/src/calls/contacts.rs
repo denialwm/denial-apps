@@ -51,7 +51,7 @@ impl Calls {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if self.entries.is_empty() {
-            let action = self.samples_hidden.on().then(|| {
+            let action = (!self.samples_shown.on()).then(|| {
                 self.button(
                     "show-samples",
                     Face::Both(Icon::Person, tr("Show sample contacts")),
