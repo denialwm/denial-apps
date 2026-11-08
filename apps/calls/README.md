@@ -75,6 +75,14 @@ time: it owns `org.denialwm.Calls` on the session bus, and a second `calls
 <number>` hands the number and its activation token to it through `Open` and
 exits.
 
+Phonewave's
+[calls-manager](https://github.com/denialwm/phonewave/tree/main/services/modem/calls-manager)
+rings, posts the call as a notification and starts the calls app set in
+Denial (`lockScreen.callsApp`, Calls by default) while the phone is locked.
+Denial shows that app's window over the lock screen while its call
+notification stands; Calls then dims Message and Details, and Back does
+nothing.
+
 ## Dependencies
 
 - [dmail](https://github.com/denialwm/phonewave/tree/main/services/modem/dmail)

@@ -35,6 +35,7 @@ use crate::data::{self, Call};
 use crate::local::{Favourites, Flag};
 use crate::people::People;
 use crate::samples;
+use crate::session;
 use crate::voice::{CallAudio1Proxy, CallRow, LoggedCall, Voice1Proxy};
 
 actions!(calls, [Back]);
@@ -431,6 +432,9 @@ pub struct Calls {
     /// The number called last, which Call brings back on an empty keypad.
     last_dialled: Option<String>,
     live: Option<Live>,
+    /// The session is locked. Calls then shows over the lock screen only
+    /// for a call, and only the call.
+    locked: bool,
     /// dmail's Voice1, while dmail is reachable.
     voice: Option<Voice1Proxy<'static>>,
     /// dmail's calls as last told.
@@ -458,6 +462,7 @@ pub struct Calls {
     _contacts: Task<()>,
     _settings: Task<()>,
     _voice: Task<()>,
+    _lock: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -531,6 +536,7 @@ impl Calls {
             typed,
             last_dialled: None,
             live: None,
+            locked: false,
             voice: None,
             rows: Vec::new(),
             gone: None,
@@ -548,6 +554,11 @@ impl Calls {
             _settings: cx.spawn(async move |this, cx| Self::follow_settings(this, cx).await),
             _voice: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_voice(this, cx).await
+            }),
+            _lock: cx.spawn_in(window, async move |this, cx| {
+                if let Err(error) = Self::follow_lock(&this, cx).await {
+                    eprintln!("calls: following the lock: {error}");
+                }
             }),
             _subscriptions: subscriptions,
         }
@@ -640,6 +651,23 @@ impl Calls {
                 Err(_) => view.take_calls(None, Vec::new(), window, cx),
             })?;
             if events.next().await.is_none() {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Follows whether the session is locked.
+    async fn follow_lock(this: &WeakEntity<Self>, cx: &mut AsyncWindowContext) -> gpui::Result<()> {
+        let bus = zbus::Connection::system().await?;
+        let session = session::graphical(&bus).await?;
+        let mut changes = session.receive_locked_hint_changed().await;
+        loop {
+            let locked = session.locked_hint().await?;
+            this.update_in(cx, |view, _, cx| {
+                view.locked = locked;
+                cx.notify();
+            })?;
+            if changes.next().await.is_none() {
                 return Ok(());
             }
         }
@@ -998,8 +1026,12 @@ impl Calls {
         if self.screen == Screen::Call {
             self.go_back(window, cx);
         }
-        // A call that waited behind it comes on screen.
+        // A call that waited behind it comes on screen. Over the lock screen,
+        // with none, Calls leaves.
         self.follow_rows(window, cx);
+        if self.locked && self.live.is_none() {
+            window.remove_window();
+        }
         cx.notify();
     }
 
@@ -1141,6 +1173,10 @@ impl Calls {
     /// lets go; then the screen pops; on a tab, the window closes. A call
     /// goes on behind the screens it goes back to.
     fn back(&mut self, _: &Back, window: &mut Window, cx: &mut Context<Self>) {
+        // Over the lock screen only the call shows.
+        if self.locked {
+            return;
+        }
         let typing = self.search.focus_handle(cx).is_focused(window);
         if self.overlay.is_some() {
             self.dismiss(cx);

@@ -4,6 +4,7 @@ mod instance;
 mod local;
 mod people;
 mod samples;
+mod session;
 mod voice;
 mod words;
 
