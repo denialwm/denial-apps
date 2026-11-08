@@ -37,8 +37,10 @@ profile and the `[patch.crates-io]` entries GPUI needs (zed's `async-process`,
 
 ## Build
 
-From an app's directory, `cargo run --release` on the host; the app's README
-covers device builds. Output goes to `target/` here.
+From an app's directory, `cargo run --release` on the host. Phones get the
+apps as packages from Phonewave's `denial-apps` recipe:
+`phonewave/tools/phone-install HOST denial-apps` from the workspace root tries
+them on one. Output goes to `target/` here.
 
 ## Icons
 

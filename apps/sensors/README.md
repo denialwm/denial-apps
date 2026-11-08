@@ -57,16 +57,12 @@ On the host:
 cargo run --release
 ```
 
-For the phones, cross-built against the sysroot in
-`/mnt/development/denial-os/cross/sysroot`:
+For the phones, Phonewave's `denial-apps` recipe packages every app, built
+against the Arch Linux ARM sysroot; from the workspace root,
+`phonewave/tools/phone-install HOST denial-apps` installs them on one. The
+package puts the binary in `/usr/lib/denial-apps/`.
 
-```sh
-./build-aarch64.sh
-```
-
-Both write to `target/` at the denial-apps root. On the phone, the binary
-goes in `~/.local/bin/sensors`, with the `.desktop` file and icon as the
-denial-apps README says.
+Both write to `target/` at the denial-apps root.
 
 `cargo test -- --ignored --nocapture reads_steinerd`, run on a phone,
 follows steinerd for 5 s with the sensors claimed and prints what it

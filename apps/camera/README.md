@@ -56,14 +56,11 @@ folder to stop.
 ## Build
 
 On the host, `cargo run --release` builds it; it opens a camera where braun
-runs. For the Ace 3, cross-built against its sysroot in
-`/mnt/development/denial-os/cross/sysroot`:
+runs.
 
-```sh
-./build-aston.sh
-```
+For the phones, Phonewave's `denial-apps` recipe packages every app, built
+against the Arch Linux ARM sysroot; from the workspace root,
+`phonewave/tools/phone-install HOST denial-apps` installs them on one. The
+package puts the binary in `/usr/lib/denial-apps/`. It runs next to braun.
 
-Both write to `target/` at the denial-apps root. On the phone it runs as
-`~/.local/bin/camera`, with `org.denialwm.Camera.desktop` in
-`~/.local/share/applications` and its icon as the root README says, next
-to braun.
+Both write to `target/` at the denial-apps root.

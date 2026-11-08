@@ -83,11 +83,9 @@ On the host:
 cargo run --release
 ```
 
-For the Ace 3, cross-built against its sysroot in
-`/mnt/development/denial-os/cross/sysroot`:
-
-```sh
-./build-aston.sh
-```
+For the phones, Phonewave's `denial-apps` recipe packages every app, built
+against the Arch Linux ARM sysroot; from the workspace root,
+`phonewave/tools/phone-install HOST denial-apps` installs them on one. The
+package puts the binary in `/usr/lib/denial-apps/`.
 
 Both write to `target/` at the denial-apps root.
