@@ -302,6 +302,8 @@ pub const MIN_RADIUS: f32 = 4.0;
 const WINDOW_RADIUS: f32 = 28.0;
 /// Below this the compositor would leave soft shadows as isolated frost.
 const MIN_WINDOW_ALPHA: f32 = 3.0 / 255.0;
+/// The shell's glass opacity when the settings hold none.
+const GLASS_OPACITY: f32 = 0.4;
 const DEFAULT_ACCENT: u32 = 0xD0BCFF;
 /// Accent text is shifted toward the foreground until it reaches this
 /// contrast against canvas.
@@ -406,15 +408,19 @@ impl Look {
             _ => wallpaper.unwrap_or(DEFAULT_ACCENT),
         };
         let glass = &appearance["glass"];
+        // As the shell reads the glass: a missing control takes the older
+        // shared opacity.
+        let glass_number =
+            |key: &str, default: f32| number(&glass[key], number(&glass["opacity"], default));
         let (window_alpha, panel_alpha) = match appearance["transparencyMode"].as_str() {
             Some("glass") => (
-                number(&glass["windowOpacity"], 1.0),
-                number(&glass["appPanelOpacity"], 1.0),
+                glass_number("windowOpacity", GLASS_OPACITY),
+                glass_number("appPanelOpacity", GLASS_OPACITY),
             ),
             // Blur keeps the glass's window opacity, the one key for the
             // backing behind apps.
             Some("blur") => (
-                number(&glass["windowOpacity"], MIN_WINDOW_ALPHA),
+                glass_number("windowOpacity", MIN_WINDOW_ALPHA),
                 number(&appearance["panelOpacity"], 0.5).clamp(0.05, 1.0),
             ),
             _ => (1.0, 1.0),
@@ -717,6 +723,21 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn glass_controls_fall_back_to_the_shared_opacity() {
+        let look = |glass: serde_json::Value| {
+            Look::from_settings(&serde_json::json!({
+                "appearance": { "transparencyMode": "glass", "glass": glass }
+            }))
+        };
+        let shared = look(serde_json::json!({ "opacity": 0.19 }));
+        assert_eq!(shared.backing(), (palette::DARK.glass, 0.19));
+        assert_eq!(shared.panel_alpha, 0.19);
+        let own = look(serde_json::json!({ "opacity": 0.19, "windowOpacity": 0.6 }));
+        assert_eq!(own.backing(), (palette::DARK.glass, 0.6));
+        assert_eq!(look(serde_json::json!({})).backing().1, GLASS_OPACITY);
     }
 
     #[test]
