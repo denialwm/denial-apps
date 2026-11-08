@@ -9,10 +9,8 @@ use denial_contacts::{Contact, Kind, Phone};
 
 use crate::data::{Call, Direction};
 
-/// Sample call ids start here, below the ids of calls made while Calls runs.
-pub const FIRST_ID: u64 = 1;
-/// Ids of calls made while Calls runs start here.
-pub const FIRST_LIVE_ID: u64 = 1_000;
+/// Sample call ids start here, far above any id dmail's log gives.
+const FIRST_ID: u64 = 1 << 62;
 
 /// Name, UID, and numbers with what they are for.
 type Card = (&'static str, &'static str, &'static [(&'static str, Kind)]);
@@ -195,7 +193,7 @@ mod tests {
         }
         for call in calls(1_700_000_000) {
             assert!(fiction(&call.number), "{}", call.number);
-            assert!(call.id < FIRST_LIVE_ID);
+            assert!(call.id >= FIRST_ID);
         }
     }
 }

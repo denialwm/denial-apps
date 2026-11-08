@@ -1,5 +1,6 @@
 //! The call log, and how its numbers, times and lengths read.
 
+use crate::voice::LoggedCall;
 use denial_look::words::{fill, tr};
 
 /// What happened to a call.
@@ -36,6 +37,26 @@ pub struct Call {
     pub talked: u64,
     /// One of the made-up calls of `samples`.
     pub sample: bool,
+}
+
+/// A call of dmail's log as the app shows it.
+pub fn logged(row: LoggedCall) -> Call {
+    let (id, number, direction, outcome, started, connected, ended) = row;
+    let direction = match (direction.as_str(), outcome.as_str()) {
+        ("out", _) => Direction::Outgoing,
+        (_, "missed") => Direction::Missed,
+        (_, "declined") => Direction::Declined,
+        _ => Direction::Incoming,
+    };
+    let talked = if connected > 0 { ended - connected } else { 0 };
+    Call {
+        id,
+        number,
+        direction,
+        time: started,
+        talked: talked.max(0) as u64,
+        sample: false,
+    }
 }
 
 impl Call {

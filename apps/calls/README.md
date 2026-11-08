@@ -1,11 +1,15 @@
 # Calls
 
-Phone and contacts app for Denial phones, written with GPUI. Calls are
-mocked for now: dmail's `org.dmail.Voice1` answers NotSupported to
-everything, so nothing is dialled. Placing a call rings on screen, the other
-side answers after 2.5 s, and the call runs until End. The call screen's top
-group says "Mock call". The menu can simulate a call coming in from a
-favourite or from a number no one has; it rings for 30 s, then is missed.
+Phone and contacts app for Denial phones, written with GPUI. Calls go
+through Phonewave's dmail, `org.dmail.Voice1` on the system bus: Call dials,
+Answer, Decline and End act on the modem's call, and the in-call keypad
+sends its digits as DTMF tones. The call on screen follows dmail's `Calls`:
+it connects when the other side answers, and ends when they hang up. A call
+coming in while Calls runs comes on screen and raises its window, as does a
+call going on when Calls starts. A caller who withheld their number shows as
+Unknown caller. Mute turns the microphone off through Phonewave's
+callaudio, `org.callaudio.CallAudio1` on the session bus; Speaker and Hold
+are dimmed.
 
 It is drawn to Denial's mobile materials, Islands
 (denial/docs/MOBILE_APP_MATERIALS.md), as Messages is, and shares its
@@ -59,7 +63,9 @@ again; they are hidden at first, and the choice is kept in
 `$XDG_STATE_HOME/denial/calls/samples-shown`. Their numbers are in the ranges Ofcom keeps for
 fiction, and the first four are the people of Messages' sample
 conversations, on the same numbers. Favourites are kept on the phone, in
-`$XDG_STATE_HOME/denial/calls/favourites`; the call log is not kept.
+`$XDG_STATE_HOME/denial/calls/favourites`. The call log is dmail's
+(`ListCallLog`), which logs every call that ends whether Calls runs or not;
+Delete takes a call off it there.
 
 Message opens Messages on the number: `messages <number>`, from beside the
 Calls binary, else from the PATH. A running Messages takes it.
@@ -71,6 +77,10 @@ exits.
 
 ## Dependencies
 
+- [dmail](https://github.com/denialwm/phonewave/tree/main/services/modem/dmail)
+  on the phone, for `org.dmail.Voice1`, and
+  [callaudio](https://github.com/denialwm/phonewave/tree/main/services/audio/callaudio)
+  for Mute.
 - `libraries/denial-look`, `libraries/denial-look-gpui` and
   `libraries/denial-contacts`, as in Messages.
 - The local gpui-touch checkout, as in Messages (see its README).

@@ -1,6 +1,7 @@
 //! The contacts: the folder's, and the samples while they are shown, with
 //! their photos ready to draw.
 
+use denial_look::words::tr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -58,8 +59,12 @@ impl People {
         (0..self.all().len()).find(|&index| self.key(index) == key)
     }
 
-    /// The name of whom `number` reaches, else the number.
+    /// The name of whom `number` reaches, else the number. A caller who
+    /// withheld theirs has none.
     pub fn name<'a>(&'a self, number: &'a str) -> &'a str {
+        if number.is_empty() {
+            return tr("Unknown caller");
+        }
         match self.find(number) {
             Some(index) => &self.all()[index].name,
             None => number,

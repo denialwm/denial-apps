@@ -1,8 +1,8 @@
 //! The Calls window: its state, what each action does, and how its screens
-//! are stacked and animated. Calls are mocked for now: nothing is dialled,
-//! and a call runs only on screen (`Live`). The screens are drawn in the
-//! modules below, all to Denial's mobile materials (Islands,
-//! denial/docs/MOBILE_APP_MATERIALS.md), as Messages draws its own.
+//! are stacked and animated. Calls are the modem's, through dmail's
+//! `org.dmail.Voice1` (`crate::voice`); the one on screen is `Live`. The
+//! screens are drawn in the modules below, all to Denial's mobile materials
+//! (Islands, denial/docs/MOBILE_APP_MATERIALS.md), as Messages draws its own.
 
 mod call;
 mod contacts;
@@ -11,7 +11,9 @@ mod parts;
 mod recents;
 
 use denial_look::words::tr;
+use futures_lite::StreamExt;
 use std::path::PathBuf;
+use std::pin::pin;
 use std::time::{Duration, Instant};
 
 use denial_contacts::{Contacts, Watch, dialable, same_number};
@@ -29,10 +31,11 @@ use gpui::{
     ListState, SharedString, Subscription, Task, WeakEntity, Window, actions, div, prelude::*, px,
 };
 
-use crate::data::{self, Call, Direction};
+use crate::data::{self, Call};
 use crate::local::{Favourites, Flag};
 use crate::people::People;
 use crate::samples;
+use crate::voice::{CallAudio1Proxy, CallRow, LoggedCall, Voice1Proxy};
 
 actions!(calls, [Back]);
 
@@ -40,14 +43,12 @@ actions!(calls, [Back]);
 const STAGGERED: usize = 12;
 /// Emoji the UI font lacks are drawn from this font first, as in Messages.
 const EMOJI_FONT: &str = "Noto Color Emoji";
-/// A mock call placed here is answered this long after it starts ringing.
-const ANSWER_AFTER: Duration = Duration::from_millis(2500);
-/// A mock call coming in rings this long, then is missed.
-const RING_FOR: Duration = Duration::from_secs(30);
 /// A call that ended stays on screen this long.
 const ENDED_FOR: Duration = Duration::from_millis(1200);
 /// Recent calls shown on a contact.
 const HISTORY: usize = 10;
+/// Calls of dmail's log read, the newest.
+const LOG: u32 = 1000;
 
 /// Whom a detail screen is about.
 #[derive(Clone, PartialEq)]
@@ -299,8 +300,8 @@ impl Keyboard {
 /// Where a call is.
 #[derive(Clone, Copy)]
 enum Phase {
-    /// Ringing since then: out, or here for a call coming in.
-    Ringing(Instant),
+    /// Ringing: out, or here for a call coming in.
+    Ringing,
     /// Talking since then.
     Connected(Instant),
     /// Over then, after this many seconds of talk; shown a moment, then
@@ -308,17 +309,19 @@ enum Phase {
     Ended(Instant, u64),
 }
 
-/// The call on screen. Mocked: placing one only rings on screen, and the
-/// other side answers after `ANSWER_AFTER`.
+/// The call on screen. dmail moves it on: `follow` takes each change.
 struct Live {
     id: u64,
+    /// dmail's id for it; none while Dial has not answered yet.
+    modem: Option<u8>,
+    /// dmail has listed it. Dial's answer can come before the list does, so
+    /// a call it placed is gone only once listed and then left out.
+    listed: bool,
+    /// Empty when the caller withheld it.
     number: String,
     incoming: bool,
     phase: Phase,
-    /// Unix time it started ringing.
-    time: i64,
     muted: bool,
-    speaker: bool,
     held: bool,
     /// The in-call keypad shows in place of the controls.
     keypad: bool,
@@ -332,7 +335,7 @@ impl Live {
     /// Seconds talked so far.
     fn talked(&self, now: Instant) -> u64 {
         match self.phase {
-            Phase::Ringing(_) => 0,
+            Phase::Ringing => 0,
             Phase::Connected(since) => now.saturating_duration_since(since).as_secs(),
             Phase::Ended(_, talked) => talked,
         }
@@ -343,22 +346,44 @@ impl Live {
     }
 
     fn ringing_here(&self) -> bool {
-        self.incoming && matches!(self.phase, Phase::Ringing(_))
+        self.incoming && matches!(self.phase, Phase::Ringing)
     }
 
-    /// How long until the call next changes on screen: it is answered or
-    /// missed, its clock turns a second, or its end has shown long enough.
-    fn wake(&self, now: Instant) -> Duration {
+    /// How long until the call next changes on screen by itself: its clock
+    /// turns a second, or its end has shown long enough. None while it
+    /// rings: only dmail moves it on then.
+    fn wake(&self, now: Instant) -> Option<Duration> {
         let at = match self.phase {
-            Phase::Ringing(since) if self.incoming => since + RING_FOR,
-            Phase::Ringing(since) => since + ANSWER_AFTER,
+            Phase::Ringing => return None,
             Phase::Connected(since) => {
                 let into = now.saturating_duration_since(since);
                 now + Duration::from_secs(1) - Duration::from_nanos(into.subsec_nanos().into())
             }
             Phase::Ended(at, _) => at + ENDED_FOR,
         };
-        at.saturating_duration_since(now)
+        Some(at.saturating_duration_since(now))
+    }
+
+    /// Takes dmail's row for this call; whether the call ended.
+    fn follow(&mut self, row: &CallRow) -> bool {
+        let (id, _, _, state, connected) = row;
+        self.modem = Some(*id);
+        self.listed = true;
+        match state.as_str() {
+            "active" | "held" => {
+                if !matches!(self.phase, Phase::Connected(_)) {
+                    // dmail tells when it connected in Unix time.
+                    let ago = Duration::from_secs((data::now() - connected).max(0) as u64);
+                    let since = Instant::now().checked_sub(ago).unwrap_or_else(Instant::now);
+                    self.phase = Phase::Connected(since);
+                }
+                self.held = state == "held";
+                false
+            }
+            "ending" => true,
+            // dialing, alerting, incoming, waiting.
+            _ => false,
+        }
     }
 }
 
@@ -388,9 +413,10 @@ pub struct Calls {
     /// The contacts folder, and what is in it with the samples.
     folder: Option<PathBuf>,
     people: People,
-    /// The call log, newest first.
+    /// The call log, newest first: dmail's, with the samples while they are
+    /// shown.
     log: Vec<Call>,
-    /// The id of the next call.
+    /// The id of the next call on screen.
     next_id: u64,
     favourites: Favourites,
     /// The sample contacts and calls are shown.
@@ -405,6 +431,13 @@ pub struct Calls {
     /// The number called last, which Call brings back on an empty keypad.
     last_dialled: Option<String>,
     live: Option<Live>,
+    /// dmail's Voice1, while dmail is reachable.
+    voice: Option<Voice1Proxy<'static>>,
+    /// dmail's calls as last told.
+    rows: Vec<CallRow>,
+    /// dmail's id of the call last taken off the screen, while dmail still
+    /// lists it.
+    gone: Option<u8>,
     overlay: Option<(Overlay, Tween)>,
     /// A short note above the bottom zone, until its task hides it.
     notice: Option<(SharedString, Tween, Task<()>)>,
@@ -424,6 +457,7 @@ pub struct Calls {
     found_items: Vec<Found>,
     _contacts: Task<()>,
     _settings: Task<()>,
+    _voice: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -489,7 +523,7 @@ impl Calls {
             folder,
             people,
             log,
-            next_id: samples::FIRST_LIVE_ID,
+            next_id: 0,
             favourites: Favourites::load(samples::FAVOURITES),
             samples_shown,
             search,
@@ -497,6 +531,9 @@ impl Calls {
             typed,
             last_dialled: None,
             live: None,
+            voice: None,
+            rows: Vec::new(),
+            gone: None,
             overlay: None,
             notice: None,
             screen,
@@ -509,6 +546,9 @@ impl Calls {
             entries: Vec::new(),
             found_items: Vec::new(),
             _settings: cx.spawn(async move |this, cx| Self::follow_settings(this, cx).await),
+            _voice: cx.spawn_in(window, async move |this, cx| {
+                Self::follow_voice(this, cx).await
+            }),
             _subscriptions: subscriptions,
         }
     }
@@ -560,6 +600,121 @@ impl Calls {
                 return;
             }
         }
+    }
+
+    /// Follows dmail's calls for as long as the window lives, across its
+    /// restarts.
+    async fn follow_voice(this: WeakEntity<Self>, cx: &mut AsyncWindowContext) {
+        if let Err(error) = Self::follow_dmail(&this, cx).await {
+            eprintln!("calls: dmail: {error}");
+        }
+        let _ = this.update_in(cx, |view, window, cx| {
+            view.take_calls(None, Vec::new(), window, cx)
+        });
+    }
+
+    async fn follow_dmail(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncWindowContext,
+    ) -> gpui::Result<()> {
+        let bus = zbus::Connection::system().await?;
+        let voice = Voice1Proxy::new(&bus).await?;
+        // Each change reads the calls and the log afresh: dmail coming back
+        // has its own.
+        let owners = voice.inner().receive_owner_changed().await?.map(|_| ());
+        let changes = voice.receive_calls_changed().await.map(|_| ());
+        let logged = voice.receive_call_logged().await?.map(|_| ());
+        let deleted = voice.receive_call_log_deleted().await?.map(|_| ());
+        let mut events = pin!(owners.or(changes).or(logged).or(deleted));
+        loop {
+            let read = async {
+                let rows = voice.inner().get_property::<Vec<CallRow>>("Calls").await?;
+                zbus::Result::Ok((rows, voice.list_call_log(0, LOG).await?))
+            };
+            let read = read.await;
+            this.update_in(cx, |view, window, cx| match read {
+                Ok((rows, log)) => {
+                    view.take_log(log);
+                    view.take_calls(Some(&voice), rows, window, cx)
+                }
+                Err(_) => view.take_calls(None, Vec::new(), window, cx),
+            })?;
+            if events.next().await.is_none() {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Takes dmail's call log, keeping the samples.
+    fn take_log(&mut self, logged: Vec<LoggedCall>) {
+        self.log.retain(|call| call.sample);
+        self.log.extend(logged.into_iter().map(data::logged));
+        self.log.sort_by_key(|call| std::cmp::Reverse(call.time));
+        self.recents.reset(0);
+    }
+
+    /// Takes dmail's calls: the one on screen follows its row, and a call
+    /// shown nowhere yet, coming in or going on from before Calls started,
+    /// comes on screen. `voice` is none while dmail is unreachable.
+    fn take_calls(
+        &mut self,
+        voice: Option<&Voice1Proxy<'static>>,
+        rows: Vec<CallRow>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.voice = voice.cloned();
+        self.rows = rows;
+        self.follow_rows(window, cx);
+        cx.notify();
+    }
+
+    fn follow_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(live) = self.live.as_mut() {
+            if live.ended() {
+                // Its row may stay a moment after a hangup here; any other
+                // call waits until it is off the screen.
+                return;
+            }
+            let row = match live.modem {
+                Some(id) => self.rows.iter().find(|row| row.0 == id),
+                // Dialled, and its id not back yet: the call going out to its
+                // number.
+                None => self
+                    .rows
+                    .iter()
+                    .find(|row| row.2 == "out" && same_number(&row.1, &live.number)),
+            };
+            let was_ringing = matches!(live.phase, Phase::Ringing);
+            let ended = match row {
+                Some(row) => live.follow(row),
+                None => live.listed,
+            };
+            if ended {
+                self.finish(cx);
+                self.restart_clock(window, cx);
+            } else if was_ringing && !matches!(live.phase, Phase::Ringing) {
+                self.restart_clock(window, cx);
+            }
+            return;
+        }
+        if self
+            .gone
+            .is_some_and(|gone| !self.rows.iter().any(|row| row.0 == gone))
+        {
+            self.gone = None;
+        }
+        let shown = |row: &&CallRow| row.3 != "ending" && Some(row.0) != self.gone;
+        let Some(row) = self.rows.iter().find(shown).cloned() else {
+            return;
+        };
+        let (id, number, direction, ..) = &row;
+        self.ring(number.clone(), direction == "in", Some(*id), window, cx);
+        if let Some(live) = self.live.as_mut() {
+            live.follow(&row);
+        }
+        self.restart_clock(window, cx);
+        window.activate_window();
     }
 
     /// Reads the contacts again, with or without the samples.
@@ -631,28 +786,66 @@ impl Calls {
         if self.live.as_ref().is_some_and(|live| !live.ended()) {
             return self.open(Screen::Call, window, cx);
         }
-        let Some(number) = dialable(&number).map(|_| number) else {
+        let Some(digits) = dialable(&number) else {
             return self.note(tr("Not a phone number"), cx);
+        };
+        let Some(voice) = self.voice.clone() else {
+            return self.note(tr("The modem service is not running"), cx);
         };
         self.overlay = None;
         self.last_dialled = Some(number.clone());
-        self.ring(number, false, window, cx);
+        self.ring(number, false, None, window, cx);
+        let Some(id) = self.live.as_ref().map(|live| live.id) else {
+            return;
+        };
+        cx.spawn_in(window, async move |this, cx| {
+            let dialled = voice.dial(&digits).await;
+            this.update_in(cx, |view, window, cx| view.dialled(id, dialled, window, cx))
+        })
+        .detach();
     }
 
-    /// A made-up call comes in, from a favourite or a number no one has.
-    fn simulate_incoming(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.overlay = None;
-        if self.live.as_ref().is_some_and(|live| !live.ended()) {
-            return self.note(tr("Already in a call"), cx);
+    /// dmail answered Dial for call `id`.
+    fn dialled(
+        &mut self,
+        id: u64,
+        dialled: zbus::Result<u8>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let live = self.live.as_mut().filter(|live| live.id == id);
+        match dialled {
+            Ok(modem) => match live {
+                Some(live) if !live.ended() => {
+                    live.modem = Some(modem);
+                    // The list may have changed before the id came back.
+                    self.follow_rows(window, cx);
+                }
+                // Ended here before dmail had placed it.
+                _ => self.send_hangup(modem, cx),
+            },
+            Err(error) => {
+                eprintln!("calls: dialling: {error}");
+                if let Some(live) = live.filter(|live| !live.ended()) {
+                    live.phase = Phase::Ended(Instant::now(), 0);
+                    self.restart_clock(window, cx);
+                    self.note(tr("The call could not be placed"), cx);
+                }
+            }
         }
-        let mut numbers: Vec<String> = (0..self.people.all().len())
-            .filter(|&index| self.favourites.contains(self.people.key(index)))
-            .filter_map(|index| self.people.all()[index].phones.first())
-            .map(|phone| phone.number.clone())
-            .collect();
-        numbers.push("+44 7700 900975".into());
-        let number = numbers[self.next_id as usize % numbers.len()].clone();
-        self.ring(number, true, window, cx);
+    }
+
+    /// Asks dmail to end call `modem`.
+    fn send_hangup(&self, modem: u8, cx: &mut Context<Self>) {
+        let Some(voice) = self.voice.clone() else {
+            return;
+        };
+        cx.spawn(async move |_, _| {
+            if let Err(error) = voice.hangup(modem).await {
+                eprintln!("calls: hanging up: {error}");
+            }
+        })
+        .detach();
     }
 
     /// Starts a call with `number` ringing, and shows it.
@@ -660,6 +853,7 @@ impl Calls {
         &mut self,
         number: String,
         incoming: bool,
+        modem: Option<u8>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -668,17 +862,27 @@ impl Calls {
         self.open(Screen::Call, window, cx);
         self.live = Some(Live {
             id,
+            modem,
+            listed: false,
             number,
             incoming,
-            phase: Phase::Ringing(Instant::now()),
-            time: data::now(),
+            phase: Phase::Ringing,
             muted: false,
-            speaker: false,
             held: false,
             keypad: false,
             tones: String::new(),
-            _clock: self.clock(id, window, cx),
+            _clock: Task::ready(()),
         });
+    }
+
+    /// Runs the clock of the call on screen afresh, after its phase changed.
+    fn restart_clock(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.live.as_ref().map(|live| live.id) {
+            let clock = self.clock(id, window, cx);
+            if let Some(live) = self.live.as_mut() {
+                live._clock = clock;
+            }
+        }
     }
 
     /// Moves call `id` on whenever it next changes, for as long as it is the
@@ -705,58 +909,78 @@ impl Calls {
     ) -> Option<Duration> {
         let now = Instant::now();
         let live = self.live.as_mut().filter(|live| live.id == id)?;
-        match live.phase {
-            Phase::Ringing(since) if !live.incoming && now >= since + ANSWER_AFTER => {
-                live.phase = Phase::Connected(now);
-            }
-            Phase::Ringing(since) if live.incoming && now >= since + RING_FOR => {
-                self.finish(Direction::Missed, cx);
-            }
-            Phase::Ended(at, _) if now >= at + ENDED_FOR => {
-                self.close_call(window, cx);
-                return None;
-            }
-            _ => {}
+        if let Phase::Ended(at, _) = live.phase
+            && now >= at + ENDED_FOR
+        {
+            self.close_call(window, cx);
+            return None;
         }
         cx.notify();
-        self.live.as_ref().map(|live| live.wake(now))
+        self.live.as_ref().and_then(|live| live.wake(now))
     }
 
-    /// Answers the call ringing here.
-    fn answer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let clock = self
-            .live
-            .as_ref()
-            .map(|live| self.clock(live.id, window, cx));
-        if let (Some(live), Some(clock)) = (self.live.as_mut(), clock)
-            && live.ringing_here()
-        {
-            live.phase = Phase::Connected(Instant::now());
-            live._clock = clock;
-            cx.notify();
-        }
+    /// Answers the call ringing here; dmail tells when it connects.
+    fn answer(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.as_ref().filter(|live| live.ringing_here()) else {
+            return;
+        };
+        let (Some(voice), Some(modem)) = (self.voice.clone(), live.modem) else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            if let Err(error) = voice.answer(modem).await {
+                eprintln!("calls: answering: {error}");
+                this.update(cx, |view, cx| {
+                    view.note(tr("The call could not be answered"), cx)
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     /// Ends the call, or turns down the one ringing here.
     fn hang_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(live) = &self.live else {
+        let Some(live) = self.live.as_ref().filter(|live| !live.ended()) else {
             return;
         };
-        let direction = match (live.incoming, live.phase) {
-            (false, _) => Direction::Outgoing,
-            (true, Phase::Connected(_)) => Direction::Incoming,
-            (true, _) => Direction::Declined,
-        };
-        let clock = self.clock(live.id, window, cx);
-        self.finish(direction, cx);
-        if let Some(live) = self.live.as_mut() {
-            live._clock = clock;
+        if let Some(modem) = live.modem {
+            self.send_hangup(modem, cx);
         }
+        self.finish(cx);
+        self.restart_clock(window, cx);
     }
 
-    /// The call is over, as `direction` says: it goes in the log and shows
-    /// that it ended until its clock closes it.
-    fn finish(&mut self, direction: Direction, cx: &mut Context<Self>) {
+    /// Turns the microphone off or back on, through callaudio.
+    fn toggle_mute(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.as_mut().filter(|live| !live.ended()) else {
+            return;
+        };
+        live.muted = !live.muted;
+        let (id, muted) = (live.id, live.muted);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let set = async {
+                let bus = zbus::Connection::session().await?;
+                CallAudio1Proxy::new(&bus).await?.set_muted(muted).await
+            };
+            if let Err(error) = set.await {
+                eprintln!("calls: muting: {error}");
+                this.update(cx, |view, cx| {
+                    if let Some(live) = view.live.as_mut().filter(|live| live.id == id) {
+                        live.muted = !muted;
+                    }
+                    view.note(tr("The microphone could not be muted"), cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// The call is over: it shows that it ended until its clock closes it.
+    /// dmail logs it.
+    fn finish(&mut self, cx: &mut Context<Self>) {
         let now = Instant::now();
         let Some(live) = self.live.as_mut().filter(|live| !live.ended()) else {
             return;
@@ -764,26 +988,18 @@ impl Calls {
         let talked = live.talked(now);
         live.phase = Phase::Ended(now, talked);
         live.keypad = false;
-        let call = Call {
-            id: live.id,
-            number: live.number.clone(),
-            direction,
-            time: live.time,
-            talked,
-            sample: false,
-        };
-        self.log.insert(0, call);
-        self.recents.reset(0);
         cx.notify();
     }
 
     /// Takes the ended call off the screen.
     fn close_call(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.live = None;
+        self.gone = self.live.take().and_then(|live| live.modem);
         self.trail.retain(|screen| *screen != Screen::Call);
         if self.screen == Screen::Call {
             self.go_back(window, cx);
         }
+        // A call that waited behind it comes on screen.
+        self.follow_rows(window, cx);
         cx.notify();
     }
 
@@ -832,7 +1048,23 @@ impl Calls {
     }
 
     fn delete_call(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.log.retain(|call| call.id != id);
+        let Some(index) = self.log.iter().position(|call| call.id == id) else {
+            return;
+        };
+        if !self.log[index].sample {
+            let Some(voice) = self.voice.clone() else {
+                return self.note(tr("The modem service is not running"), cx);
+            };
+            cx.spawn(async move |this, cx| {
+                if let Err(error) = voice.delete_logged_call(id).await {
+                    eprintln!("calls: deleting a logged call: {error}");
+                    this.update(cx, |view, cx| view.note(tr("Not deleted"), cx))
+                        .ok();
+                }
+            })
+            .detach();
+        }
+        self.log.remove(index);
         self.recents.reset(0);
         self.note(tr("Deleted"), cx);
     }
@@ -1391,7 +1623,7 @@ impl Calls {
     fn top_contents(&self, screen: &Screen, layer: Layer, cx: &mut Context<Self>) -> Div {
         match screen {
             Screen::Person(who) => self.person_top(who, layer, cx),
-            Screen::Call => self.titled_top(tr("Mock call"), layer, cx),
+            Screen::Call => self.titled_top(tr("Phone call"), layer, cx),
             Screen::Recents | Screen::Contacts | Screen::Keypad => self.top_row(),
         }
     }

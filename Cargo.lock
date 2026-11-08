@@ -676,6 +676,7 @@ name = "calls"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "async-io",
  "denial-contacts",
  "denial-look",
  "denial-look-gpui",

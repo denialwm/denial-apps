@@ -28,8 +28,8 @@ impl Calls {
     fn status(&self, live: &Live, now: Instant) -> String {
         let clock = data::timer(live.talked(now));
         match live.phase {
-            Phase::Ringing(_) if live.incoming => tr("Incoming call").into(),
-            Phase::Ringing(_) => tr("Calling…").into(),
+            Phase::Ringing if live.incoming => tr("Incoming call").into(),
+            Phase::Ringing => tr("Calling…").into(),
             Phase::Connected(_) if live.held => fill("On hold · {clock}", &[("clock", &clock)]),
             Phase::Connected(_) if live.muted => fill("{clock} · Muted", &[("clock", &clock)]),
             Phase::Connected(_) => clock,
@@ -98,7 +98,7 @@ impl Calls {
                         CALL,
                         active,
                         cx,
-                        |this, window, cx| this.answer(window, cx),
+                        |this, _, cx| this.answer(cx),
                     ))
                     .into_any_element(),
             );
@@ -157,7 +157,6 @@ impl Calls {
 
     /// Mute, Keypad, Speaker, Hold, Message and Details, in one glass group.
     fn controls(&self, live: &Live, active: bool, cx: &mut Context<Self>) -> Div {
-        let connected = matches!(live.phase, Phase::Connected(_));
         let (number, who) = (live.number.clone(), self.who(&live.number));
         let row = |controls: [Stateful<Div>; 3]| div().flex().children(controls);
         glass_group(&self.look)
@@ -166,14 +165,14 @@ impl Calls {
             .gap(dp(4.))
             .p(dp(8.))
             .child(row([
-                self.control(
+                self.control_face(
                     "mute",
                     Icon::Mute,
                     tr("Mute"),
                     live.muted,
                     active,
                     cx,
-                    |live| live.muted = !live.muted,
+                    |this, _, cx| this.toggle_mute(cx),
                 ),
                 self.control(
                     "keypad",
@@ -184,26 +183,20 @@ impl Calls {
                     cx,
                     |live| live.keypad = true,
                 ),
+                // Neither callaudio routes the speech nor dmail holds a
+                // call yet: Speaker and Hold stay dimmed.
                 self.control(
                     "speaker",
                     Icon::Speaker,
                     tr("Speaker"),
-                    live.speaker,
-                    active,
+                    false,
+                    false,
                     cx,
-                    |live| live.speaker = !live.speaker,
+                    |_| {},
                 ),
             ]))
             .child(row([
-                self.control(
-                    "hold",
-                    Icon::Hold,
-                    tr("Hold"),
-                    live.held,
-                    active && connected,
-                    cx,
-                    |live| live.held = !live.held,
-                ),
+                self.control("hold", Icon::Hold, tr("Hold"), live.held, false, cx, |_| {}),
                 self.action_control(
                     "message",
                     Icon::Message,
@@ -318,6 +311,15 @@ impl Calls {
             live.tones.remove(0);
         }
         cx.notify();
+        let (Some(voice), Some(modem)) = (self.voice.clone(), live.modem) else {
+            return;
+        };
+        cx.spawn(async move |_, _| {
+            if let Err(error) = voice.send_dtmf(modem, &key.to_string()).await {
+                eprintln!("calls: sending a tone: {error}");
+            }
+        })
+        .detach();
     }
 
     /// The bar of a call going on behind another screen: whom it is with and

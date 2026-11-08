@@ -4,6 +4,7 @@ mod instance;
 mod local;
 mod people;
 mod samples;
+mod voice;
 mod words;
 
 use futures_lite::future;

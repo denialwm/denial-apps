@@ -64,8 +64,7 @@ impl Calls {
             let island = self.state_island(
                 Icon::Phone,
                 tr("No calls yet"),
-                "Calls you make and get show here. Calls are mocked for now: nothing is \
-                 dialled, and no one is reached.",
+                tr("Calls you make and get show here."),
                 Some(self.button(
                     "open-keypad",
                     Face::Both(Icon::Keypad, tr("Open the keypad")),
@@ -372,12 +371,6 @@ impl Calls {
                         .flex_col()
                         .items_stretch()
                         .p(dp(4.))
-                        .child(item(
-                            "incoming",
-                            Face::Both(Icon::Incoming, tr("Simulate an incoming call")),
-                            cx,
-                            |this, window, cx| this.simulate_incoming(window, cx),
-                        ))
                         .child(item(
                             "samples",
                             Face::Both(

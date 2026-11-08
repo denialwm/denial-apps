@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 async-channel = "2.5"
+async-io = "2.6"
 denial-contacts = { path = "../../libraries/denial-contacts" }
 denial-look = { path = "../../libraries/denial-look" }
 denial-look-gpui = { path = "../../libraries/denial-look-gpui" }

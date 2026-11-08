@@ -1,8 +1,8 @@
 //! What Calls keeps on the phone across restarts, in
 //! `$XDG_STATE_HOME/denial/calls/`: the favourite contacts in `favourites`,
 //! by `People::key`, as strings each ended by a NUL, and `samples-shown`,
-//! there while the sample contacts and calls are shown. The call log is not
-//! kept: calls are mocked, and start afresh from the samples.
+//! there while the sample contacts and calls are shown. The call log is
+//! dmail's.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
