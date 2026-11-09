@@ -294,7 +294,7 @@ impl Engine {
         let shot = self.next_shot;
         self.next_shot += 1;
         let fds: Vec<_> = files.iter().map(|file| file.as_fd()).collect();
-        if !self.send(&Request::Shoot(shot), &fds) {
+        if !self.send(&Request::Shoot(shot, None), &fds) {
             let _ = std::fs::remove_file(&partial);
             return Err(std::io::Error::other("the camera service stopped"));
         }
