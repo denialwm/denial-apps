@@ -36,6 +36,7 @@ pub(super) const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
 /// Android's density for the default size, per unit of the scale Denial
 /// gives windows: 460 dpi at scale 2, which matches a stock Android phone
 /// side by side. Android's own 160 drew its apps smaller than Denial's.
+/// Droidloom draws apps at it until a size is picked.
 pub(super) const DEFAULT_DPI: f32 = 230.0;
 
 /// Android's density at the size `option` of `SIZES`.
@@ -206,12 +207,13 @@ impl Settings {
         else {
             return;
         };
-        let before = density.dpi;
-        self.android.density = Some(Density { dpi, ..density });
-        cx.notify();
+        let before = (density.dpi, self.densities.every);
         // Screens of another scale, such as a monitor, take the same size
         // in their own units.
         let per_scale = DEFAULT_DPI * SIZE_SCALES[option];
+        self.android.density = Some(Density { dpi, ..density });
+        self.densities.every = Some(per_scale);
+        cx.notify();
         cx.spawn(async move |this, cx| {
             let set = cx
                 .background_spawn(async move {
@@ -223,8 +225,9 @@ impl Settings {
             let _ = this.update(cx, |view, cx| {
                 if let Err(why) = set {
                     if let Some(density) = &mut view.android.density {
-                        density.dpi = before;
+                        density.dpi = before.0;
                     }
+                    view.densities.every = before.1;
                     view.note(fill("Android said: {why}", &[("why", &why)]), cx);
                 }
                 cx.notify();
@@ -372,10 +375,13 @@ impl Settings {
             );
         }
         {
-            // Faint until Android tells its density.
-            let dpi = android.density.map(|density| density.dpi);
-            let picked = (0..SIZES.len())
-                .find(|option| dpi.is_some() && size_dpi(self.scale, *option) == dpi)
+            // The size Droidloom gives every screen; faint until Android
+            // tells its density.
+            let per_scale = self.densities.every.unwrap_or(DEFAULT_DPI);
+            let dpi = android.density.map(|_| (per_scale * self.scale).round() as u32);
+            let picked = SIZE_SCALES
+                .iter()
+                .position(|share| dpi.is_some() && (DEFAULT_DPI * share - per_scale).abs() < 0.5)
                 .unwrap_or(SIZES.len());
             parts.push(self.chip_row("Display"));
             parts.push(

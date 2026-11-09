@@ -148,7 +148,8 @@ reason. Display size draws Android apps at 85, 100, 115 or 130 percent of
 the size of Denial's own: 160 dpi times the scale Denial gives the Settings
 window, set through droidloomd's `set_dpi`, and the same size per unit of
 scale for every screen in Droidloom's `$XDG_CONFIG_HOME/droidloom/density-v1.json`
-(`dpiPerScale`), which Droidloom watches. The apps are the
+(`dpiPerScale`), which Droidloom watches; with no size picked Droidloom
+draws them at Default. The apps are the
 launcher entries Droidloom exports (`X-Droidloom-Package`). An app's screen
 opens and stops it, shows its version, dates and storage, clears its cache or
 its storage, opens Android's App info for permissions and notifications, and
@@ -161,8 +162,7 @@ and rate through `outputs.apply` and ask to keep them, as the panel's refresh
 rate does; rates of its current resolution that round to the same hertz show
 once. Android apps
 sets the monitor's own size in Droidloom's density file (`outputs`, by
-connector); until a size is set for every screen, the page works it out from
-Android's density and the panel's scale. Windows, Roundness and Wallpaper
+connector); without one it takes every screen's. Windows, Roundness and Wallpaper
 are Denial's `layout.windowLayout` and `appearance.monitorCornerRadiusScale`
 and the monitor's entries in the shell's wallpaper file (`outputs`,
 `outputAlignments`, `outputZooms`).

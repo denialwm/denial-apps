@@ -586,7 +586,7 @@ pub struct Settings {
     monitor: Option<denial::Monitor>,
     _monitor: Task<()>,
     /// The densities Droidloom gives Android apps by screen, read when the
-    /// Monitor page opens.
+    /// Monitor or Android page opens.
     densities: crate::droidloom::Densities,
     /// Device pixels per pixel of the window, as the compositor scales it.
     scale: f32,
@@ -1036,7 +1036,10 @@ impl Settings {
         }
         if self.screen.is_page("monitor") {
             self.read_monitor_wallpaper();
-            self.read_densities(cx);
+            self.read_densities();
+        }
+        if self.screen.is_page("android") {
+            self.read_densities();
         }
         match self.screen {
             Screen::Wallpapers => self.read_wallpapers(None, cx),

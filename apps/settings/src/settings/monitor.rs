@@ -144,13 +144,14 @@ impl Settings {
             .outputs
             .get(&monitor.name)
             .copied()
-            .or(self.densities.every);
+            .or(self.densities.every)
+            .unwrap_or(DEFAULT_DPI);
         let picked = SIZE_SCALES
             .iter()
-            .position(|share| per_scale.is_some_and(|per| (DEFAULT_DPI * share - per).abs() < 0.5))
+            .position(|share| (DEFAULT_DPI * share - per_scale).abs() < 0.5)
             .unwrap_or(SIZES.len());
-        let dpi = per_scale.map(|per| {
-            let dpi = (f64::from(per) * monitor.scale).round();
+        let dpi = Some({
+            let dpi = (f64::from(per_scale) * monitor.scale).round();
             fill("{dpi} dpi", &[("dpi", &dpi.to_string())]).into()
         });
         island(&self.look).child(
@@ -206,34 +207,9 @@ impl Settings {
         .detach();
     }
 
-    /// Reads the densities by screen. Until one is set for every screen,
-    /// it is worked out from Android's density on the phone, so the
-    /// monitor starts with apps the size they are there.
-    pub(super) fn read_densities(&mut self, cx: &mut Context<Self>) {
+    /// Reads the densities by screen.
+    pub(super) fn read_densities(&mut self) {
         self.densities = droidloom::densities();
-        let Some(panel_scale) = self.monitor.as_ref().map(|monitor| monitor.panel_scale) else {
-            return;
-        };
-        if self.densities.every.is_some() || !droidloom::installed() {
-            return;
-        }
-        cx.spawn(async move |this, cx| {
-            let seeded = cx
-                .background_spawn(async move {
-                    let density = droidloom::density().ok()?;
-                    let per_scale = (f64::from(density.dpi) / panel_scale) as f32;
-                    droidloom::set_densities(None, Some(per_scale)).ok()?;
-                    Some(droidloom::densities())
-                })
-                .await;
-            if let Some(densities) = seeded {
-                let _ = this.update(cx, |view, cx| {
-                    view.densities = densities;
-                    cx.notify();
-                });
-            }
-        })
-        .detach();
     }
 
     fn choose_scale(&mut self, cx: &mut Context<Self>) {
