@@ -118,7 +118,12 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Blur the wallpaper", "模糊壁纸"),
     ("Wallpaper set", "已设置壁纸"),
     ("Placement", "位置"),
-    ("Your pictures", "你的图片"),
+    ("Local", "本地"),
+    ("Wallpaper folder", "壁纸文件夹"),
+    (
+        "Pictures you put in this folder show here",
+        "放入此文件夹的图片会显示在这里",
+    ),
     ("Zoom", "缩放"),
     ("Left and right", "左右"),
     ("Up and down", "上下"),

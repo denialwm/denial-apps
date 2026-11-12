@@ -1,10 +1,12 @@
 //! The wallpaper screen: where the shown wallpaper sits, in a preview of
-//! the screen with its zoom and position on sliders; Denial's own wallpaper
-//! and the pictures in the wallpaper folder, three to a row in the screen's shape, the one shown
-//! ringed in the accent; under them, Wallhaven's, found as the shell's
-//! picker finds them, with a field to search and More for the next page. A
-//! tap shows a picture on every screen at once; one from Wallhaven is
-//! downloaded into the wallpaper folder first, its share received on it.
+//! the screen with its zoom and position on sliders; then two tabs, three
+//! pictures to a row in the screen's shape, the one shown ringed in the
+//! accent. Local names the wallpaper folder and holds Denial's own
+//! wallpaper and the pictures in it; Wallhaven holds Wallhaven's, found as
+//! the shell's picker finds them, with a field to search and More for the
+//! next page. A tap shows a picture on every screen at once; one from
+//! Wallhaven is downloaded into the wallpaper folder first, its share
+//! received on it.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -36,6 +38,14 @@ const FETCHING: usize = 4;
 /// The placement preview's width, in dp.
 const PREVIEW_WIDTH: f32 = 150.0;
 
+/// Where the pictures offered come from: the screen's tabs.
+#[derive(Clone, Copy, Default, PartialEq)]
+pub(in crate::settings) enum Tab {
+    #[default]
+    Local,
+    Wallhaven,
+}
+
 /// Wallhaven's wallpapers, as the screen shows them.
 #[derive(Default)]
 pub(in crate::settings) struct Online {
@@ -43,6 +53,8 @@ pub(in crate::settings) struct Online {
     /// search.
     asked: Option<String>,
     found: Vec<Found>,
+    /// Whether the screen they were asked for is wider than high.
+    landscape: bool,
     /// Pages read so far, and whether more follow.
     pages: u32,
     more: bool,
@@ -83,7 +95,7 @@ impl Settings {
         }
     }
 
-    /// Your pictures in one island, then Wallhaven's under its chip;
+    /// The placement, then the tabs and the pictures of the one picked;
     /// `width` is the window's.
     pub(super) fn wallpapers_screen(
         &self,
@@ -97,37 +109,118 @@ impl Settings {
         if shown.current.is_some() {
             parts.push(self.chip_row("Placement"));
             parts.push(self.placement_island(live, cx));
-            parts.push(self.chip_row("Your pictures"));
         }
-        if !shown.choices.is_empty() {
-            let tiles = shown.choices.iter().map(|choice| {
-                let picked = shown.current.as_deref() == Some(choice.resource.as_str());
-                let tile = self.wallpaper_tile(
-                    choice.resource.clone(),
-                    shown.thumbs.get(&choice.resource),
-                    &choice.name,
-                    picked,
-                    width,
-                );
-                if live && !picked {
-                    let choice = choice.clone();
-                    self.tappable(tile, cx, move |this, _, cx| this.set_wallpaper(&choice, cx))
-                } else {
-                    tile
-                }
-            });
-            parts.push(
-                island(&self.look)
+        let tabs = self.segmented(
+            &["Local", "Wallhaven"],
+            usize::from(shown.tab == Tab::Wallhaven),
+            live,
+            cx,
+            Rc::new(|this, option, _, cx| {
+                this.show_tab(
+                    if option == 0 {
+                        Tab::Local
+                    } else {
+                        Tab::Wallhaven
+                    },
+                    cx,
+                )
+            }),
+        );
+        parts.push(div().pt(dp(6.)).child(tabs));
+        parts.push(match shown.tab {
+            Tab::Local => self.local_island(width, live, cx),
+            Tab::Wallhaven => self.wallhaven_island(width, live, cx),
+        });
+        parts
+    }
+
+    /// Shows `tab`'s pictures; Wallhaven is asked when first shown.
+    fn show_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
+        self.wallpapers.tab = tab;
+        self.ask_wallhaven(false, cx);
+        cx.notify();
+    }
+
+    /// Asks Wallhaven afresh when its tab shows and it has not answered for
+    /// this screen: never asked, failed, `moved` to another screen or turned
+    /// from portrait to landscape or back.
+    fn ask_wallhaven(&mut self, moved: bool, cx: &mut Context<Self>) {
+        let online = &self.wallpapers.online;
+        if self.wallpapers.tab == Tab::Wallhaven
+            && (moved
+                || self.wallhaven_turned()
+                || online.reading.is_none() && (online.asked.is_none() || online.failed.is_some()))
+        {
+            self.read_wallhaven(true, cx);
+        }
+    }
+
+    /// Asks Wallhaven again when the screen turned since its pictures were
+    /// asked for, so they keep its shape.
+    pub(super) fn follow_turn(&mut self, cx: &mut Context<Self>) {
+        if self.wallpapers.tab == Tab::Wallhaven && self.wallhaven_turned() {
+            self.read_wallhaven(true, cx);
+        }
+    }
+
+    fn wallhaven_turned(&self) -> bool {
+        let online = &self.wallpapers.online;
+        let (wide, high) = self.wallpaper_screen();
+        online.asked.is_some() && online.landscape != (wide > high)
+    }
+
+    /// The wallpaper folder, named, then Denial's own wallpaper and the
+    /// pictures in it.
+    fn local_island(&self, width: f32, live: bool, cx: &mut Context<Self>) -> Div {
+        let shown = &self.wallpapers;
+        let folder = wallpaper::folder().map(|folder| {
+            let home = std::env::var_os("HOME").map(PathBuf::from);
+            match home
+                .as_deref()
+                .and_then(|home| folder.strip_prefix(home).ok())
+            {
+                Some(inside) => format!("~/{}", inside.display()),
+                None => folder.display().to_string(),
+            }
+        });
+        let tiles = shown.choices.iter().map(|choice| {
+            let picked = shown.current.as_deref() == Some(choice.resource.as_str());
+            let tile = self.wallpaper_tile(
+                choice.resource.clone(),
+                shown.thumbs.get(&choice.resource),
+                &choice.name,
+                picked,
+                width,
+            );
+            if live && !picked {
+                let choice = choice.clone();
+                self.tappable(tile, cx, move |this, _, cx| this.set_wallpaper(&choice, cx))
+            } else {
+                tile
+            }
+        });
+        // Denial's own is always there; the folder's follow it.
+        let empty = shown.reading.is_none() && shown.choices.len() <= 1;
+        island(&self.look)
+            .child(self.row(
+                "wallpaper-folder",
+                Some(Icon::Photos),
+                "Wallpaper folder",
+                Some(folder.unwrap_or_default().into()),
+                (true, false),
+            ))
+            .child(self.separator(0.))
+            .child(
+                div()
                     .p(dp(PAD))
                     .flex()
                     .flex_col()
                     .gap(dp(GAP))
-                    .children(rows(tiles.collect())),
-            );
-        }
-        parts.push(self.chip_row("Wallhaven"));
-        parts.push(self.wallhaven_island(width, live, cx));
-        parts
+                    .children(rows(tiles.collect()))
+                    .when(empty, |pictures| {
+                        pictures.child(self.note_line("Pictures you put in this folder show here"))
+                    }),
+            )
     }
 
     /// The shown wallpaper in a small screen, placed as the sliders under
@@ -316,7 +409,10 @@ impl Settings {
     ) -> Stateful<Div> {
         let inner = width - 2.0 * INSET - 2.0 * f32::from(dp(PAD));
         let tile_width = (inner - (COLUMNS - 1) as f32 * f32::from(dp(GAP))) / COLUMNS as f32;
-        let tile_height = tile_width * 585.0 / 270.0;
+        let tile_height = match self.wallpaper_screen() {
+            (wide, high) if wide > 0 && high > 0 => tile_width * high as f32 / wide as f32,
+            _ => tile_width * 585.0 / 270.0,
+        };
         let radius = px((self.look.group_radius() - f32::from(dp(PAD))).max(6.0));
         let picture: AnyElement = match thumb {
             Some(thumb) => img(thumb.clone())
@@ -464,11 +560,7 @@ impl Settings {
         self.wallpapers.current = wallpaper::current(output.as_deref());
         self.wallpapers.placement = wallpaper::placement(output.as_deref());
         self.wallpapers.output = output;
-        let online = &self.wallpapers.online;
-        if moved || online.reading.is_none() && (online.asked.is_none() || online.failed.is_some())
-        {
-            self.read_wallhaven(true, cx);
-        }
+        self.ask_wallhaven(moved, cx);
         if self.wallpapers.reading.is_some() {
             return;
         }
@@ -527,6 +619,7 @@ impl Settings {
         let page = online.pages + 1;
         let screen = self.wallpaper_screen();
         let online = &mut self.wallpapers.online;
+        online.landscape = screen.0 > screen.1;
         cx.notify();
         online.reading = Some(cx.spawn(async move |this, cx| {
             let asked = text.clone();

@@ -403,7 +403,7 @@ impl Settings {
     }
 
     /// The options side by side, the picked one in the accent.
-    fn segmented(
+    pub(super) fn segmented(
         &self,
         options: &'static [&'static str],
         picked: usize,

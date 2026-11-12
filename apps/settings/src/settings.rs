@@ -437,6 +437,8 @@ struct Wallpapers {
     thumbs: HashMap<String, std::path::PathBuf>,
     /// Reading the pictures and making their thumbnails.
     reading: Option<Task<()>>,
+    /// The tab the pictures come from.
+    tab: wallpapers::Tab,
     /// What Wallhaven offers.
     online: wallpapers::Online,
     /// Where the shown wallpaper sits, as the sliders have it.
@@ -1528,6 +1530,7 @@ impl Render for Settings {
             (f32::from(viewport.width) * self.scale).round() as u32,
             (f32::from(viewport.height) * self.scale).round() as u32,
         );
+        self.follow_turn(cx);
         if self.animating(now) {
             window.request_animation_frame();
         }

@@ -18,9 +18,9 @@ use serde_json::{Value, json};
 pub const DENIAL: &str =
     "asset:packages/denial_flutter_sdk/assets/wallpapers/trails-h-accent-9-dark.png";
 
-/// Thumbnails, in pixels: a phone screen's shape.
-const THUMB_WIDTH: u32 = 270;
-const THUMB_HEIGHT: u32 = 585;
+/// Thumbnails keep the picture's shape, their shorter side this long in
+/// pixels, so a tile of either screen's shape crops one to cover it.
+const THUMB_SIDE: u32 = 585;
 /// The placement preview's picture, uncropped: its longer side, in pixels.
 const PREVIEW_SIDE: u32 = 900;
 
@@ -365,26 +365,25 @@ pub fn preview(file: &Path) -> Option<(PathBuf, (u32, u32))> {
     Some((preview, picture.dimensions()))
 }
 
-/// A small picture of `file` in the screen's shape, made once and kept in
-/// the cache.
+/// A small picture of `file`, whole, made once and kept in the cache.
 pub fn thumbnail(file: &Path) -> Option<PathBuf> {
-    let thumb = cached(file, "")?;
+    let thumb = cached(file, "-whole-small")?;
     if thumb.is_file() {
         return Some(thumb);
     }
     let picture = decode(file)?;
+    let shorter = f64::from(picture.width().min(picture.height()).max(1));
+    let side = |length: u32, by: f64| (f64::from(length) * by).ceil() as u32;
     // Shrinks fast to twice the size first: wallpapers run to 40 megapixels.
-    let cover = f64::max(
-        f64::from(THUMB_WIDTH * 2) / f64::from(picture.width().max(1)),
-        f64::from(THUMB_HEIGHT * 2) / f64::from(picture.height().max(1)),
-    )
-    .min(1.0);
+    let fast = (f64::from(THUMB_SIDE * 2) / shorter).min(1.0);
+    let fine = (f64::from(THUMB_SIDE) / shorter).min(1.0);
     let picture = picture
-        .thumbnail(
-            (f64::from(picture.width()) * cover).ceil() as u32,
-            (f64::from(picture.height()) * cover).ceil() as u32,
+        .thumbnail(side(picture.width(), fast), side(picture.height(), fast))
+        .resize(
+            side(picture.width(), fine),
+            side(picture.height(), fine),
+            FilterType::Triangle,
         )
-        .resize_to_fill(THUMB_WIDTH, THUMB_HEIGHT, FilterType::Triangle)
         .into_rgb8();
     save(&picture, &thumb)?;
     Some(thumb)
