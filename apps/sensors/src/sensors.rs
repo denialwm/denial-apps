@@ -1,8 +1,8 @@
 //! The Sensors window: one island per sensor steinerd offers, drawn to
 //! Denial's mobile materials (Islands, denial/docs/MOBILE_APP_MATERIALS.md).
-//! Orientation shows the phone turned as it is held; the compass, a dial
+//! Orientation shows the device turned as it is held; the compass, a dial
 //! turned to north; the accelerometer, a bubble level; the gyroscope, how
-//! fast the phone turns about each axis; ambient light, the lux on a meter
+//! fast the device turns about each axis; ambient light, the lux on a meter
 //! and the last minute as a graph; proximity, rings that light up while
 //! something is near. The sensors run while the window shows.
 
@@ -28,7 +28,7 @@ actions!(sensors, [Back]);
 const STAGGERED: usize = 6;
 /// The gyroscope's bars reach their ends at this rate, in degrees a second.
 const GYRO_FULL: f64 = 180.0;
-/// The phone and the rings.
+/// The device and the rings.
 const DRAWING: f32 = 112.0;
 /// An island's padding.
 const PAD: f32 = 16.0;
@@ -88,8 +88,10 @@ pub struct Sensors {
     service: Service,
     /// The islands rising in, from steinerd's first answer.
     launch: Option<Tween>,
-    /// Degrees the drawn phone is turned.
+    /// Degrees the drawn device is turned.
     turn: Glide,
+    /// Whether the device is drawn as a tablet rather than a phone.
+    tablet: bool,
     /// Degrees the compass dial is turned from north.
     heading: Glide,
     /// The light meter's fill, 0 to 1.
@@ -105,6 +107,7 @@ pub struct Sensors {
     _settings: Task<()>,
     _steiner: Task<()>,
     _graph: Task<()>,
+    _device: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -140,6 +143,7 @@ impl Sensors {
             ];
         Self {
             turn: Glide::new(0.0, &look),
+            tablet: false,
             heading: Glide::new(0.0, &look),
             meter: Glide::new(0.0, &look),
             near: Glide::new(0.0, &look),
@@ -154,6 +158,13 @@ impl Sensors {
             _settings: cx.spawn(async move |this, cx| Self::follow_settings(this, cx).await),
             _steiner: steiner,
             _graph: cx.spawn(async move |this, cx| Self::tick_graph(this, cx).await),
+            _device: cx.spawn(async move |this, cx| {
+                let tablet = cx.background_spawn(crate::device::is_tablet()).await;
+                let _ = this.update(cx, |view, cx| {
+                    view.tablet = tablet;
+                    cx.notify();
+                });
+            }),
             _subscriptions: subscriptions,
         }
     }
@@ -341,24 +352,30 @@ impl Sensors {
 
     fn orientation(&self, orientation: Orientation, now: Instant) -> Div {
         let (reading, detail) = match orientation {
-            Orientation::Undefined => ("No reading yet", "Tilt the phone to take one"),
-            Orientation::Normal => ("Upright", "Portrait"),
-            Orientation::BottomUp => ("Upside down", "Portrait"),
-            Orientation::LeftUp => ("Left edge up", "Landscape"),
-            Orientation::RightUp => ("Right edge up", "Landscape"),
+            Orientation::Undefined => ("No reading yet", "Tilt the device to take one"),
+            Orientation::Normal => ("Upright", "Not turned"),
+            Orientation::BottomUp => ("Upside down", "Turned 180°"),
+            Orientation::LeftUp => ("Left edge up", "Turned 90° clockwise"),
+            Orientation::RightUp => ("Right edge up", "Turned 90° counterclockwise"),
         };
-        let (turn, ink) = (self.turn.at(now), self.ink());
+        let (turn, ink, tablet) = (self.turn.at(now), self.ink(), self.tablet);
         let faint = orientation == Orientation::Undefined;
-        let phone = canvas(
+        let device = canvas(
             |_, _, _| {},
-            move |bounds, _, window, _| draw::phone(bounds, turn, ink, window),
+            move |bounds, _, window, _| {
+                if tablet {
+                    draw::tablet(bounds, turn, ink, window)
+                } else {
+                    draw::phone(bounds, turn, ink, window)
+                }
+            },
         )
         .size_full();
         self.drawn(
             div()
                 .size_full()
                 .when(faint, |d| d.opacity(0.4))
-                .child(phone),
+                .child(device),
             "Orientation",
             say(reading),
             say(detail),
@@ -379,14 +396,14 @@ impl Sensors {
                 div().size_full().opacity(0.4).child(dial),
                 "Compass",
                 say("No reading yet"),
-                say("Turn the phone to take one"),
+                say("Turn the device to take one"),
             );
         };
         const POINTS: [&str; 8] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
         let point = POINTS[((degrees + 22.5) / 45.0) as usize % 8];
         let accuracy = match state.heading_accuracy {
-            0 => "Not calibrated: move the phone in a figure 8",
-            1 => "Low accuracy: move the phone in a figure 8",
+            0 => "Not calibrated: move the device in a figure 8",
+            1 => "Low accuracy: move the device in a figure 8",
             2 => "Medium accuracy",
             _ => "High accuracy",
         };

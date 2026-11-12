@@ -86,18 +86,7 @@ pub fn phone(bounds: Bounds<Pixels>, turn: f32, ink: Ink, window: &mut gpui::Win
     let side = f32::from(bounds.size.width.min(bounds.size.height));
     let h = side * 0.84;
     let w = h * 0.5;
-    let line = (side / 64.).max(1.5);
-
-    let mut screen = PathBuilder::fill();
-    rounded(&mut screen, center, turn, (0., 0., w, h, w * 0.2));
-    if let Ok(path) = screen.build() {
-        window.paint_path(path, ink.control);
-    }
-    let mut body = PathBuilder::stroke(px(line));
-    rounded(&mut body, center, turn, (0., 0., w, h, w * 0.2));
-    if let Ok(path) = body.build() {
-        window.paint_path(path, ink.foreground);
-    }
+    body(center, turn, (w, h, w * 0.2), side, ink, window);
     let mut earpiece = PathBuilder::fill();
     let slot = w * 0.07;
     rounded(
@@ -117,6 +106,48 @@ pub fn phone(bounds: Bounds<Pixels>, turn: f32, ink: Ink, window: &mut gpui::Win
     );
     if let Ok(path) = camera.build() {
         window.paint_path(path, ink.accent);
+    }
+}
+
+/// A tablet turned `turn` degrees: upright, its long edge is up, with the
+/// camera on it.
+pub fn tablet(bounds: Bounds<Pixels>, turn: f32, ink: Ink, window: &mut gpui::Window) {
+    let center = bounds.center();
+    let side = f32::from(bounds.size.width.min(bounds.size.height));
+    let w = side * 0.84;
+    let h = w * 0.66;
+    body(center, turn, (w, h, h * 0.1), side, ink, window);
+    let mut camera = PathBuilder::fill();
+    circle(
+        &mut camera,
+        turned(center, turn, 0., -h / 2. + h * 0.06),
+        h * 0.03,
+    );
+    if let Ok(path) = camera.build() {
+        window.paint_path(path, ink.accent);
+    }
+}
+
+/// A device's screen and outline, `w` by `h` with corners of `r`, in a
+/// drawing `side` across.
+fn body(
+    center: Point<Pixels>,
+    turn: f32,
+    (w, h, r): (f32, f32, f32),
+    side: f32,
+    ink: Ink,
+    window: &mut gpui::Window,
+) {
+    let line = (side / 64.).max(1.5);
+    let mut screen = PathBuilder::fill();
+    rounded(&mut screen, center, turn, (0., 0., w, h, r));
+    if let Ok(path) = screen.build() {
+        window.paint_path(path, ink.control);
+    }
+    let mut outline = PathBuilder::stroke(px(line));
+    rounded(&mut outline, center, turn, (0., 0., w, h, r));
+    if let Ok(path) = outline.build() {
+        window.paint_path(path, ink.foreground);
     }
 }
 

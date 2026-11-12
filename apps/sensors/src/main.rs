@@ -1,3 +1,4 @@
+mod device;
 mod draw;
 mod instance;
 mod sensors;
