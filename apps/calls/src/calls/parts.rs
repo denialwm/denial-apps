@@ -9,8 +9,8 @@ use denial_contacts::dialable;
 use denial_look::mobile::TOUCH;
 use denial_look::{INSET, PRESSED_FILL, floating, lerp_rgb, motion, on, palette};
 use denial_look_gpui::{
-    Icon, color, control_fill, control_radius, dp, glass_group, icon, island, island_edge,
-    island_fill, lifted, solid,
+    Icon, color, control_fill, control_radius, glass_group, icon, island, island_edge, island_fill,
+    lifted, solid,
 };
 use gpui::{
     Context, Div, FontWeight, HighlightStyle, HitboxBehavior, LongPressEvent, MouseButton,
@@ -20,15 +20,15 @@ use gpui::{
 use super::{Back, Calls, Confirm, Held, Layer, Motion};
 use crate::data;
 
-/// Size of an icon in a button, in dp.
+/// Size of an icon in a button.
 pub(super) const ICON: f32 = 22.0;
-/// Size of an icon in a chip or beside a row's detail, in dp.
+/// Size of an icon in a chip or beside a row's detail.
 pub(super) const SMALL_ICON: f32 = 14.0;
-/// A row's padding from its island's edge, in dp.
+/// A row's padding from its island's edge.
 pub(super) const ROW_PAD: f32 = 16.0;
-/// A row's avatar, in dp.
+/// A row's avatar.
 pub(super) const ROW_AVATAR: f32 = 42.0;
-/// Between a row's avatar and its text, in dp.
+/// Between a row's avatar and its text.
 pub(super) const ROW_GAP: f32 = 12.0;
 
 /// What a button looks like.
@@ -82,7 +82,7 @@ impl Calls {
     /// Contact `contact`'s photo, else initials on their colour, bare on the
     /// frost; for a number no one has, `number`'s.
     pub(super) fn avatar(&self, contact: Option<usize>, number: &str, diameter: f32) -> Div {
-        let circle = div().flex_none().size(dp(diameter));
+        let circle = div().flex_none().size(px(diameter));
         if let Some(photo) = contact.and_then(|index| self.people.photo(index)) {
             return circle.child(
                 img(photo)
@@ -117,7 +117,7 @@ impl Calls {
             .items_center()
             .justify_center()
             .bg(solid(fill))
-            .text_size(dp(diameter * 0.36))
+            .text_size(px(diameter * 0.36))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(on(fill)))
             .child(data::initials(name))
@@ -167,19 +167,19 @@ impl Calls {
         let mut button = div()
             .id(id)
             .flex_none()
-            .h(dp(TOUCH))
-            .min_w(dp(TOUCH))
+            .h(px(TOUCH))
+            .min_w(px(TOUCH))
             .flex()
             .items_center()
             .justify_center()
-            .gap(dp(8.))
+            .gap(px(8.))
             .rounded(control_radius(&self.look))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(ink))
-            .children(glyph.map(|glyph| icon(glyph, dp(ICON), solid(ink))))
+            .children(glyph.map(|glyph| icon(glyph, px(ICON), solid(ink))))
             .children(label);
         if label.is_some() {
-            button = button.px(dp(18.));
+            button = button.px(px(18.));
         }
         if let Some(fill) = self.fill(fill) {
             button = button.bg(solid(fill));
@@ -197,7 +197,7 @@ impl Calls {
         button
     }
 
-    /// A round island of `diameter` dp in `fill`, such as Call, Answer and
+    /// A round island of `diameter` in `fill`, such as Call, Answer and
     /// End, with the floating shadow.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn round(
@@ -211,7 +211,7 @@ impl Calls {
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
         self.button(id, Face::Icon(glyph), fill, live, cx, action)
-            .size(dp(diameter))
+            .size(px(diameter))
             .rounded_full()
             .shadow(denial_look_gpui::shadow(&self.look))
     }
@@ -286,8 +286,8 @@ impl Calls {
             glass_group(&self.look)
                 .flex()
                 .flex_wrap()
-                .gap(dp(4.))
-                .p(dp(4.))
+                .gap(px(4.))
+                .p(px(4.))
                 .children(buttons),
         )
     }
@@ -335,7 +335,7 @@ impl Calls {
                 .children((!segment.first).then(|| {
                     div()
                         .h(px(1.))
-                        .ml(dp(ROW_PAD + ROW_AVATAR + ROW_GAP))
+                        .ml(px(ROW_PAD + ROW_AVATAR + ROW_GAP))
                         .bg(color(palette.separator, palette.separator_alpha))
                 }))
                 .child(row),
@@ -355,10 +355,10 @@ impl Calls {
     pub(super) fn island_label(&self, label: impl Into<SharedString>) -> Div {
         let label: SharedString = label.into();
         div()
-            .px(dp(ROW_PAD))
-            .pt(dp(11.))
-            .pb(dp(3.))
-            .text_size(dp(12.))
+            .px(px(ROW_PAD))
+            .pt(px(11.))
+            .pb(px(3.))
+            .text_size(px(12.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(self.look.accent_text))
             .child(label.to_uppercase())
@@ -374,9 +374,9 @@ impl Calls {
             .id(id)
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
-            .px(dp(ROW_PAD))
-            .py(dp(10.))
+            .gap(px(ROW_GAP))
+            .px(px(ROW_PAD))
+            .py(px(10.))
             .when(segment.last, |row| {
                 row.rounded_b(px(self.look.group_radius()))
             });
@@ -397,7 +397,7 @@ impl Calls {
             .min_w_0()
             .flex()
             .flex_col()
-            .gap(dp(2.))
+            .gap(px(2.))
             .child(
                 div()
                     .truncate()
@@ -409,9 +409,9 @@ impl Calls {
                 div()
                     .flex()
                     .items_center()
-                    .gap(dp(5.))
+                    .gap(px(5.))
                     .min_w_0()
-                    .text_size(dp(14.))
+                    .text_size(px(14.))
                     .text_color(solid(palette.secondary))
                     .child(detail),
             )
@@ -430,23 +430,23 @@ impl Calls {
             .flex()
             .flex_col()
             .items_start()
-            .gap(dp(9.))
-            .px(dp(21.))
-            .pt(dp(24.))
-            .pb(dp(20.))
+            .gap(px(9.))
+            .px(px(21.))
+            .pt(px(24.))
+            .pb(px(20.))
             .child(
                 div()
-                    .size(dp(46.))
+                    .size(px(46.))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(control_radius(&self.look))
                     .bg(control_fill(&self.look))
-                    .child(icon(glyph, dp(ICON), solid(self.look.palette.foreground))),
+                    .child(icon(glyph, px(ICON), solid(self.look.palette.foreground))),
             )
             .child(
                 div()
-                    .text_size(dp(20.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .line_height(gpui::relative(1.2))
                     .child(title),
@@ -456,7 +456,7 @@ impl Calls {
                     .text_color(solid(self.look.palette.secondary))
                     .child(body),
             )
-            .children(action.map(|action| div().pt(dp(6.)).child(action)))
+            .children(action.map(|action| div().pt(px(6.)).child(action)))
     }
 
     /// The dialog that asks before something that cannot be undone, in the
@@ -485,14 +485,14 @@ impl Calls {
             .opacity(appear)
             .flex()
             .flex_col()
-            .gap(dp(7.))
-            .px(dp(20.))
-            .pt(dp(21.))
-            .pb(dp(16.))
+            .gap(px(7.))
+            .px(px(20.))
+            .pt(px(21.))
+            .pb(px(16.))
             .on_click(|_, _, cx| cx.stop_propagation())
             .child(
                 div()
-                    .text_size(dp(20.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(title),
             )
@@ -503,7 +503,7 @@ impl Calls {
             )
             .child(
                 div()
-                    .pt(dp(9.))
+                    .pt(px(9.))
                     .flex()
                     .justify_end()
                     .gap(px(INSET))
@@ -532,9 +532,9 @@ impl Calls {
             .size_full()
             .flex()
             .items_center()
-            .gap(dp(8.))
-            .pl(dp(4.))
-            .pr(dp(4.))
+            .gap(px(8.))
+            .pl(px(4.))
+            .pr(px(4.))
     }
 
     pub(super) fn title(&self, title: impl Into<SharedString>) -> Div {
@@ -542,7 +542,7 @@ impl Calls {
             .flex_1()
             .min_w_0()
             .truncate()
-            .text_size(dp(20.))
+            .text_size(px(20.))
             .font_weight(FontWeight::SEMIBOLD)
             .child(title.into())
     }
@@ -563,12 +563,12 @@ impl Calls {
     pub(super) fn round_group(&self, button: Stateful<Div>, diameter: f32) -> Div {
         glass_group(&self.look)
             .flex_none()
-            .size(dp(diameter))
+            .size(px(diameter))
             .rounded_full()
             .flex()
             .items_center()
             .justify_center()
-            .child(button.size(dp(diameter - 8.)).rounded_full())
+            .child(button.size(px(diameter - 8.)).rounded_full())
     }
 
     pub(super) fn back_button(&self, layer: Layer, cx: &mut Context<Self>) -> Stateful<Div> {

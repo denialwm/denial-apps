@@ -8,7 +8,7 @@ use std::time::Instant;
 use denial_look::mobile::{AVATAR, content_top};
 use denial_look::{INSET, MIN_RADIUS};
 use denial_look_gpui::{
-    Icon, chip, color, control_fill, control_radius, dp, icon, island, island_run, lifted, solid,
+    Icon, chip, color, control_fill, control_radius, icon, island, island_run, lifted, solid,
 };
 use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 
@@ -75,12 +75,12 @@ impl Messages {
                 div()
                     .flex()
                     .items_center()
-                    .gap(dp(6.))
+                    .gap(px(6.))
                     .text_color(solid(self.look.palette.secondary))
                     .children((count > 0).then(|| count.to_string()))
                     .child(icon(
                         Icon::Chevron,
-                        dp(ICON),
+                        px(ICON),
                         solid(self.look.palette.secondary),
                     )),
             )
@@ -170,8 +170,8 @@ impl Messages {
                     .max_w_full()
                     .rounded(px(self.look.bubble_radius()))
                     .rounded_bl(px(MIN_RADIUS))
-                    .px(dp(14.))
-                    .py(dp(9.))
+                    .px(px(14.))
+                    .py(px(9.))
                     .line_height(gpui::relative(1.4))
                     .child(text.clone());
                 if let Some(t) = lift {
@@ -193,7 +193,7 @@ impl Messages {
                     )),
                 };
                 let item = div()
-                    .pt(dp(9.))
+                    .pt(px(9.))
                     .flex()
                     .items_end()
                     .gap(px(INSET))
@@ -205,7 +205,7 @@ impl Messages {
                             .flex()
                             .flex_col()
                             .items_start()
-                            .gap(dp(4.))
+                            .gap(px(4.))
                             .child(bubble)
                             .child(under),
                     );
@@ -225,7 +225,7 @@ impl Messages {
 
     /// A section chip over an island of rows.
     fn chip_row(&self, label: &'static str) -> Div {
-        div().pt(dp(6.)).flex().child(chip(&self.look).child(label))
+        div().pt(px(6.)).flex().child(chip(&self.look).child(label))
     }
 
     /// A setting: its icon tile, its label and what it says, and its control.
@@ -239,19 +239,19 @@ impl Messages {
         div()
             .flex()
             .items_center()
-            .gap(dp(11.))
-            .px(dp(14.))
-            .py(dp(11.))
+            .gap(px(11.))
+            .px(px(14.))
+            .py(px(11.))
             .child(
                 div()
                     .flex_none()
-                    .size(dp(33.))
+                    .size(px(33.))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(control_radius(&self.look))
                     .bg(control_fill(&self.look))
-                    .child(icon(glyph, dp(20.), solid(self.look.palette.foreground))),
+                    .child(icon(glyph, px(20.), solid(self.look.palette.foreground))),
             )
             .child(
                 div()
@@ -259,11 +259,11 @@ impl Messages {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(dp(1.))
+                    .gap(px(1.))
                     .child(div().truncate().child(label.into()))
                     .children(detail.map(|detail| {
                         div()
-                            .text_size(dp(12.))
+                            .text_size(px(12.))
                             .text_color(solid(self.look.palette.secondary))
                             .child(detail)
                     })),
@@ -286,15 +286,15 @@ impl Messages {
             (control_fill(&self.look), palette.secondary)
         };
         div()
-            .w(dp(45.))
-            .h(dp(26.))
-            .p(dp(3.))
+            .w(px(45.))
+            .h(px(26.))
+            .p(px(3.))
             .flex()
             .when(on, |toggle| toggle.justify_end())
             .rounded_full()
             .bg(track)
             .cursor_pointer()
-            .child(div().size(dp(20.)).rounded_full().bg(solid(knob)))
+            .child(div().size(px(20.)).rounded_full().bg(solid(knob)))
     }
 
     /// SIM 1 or SIM 2, as dmail has it; none until dmail says.
@@ -303,8 +303,8 @@ impl Messages {
             let chosen = self.sim_slot == slot;
             let mut segment = div()
                 .id(("sim", slot as usize))
-                .min_w(dp(44.))
-                .h(dp(34.))
+                .min_w(px(44.))
+                .h(px(34.))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -330,8 +330,8 @@ impl Messages {
         };
         div()
             .flex()
-            .p(dp(3.))
-            .gap(dp(3.))
+            .p(px(3.))
+            .gap(px(3.))
             .rounded(control_radius(&self.look))
             .bg(control_fill(&self.look))
             .child(segment(1, cx))

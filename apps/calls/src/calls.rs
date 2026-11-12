@@ -18,13 +18,13 @@ use std::time::{Duration, Instant};
 
 use denial_contacts::{Contacts, Watch, dialable, same_number};
 use denial_look::mobile::{
-    GESTURE_INSET, GROUP_HEIGHT, KEYBOARD_GAP, ScrollAway, TAB_BAR, content_bottom, dp as dp_lp,
+    GESTURE_INSET, GROUP_HEIGHT, KEYBOARD_GAP, ScrollAway, TAB_BAR, content_bottom,
 };
 use denial_look::{
     INSET, Look, SettingsWatch, Tween, decelerate, ease_in_cubic, ease_out_cubic, motion, stagger,
 };
 use denial_look_gpui::input::TextInput;
-use denial_look_gpui::{backing, dp, solid};
+use denial_look_gpui::{backing, solid};
 use gpui::{
     AnyElement, App, AsyncApp, AsyncWindowContext, ClipboardItem, Context, Div, Entity,
     FocusHandle, Focusable, Font, FontFallbacks, KeyDownEvent, KeyboardInset, ListAlignment,
@@ -171,7 +171,7 @@ impl Arrival {
         let (t, rise) = if self.launch {
             let delay = stagger(motion::LAUNCH_DELAY, motion::LAUNCH_STEP, index);
             let t = self.clock.segment(delay, motion::LAUNCH).progress(now);
-            (ease_out_cubic(t), dp_lp(motion::LAUNCH_RISE))
+            (ease_out_cubic(t), motion::LAUNCH_RISE)
         } else {
             let delay = stagger(motion::OUT, motion::IN_STEP, index);
             let t = self.clock.segment(delay, motion::IN).progress(now);
@@ -546,9 +546,9 @@ impl Calls {
             trail: Vec::new(),
             arrival,
             keyboard,
-            recents: ListState::new(0, ListAlignment::Top, dp(600.)),
-            contacts: ListState::new(0, ListAlignment::Top, dp(600.)),
-            found: ListState::new(0, ListAlignment::Top, dp(600.)),
+            recents: ListState::new(0, ListAlignment::Top, px(600.)),
+            contacts: ListState::new(0, ListAlignment::Top, px(600.)),
+            found: ListState::new(0, ListAlignment::Top, px(600.)),
             entries: Vec::new(),
             found_items: Vec::new(),
             _settings: cx.spawn(async move |this, cx| Self::follow_settings(this, cx).await),
@@ -1315,9 +1315,9 @@ impl Calls {
     /// going on behind; 0 when there are none.
     fn fixed_zone(&self, screen: &Screen) -> f32 {
         match (screen.tab(), self.call_behind(screen)) {
-            (true, true) => dp_lp(TAB_BAR) + INSET + dp_lp(GROUP_HEIGHT),
-            (true, false) => dp_lp(TAB_BAR),
-            (false, true) => dp_lp(GROUP_HEIGHT),
+            (true, true) => TAB_BAR + INSET + GROUP_HEIGHT,
+            (true, false) => TAB_BAR,
+            (false, true) => GROUP_HEIGHT,
             (false, false) => 0.0,
         }
     }
@@ -1339,7 +1339,7 @@ impl Calls {
         let searching = self.searched(cx) || self.search.focus_handle(cx).is_focused(window);
         match offset {
             Some(offset) if !searching => {
-                self.top_away.follow(offset, INSET + dp_lp(GROUP_HEIGHT));
+                self.top_away.follow(offset, INSET + GROUP_HEIGHT);
             }
             offset => self.top_away = ScrollAway::shown(offset.unwrap_or(0.0)),
         }
@@ -1488,7 +1488,7 @@ impl Calls {
             (false, true) => (leaving.map(|screen| (screen, Layer::Leaving)), 1.0 - gone),
             (false, false) => (None, 0.0),
         };
-        let height = GESTURE_INSET + dp_lp(TAB_BAR);
+        let height = GESTURE_INSET + TAB_BAR;
         let tab_bar = tabs.map(|(screen, layer)| {
             div()
                 .absolute()
@@ -1517,7 +1517,7 @@ impl Calls {
                 } else {
                     Layer::Shown
                 };
-                let lift = up * (dp_lp(TAB_BAR) + INSET);
+                let lift = up * (TAB_BAR + INSET);
                 Some(
                     div()
                         .absolute()
@@ -1565,7 +1565,7 @@ impl Calls {
             .top(px(INSET))
             .left(px(INSET))
             .right(px(INSET))
-            .h(dp(GROUP_HEIGHT));
+            .h(px(GROUP_HEIGHT));
         // The tabs' search bars and menu button.
         let tabs = [
             Some((&self.screen, Layer::Shown)),

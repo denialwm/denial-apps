@@ -28,10 +28,10 @@ use std::time::{Duration, Instant};
 
 use futures_lite::FutureExt;
 
-use denial_look::mobile::{GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom, dp as dp_lp};
+use denial_look::mobile::{GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom};
 use denial_look::{INSET, Look, SettingsWatch, Tween, decelerate, ease_out_cubic, motion, stagger};
 use denial_look_gpui::input::{Submitted, TextInput};
-use denial_look_gpui::{backing, chip, dp, glass_group, say, solid};
+use denial_look_gpui::{backing, chip, glass_group, say, solid};
 use gpui::{
     AnyElement, App, AsyncApp, Context, Div, Entity, FocusHandle, Focusable, Font, KeyboardInset,
     ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, actions, div, prelude::*,
@@ -210,7 +210,7 @@ impl Arrival {
         let t = ease_out_cubic(self.clock.segment(delay, motion::LAUNCH).progress(now));
         Motion {
             opacity: t,
-            offset: dp_lp(motion::LAUNCH_RISE) * (1.0 - t),
+            offset: motion::LAUNCH_RISE * (1.0 - t),
         }
     }
 
@@ -1226,7 +1226,7 @@ impl Settings {
     fn follow_scroll(&mut self) {
         match self.scrolled(&self.screen) {
             Some(offset) if self.screen == Screen::Home && !self.searching => {
-                self.top_away.follow(offset, INSET + dp_lp(GROUP_HEIGHT));
+                self.top_away.follow(offset, INSET + GROUP_HEIGHT);
             }
             offset => self.top_away = ScrollAway::shown(offset.unwrap_or(0.0)),
         }
@@ -1476,7 +1476,7 @@ impl Settings {
             .top(px(INSET - self.top_away.away()))
             .left(px(INSET))
             .right(px(INSET))
-            .h(dp(GROUP_HEIGHT))
+            .h(px(GROUP_HEIGHT))
             .child(
                 glass_group(&self.look)
                     .size_full()

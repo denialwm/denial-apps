@@ -10,7 +10,7 @@ use denial_contacts::{dialable, same_number};
 use denial_look::mobile::{AVATAR, GROUP_HEIGHT, TOUCH, content_top};
 use denial_look::{INSET, floating};
 use denial_look_gpui::{
-    Icon, chip, color, control_fill, control_radius, dp, glass_group, icon, island, shadow, solid,
+    Icon, chip, color, control_fill, control_radius, glass_group, icon, island, shadow, solid,
 };
 use gpui::{
     AnyElement, Context, Div, Focusable, FontWeight, SharedString, Stateful, StyledText, Window,
@@ -21,9 +21,9 @@ use super::parts::{Face, Fill, ICON, ROW_AVATAR, ROW_PAD, Segment, place};
 use super::{Calls, Entry, Found, HISTORY, Held, Layer, Screen, Who};
 use crate::data::{self, Direction};
 
-/// A favourite's avatar, in dp.
+/// A favourite's avatar.
 const FAVOURITE_AVATAR: f32 = 54.0;
-/// The avatar over a name island, in dp.
+/// The avatar over a name island.
 const LARGE_AVATAR: f32 = 88.0;
 
 impl Calls {
@@ -117,7 +117,7 @@ impl Calls {
 
     /// The favourites, four to a line, in one island.
     fn favourites_island(&self, layer: Layer, cx: &mut Context<Self>) -> Div {
-        let mut tiles = div().flex().flex_wrap().px(dp(6.)).pb(dp(8.));
+        let mut tiles = div().flex().flex_wrap().px(px(6.)).pb(px(8.));
         for index in (0..self.people.all().len()).filter(|&index| self.favourite(index)) {
             let contact = &self.people.all()[index];
             let first_name = contact.name.split_whitespace().next().unwrap_or_default();
@@ -127,16 +127,16 @@ impl Calls {
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(dp(6.))
-                .px(dp(4.))
-                .py(dp(8.))
+                .gap(px(6.))
+                .px(px(4.))
+                .py(px(8.))
                 .rounded(control_radius(&self.look))
                 .child(self.avatar(Some(index), "", FAVOURITE_AVATAR))
                 .child(
                     div()
                         .max_w_full()
                         .truncate()
-                        .text_size(dp(13.))
+                        .text_size(px(13.))
                         .child(first_name.to_owned()),
                 );
             if layer.live() {
@@ -179,7 +179,7 @@ impl Calls {
         let key = self.people.key(index).to_owned();
         let mut row = self
             .segment_row(("contact", index), segment)
-            .py(dp(8.))
+            .py(px(8.))
             .child(self.avatar(Some(index), "", ROW_AVATAR))
             .child(
                 div()
@@ -270,13 +270,13 @@ impl Calls {
             })
             .flex_1()
             .min_w_0()
-            .h(dp(GROUP_HEIGHT))
+            .h(px(GROUP_HEIGHT))
             .flex()
             .items_center()
-            .gap(dp(10.))
-            .pl(dp(16.))
-            .pr(dp(end_pad))
-            .child(icon(Icon::Search, dp(ICON), ink))
+            .gap(px(10.))
+            .pl(px(16.))
+            .pr(px(end_pad))
+            .child(icon(Icon::Search, px(ICON), ink))
             .child(div().flex_1().min_w_0().child(self.search.clone()))
             .children(clear);
         if live {
@@ -351,8 +351,8 @@ impl Calls {
                 let motion = this.item_motion(layer, ix, false, now);
                 let item = match items.get(ix) {
                     Some(Found::Chip(label)) => div()
-                        .pt(dp(10.))
-                        .pl(dp(AVATAR) + px(INSET))
+                        .pt(px(10.))
+                        .pl(px(AVATAR) + px(INSET))
                         .flex()
                         .child(chip(&this.look).child(*label)),
                     Some(Found::Dial(number)) => this.dial_row(number.clone(), layer, cx),
@@ -394,13 +394,13 @@ impl Calls {
             .child(
                 div()
                     .flex_none()
-                    .size(dp(ROW_AVATAR))
+                    .size(px(ROW_AVATAR))
                     .rounded_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .bg(color(ink, 0.15))
-                    .child(icon(Icon::Phone, dp(ICON), solid(ink))),
+                    .child(icon(Icon::Phone, px(ICON), solid(ink))),
             )
             .child(
                 div()
@@ -408,7 +408,7 @@ impl Calls {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(dp(2.))
+                    .gap(px(2.))
                     .child(
                         div()
                             .truncate()
@@ -417,7 +417,7 @@ impl Calls {
                     )
                     .child(
                         div()
-                            .text_size(dp(14.))
+                            .text_size(px(14.))
                             .opacity(0.8)
                             .child(tr("Not in your contacts")),
                     ),
@@ -564,19 +564,19 @@ impl Calls {
                     div()
                         .flex()
                         .items_center()
-                        .gap(dp(11.))
-                        .px(dp(ROW_PAD))
-                        .py(dp(9.))
+                        .gap(px(11.))
+                        .px(px(ROW_PAD))
+                        .py(px(9.))
                         .child(
                             div()
                                 .flex_none()
-                                .size(dp(33.))
+                                .size(px(33.))
                                 .flex()
                                 .items_center()
                                 .justify_center()
                                 .rounded(control_radius(&self.look))
                                 .bg(control_fill(&self.look))
-                                .child(icon(glyph, dp(18.), solid(ink))),
+                                .child(icon(glyph, px(18.), solid(ink))),
                         )
                         .child(self.row_text(
                             call.summary(),
@@ -589,7 +589,7 @@ impl Calls {
                         )),
                 );
             }
-            parts.push(calls.pb(dp(6.)));
+            parts.push(calls.pb(px(6.)));
         }
         div()
             .id("person")
@@ -620,20 +620,20 @@ impl Calls {
         lines: Vec<Div>,
     ) -> Div {
         let half = LARGE_AVATAR / 2.0;
-        div().pt(dp(half)).child(
+        div().pt(px(half)).child(
             island(&self.look)
                 .relative()
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(dp(3.))
-                .px(dp(20.))
-                .pt(dp(half + 12.))
-                .pb(dp(20.))
+                .gap(px(3.))
+                .px(px(20.))
+                .pt(px(half + 12.))
+                .pb(px(20.))
                 .child(
                     div()
                         .absolute()
-                        .top(-dp(half))
+                        .top(-px(half))
                         .left_0()
                         .right_0()
                         .flex()
@@ -648,7 +648,7 @@ impl Calls {
                     div()
                         .max_w_full()
                         .truncate()
-                        .text_size(dp(26.))
+                        .text_size(px(26.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(relative(1.25))
                         .child(name),
@@ -674,7 +674,7 @@ impl Calls {
         live: bool,
         cx: &mut Context<Self>,
     ) -> Div {
-        let mut group = glass_group(&self.look).flex().p(dp(4.)).gap(dp(4.));
+        let mut group = glass_group(&self.look).flex().p(px(4.)).gap(px(4.));
         if let Some(number) = number.clone() {
             group = group.child(self.command("call", Icon::Phone, tr("Call"), live, cx, {
                 move |this, window, cx| this.dial(number.clone(), window, cx)
@@ -723,17 +723,17 @@ impl Calls {
         let command = div()
             .id(id)
             .flex_1()
-            .min_h(dp(TOUCH))
+            .min_h(px(TOUCH))
             .flex()
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(dp(4.))
-            .py(dp(8.))
+            .gap(px(4.))
+            .py(px(8.))
             .rounded(control_radius(&self.look))
-            .text_size(dp(13.))
+            .text_size(px(13.))
             .font_weight(FontWeight::SEMIBOLD)
-            .child(icon(glyph, dp(ICON), ink))
+            .child(icon(glyph, px(ICON), ink))
             .child(label);
         if !live {
             return command;
@@ -754,9 +754,9 @@ impl Calls {
         if contact.phones.is_empty() {
             numbers = numbers.child(
                 div()
-                    .px(dp(ROW_PAD))
-                    .pt(dp(4.))
-                    .pb(dp(14.))
+                    .px(px(ROW_PAD))
+                    .pt(px(4.))
+                    .pb(px(14.))
                     .text_color(solid(palette.secondary))
                     .child(tr("No phone number")),
             );
@@ -773,10 +773,10 @@ impl Calls {
                 .id(("number", ix))
                 .flex()
                 .items_center()
-                .gap(dp(8.))
-                .pl(dp(ROW_PAD))
-                .pr(dp(8.))
-                .py(dp(6.))
+                .gap(px(8.))
+                .pl(px(ROW_PAD))
+                .pr(px(8.))
+                .py(px(6.))
                 .when(last, |row| row.rounded_b(radius))
                 .when(ix > 0, |row| {
                     row.border_t(px(floating::EDGE_WIDTH))
@@ -791,7 +791,7 @@ impl Calls {
                         .child(div().truncate().child(phone.number.clone()))
                         .child(
                             div()
-                                .text_size(dp(12.))
+                                .text_size(px(12.))
                                 .text_color(solid(palette.secondary))
                                 .child(tr(phone.kind.label())),
                         ),
@@ -819,7 +819,7 @@ impl Calls {
             }
             numbers = numbers.child(row);
         }
-        numbers.when(!contact.phones.is_empty(), |numbers| numbers.pb(dp(4.)))
+        numbers.when(!contact.phones.is_empty(), |numbers| numbers.pb(px(4.)))
     }
 }
 

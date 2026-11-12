@@ -11,10 +11,10 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use denial_look::words::{fill, tr};
-use denial_look_gpui::{Icon, dp, island, solid};
+use denial_look_gpui::{Icon, island, solid};
 use gpui::{
     Context, Div, FontWeight, ObjectFit, SharedString, Stateful, StyledImage, Task, div, img,
-    prelude::*,
+    prelude::*, px,
 };
 
 use super::page::FAINT;
@@ -351,8 +351,8 @@ impl Settings {
             );
             let failure = self.android_failure().map(|why| {
                 div()
-                    .px(dp(ROW_PAD))
-                    .pb(dp(ROW_GAP))
+                    .px(px(ROW_PAD))
+                    .pb(px(ROW_GAP))
                     .text_color(solid(self.look.palette.secondary))
                     .child(SharedString::from(why.to_owned()))
             });
@@ -368,8 +368,8 @@ impl Settings {
                     .children(failure)
                     .child(
                         div()
-                            .px(dp(ROW_PAD))
-                            .pb(dp(ROW_PAD))
+                            .px(px(ROW_PAD))
+                            .pb(px(ROW_PAD))
                             .child(self.buttons([restart])),
                     ),
             );
@@ -572,14 +572,14 @@ impl Settings {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .p(dp(ROW_PAD))
-            .pt(dp(22.))
-            .child(div().size(dp(56.)).child(picture))
+            .gap(px(6.))
+            .p(px(ROW_PAD))
+            .pt(px(22.))
+            .child(div().size(px(56.)).child(picture))
             .child(
                 div()
-                    .pt(dp(6.))
-                    .text_size(dp(20.))
+                    .pt(px(6.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(app.name.clone()),
             )
@@ -588,7 +588,7 @@ impl Settings {
                     .text_color(solid(self.look.palette.secondary))
                     .child(status),
             )
-            .child(self.buttons([open, stop]).w_full().pt(dp(12.)));
+            .child(self.buttons([open, stop]).w_full().pt(px(12.)));
         let mut parts = vec![hero];
 
         let Some(Ok(details)) = details else {
@@ -630,8 +630,8 @@ impl Settings {
                 }))
                 .child(
                     div()
-                        .px(dp(ROW_PAD))
-                        .pb(dp(ROW_PAD))
+                        .px(px(ROW_PAD))
+                        .pb(px(ROW_PAD))
                         .child(self.buttons([clear_cache, clear_data])),
                 ),
         );
@@ -683,7 +683,7 @@ impl Settings {
             );
             parts.push(
                 island(&self.look)
-                    .p(dp(ROW_PAD))
+                    .p(px(ROW_PAD))
                     .child(self.buttons([uninstall])),
             );
         }

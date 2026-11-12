@@ -8,7 +8,7 @@ use std::time::Instant;
 use denial_look::mobile::TOUCH;
 use denial_look::{Tween, decelerate, floating, motion};
 use denial_look_gpui::input::TextInput;
-use denial_look_gpui::{color, control_radius, dp, island, say, solid};
+use denial_look_gpui::{color, control_radius, island, say, solid};
 use gpui::{
     Context, Div, Entity, Focusable, FontWeight, SharedString, Stateful, Window, div, prelude::*,
     px,
@@ -65,23 +65,23 @@ impl Settings {
                 let rows = options.iter().enumerate().map(|(ix, option)| {
                     let row = div()
                         .id(ix)
-                        .h(dp(TOUCH))
+                        .h(px(TOUCH))
                         .flex()
                         .items_center()
-                        .gap(dp(ROW_GAP))
-                        .px(dp(12.))
+                        .gap(px(ROW_GAP))
+                        .px(px(12.))
                         .rounded(control_radius(&self.look))
                         .child(self.radio(ix == *picked))
                         .child(say(option.clone()));
                     self.pressable(row, cx, move |this, window, cx| this.pick(ix, window, cx))
                 });
                 island
-                    .p(dp(6.))
+                    .p(px(6.))
                     .child(
                         self.dialog_title(title.clone())
-                            .px(dp(12.))
-                            .pt(dp(12.))
-                            .pb(dp(8.)),
+                            .px(px(12.))
+                            .pt(px(12.))
+                            .pb(px(8.)),
                     )
                     .children(rows)
             }
@@ -144,7 +144,7 @@ impl Settings {
                             cx,
                             |this, window, cx| this.dismiss(window, cx),
                         )])
-                        .pt(dp(9.)),
+                        .pt(px(9.)),
                 };
                 self.form(island)
                     .child(self.dialog_title(fill("Pair with {name}", &[("name", name)])))
@@ -279,7 +279,7 @@ impl Settings {
                                 |this, window, cx| this.submit_dialog(window, cx),
                             ),
                         ])
-                        .pt(dp(9.)),
+                        .pt(px(9.)),
                     ),
                 }
             }
@@ -304,12 +304,12 @@ impl Settings {
 
     /// A dialog of text, fields and answers.
     fn form(&self, island: Stateful<Div>) -> Stateful<Div> {
-        island.gap(dp(7.)).px(dp(20.)).pt(dp(21.)).pb(dp(16.))
+        island.gap(px(7.)).px(px(20.)).pt(px(21.)).pb(px(16.))
     }
 
     fn dialog_title(&self, title: impl Into<SharedString>) -> Div {
         div()
-            .text_size(dp(20.))
+            .text_size(px(20.))
             .font_weight(FontWeight::SEMIBOLD)
             .child(say(title))
     }
@@ -333,8 +333,8 @@ impl Settings {
             let button = div()
                 .id("reveal")
                 .flex_none()
-                .h(dp(TOUCH))
-                .px(dp(12.))
+                .h(px(TOUCH))
+                .px(px(12.))
                 .flex()
                 .items_center()
                 .rounded(control_radius(&self.look))
@@ -350,12 +350,12 @@ impl Settings {
             })
         });
         div()
-            .mt(dp(9.))
-            .h(dp(TOUCH))
+            .mt(px(9.))
+            .h(px(TOUCH))
             .flex()
             .items_center()
-            .pl(dp(14.))
-            .pr(dp(if secret { 0. } else { 14. }))
+            .pl(px(14.))
+            .pr(px(if secret { 0. } else { 14. }))
             .rounded(control_radius(&self.look))
             .bg(color(
                 self.look.palette.foreground,
@@ -386,7 +386,7 @@ impl Settings {
                 this.submit_dialog(window, cx)
             }),
         ])
-        .pt(dp(9.))
+        .pt(px(9.))
     }
 
     /// A radio mark: a ring, filled at its centre when `on`.
@@ -398,15 +398,15 @@ impl Settings {
         };
         div()
             .flex_none()
-            .size(dp(22.))
+            .size(px(22.))
             .flex()
             .items_center()
             .justify_center()
             .rounded_full()
-            .border(dp(2.))
+            .border(px(2.))
             .border_color(solid(ink))
             .when(on, |radio| {
-                radio.child(div().size(dp(10.)).rounded_full().bg(solid(ink)))
+                radio.child(div().size(px(10.)).rounded_full().bg(solid(ink)))
             })
     }
 

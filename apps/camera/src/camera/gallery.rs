@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use denial_look::mobile::{GESTURE_INSET, GROUP_HEIGHT};
 use denial_look::{INSET, MIN_RADIUS, Look, Tween, decelerate, floating, lerp, motion, on, palette};
-use denial_look_gpui::{Icon, color, dp, icon, island, shadow, solid};
+use denial_look_gpui::{Icon, color, icon, island, shadow, solid};
 use gpui::{
     ClickEvent, Context, DispatchPhase, Div, FontWeight, HitboxBehavior, IntoElement, ObjectFit, Pixels, Point,
     ScrollWheelEvent, Stateful, Task, TouchDragEvent, TouchPhase, Window, canvas, div, img, prelude::*, px,
@@ -28,10 +28,10 @@ const GAP: f32 = 16.0;
 const TURN: f32 = 0.18;
 /// Past the first and the last photo the page follows the finger this much.
 const EDGE_GIVE: f32 = 0.35;
-/// The bottom bar's height, dp.
+/// The bottom bar's height.
 const BOTTOM_BAR: f32 = 56.0;
-/// Between grid tiles, lp.
-const TILE_GAP: f32 = 2.0;
+/// Between grid tiles.
+const TILE_GAP: f32 = 1.5;
 const TILES_A_ROW: usize = 3;
 /// The confirmation dims what is under it to this.
 const DIM: f32 = 0.6;
@@ -486,11 +486,11 @@ impl Camera {
             .top(px(INSET))
             .left(px(INSET))
             .right(px(INSET))
-            .h(dp(GROUP_HEIGHT))
-            .px(dp(4.))
+            .h(px(GROUP_HEIGHT))
+            .px(px(4.))
             .flex()
             .items_center()
-            .gap(dp(4.))
+            .gap(px(4.))
             .child(
                 self.bar_button("back", Icon::Back, look.palette.foreground)
                     .on_click(cx.listener(|this, _, window, cx| this.back(&super::Back, window, cx))),
@@ -502,14 +502,14 @@ impl Camera {
                     .flex_col()
                     .child(
                         div()
-                            .text_size(dp(17.))
+                            .text_size(px(17.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(solid(look.palette.foreground))
                             .child(title),
                     )
                     .child(
                         div()
-                            .text_size(dp(13.))
+                            .text_size(px(13.))
                             .text_color(solid(look.palette.secondary))
                             .child(detail),
                     ),
@@ -521,14 +521,14 @@ impl Camera {
         div()
             .id(id)
             .flex_none()
-            .size(dp(48.))
+            .size(px(48.))
             .rounded_full()
             .flex()
             .items_center()
             .justify_center()
             .cursor_pointer()
             .active(move |button| button.bg(pressed))
-            .child(icon(glyph, dp(24.), solid(ink)))
+            .child(icon(glyph, px(24.), solid(ink)))
     }
 
     pub(super) fn viewer_screen(&self, window: &Window, now: Instant, cx: &mut Context<Self>) -> impl IntoElement {
@@ -625,7 +625,7 @@ impl Camera {
                 .left(px(INSET))
                 .right(px(INSET))
                 .bottom(px(GESTURE_INSET))
-                .h(dp(BOTTOM_BAR))
+                .h(px(BOTTOM_BAR))
                 .flex()
                 .items_center()
                 .justify_around()
@@ -667,9 +667,9 @@ impl Camera {
             div()
                 .flex()
                 .flex_col()
-                .gap(dp(2.))
-                .child(div().text_size(dp(12.)).text_color(solid(look.palette.secondary)).child(label))
-                .child(div().text_size(dp(15.)).text_color(solid(look.palette.foreground)).child(value))
+                .gap(px(2.))
+                .child(div().text_size(px(12.)).text_color(solid(look.palette.secondary)).child(label))
+                .child(div().text_size(px(15.)).text_color(solid(look.palette.foreground)).child(value))
         };
         let megapixels = info.width as f32 * info.height as f32 / 1e6;
         let name = path.file_name().map_or(String::new(), |name| name.to_string_lossy().into_owned());
@@ -677,11 +677,11 @@ impl Camera {
             .absolute()
             .left(px(INSET))
             .right(px(INSET))
-            .bottom(px(GESTURE_INSET + f32::from(dp(BOTTOM_BAR)) + INSET))
-            .p(dp(16.))
+            .bottom(px(GESTURE_INSET + BOTTOM_BAR + INSET))
+            .p(px(16.))
             .flex()
             .flex_col()
-            .gap(dp(12.))
+            .gap(px(12.))
             .children(library::taken(path).map(|taken| row(tr("Taken"), long_date(taken))))
             .child(row(tr("Size"), format!("{} × {} · {megapixels:.1} MP", info.width, info.height)))
             .child(row(tr("File"), format!("{name} · {}", file_size(info.bytes))));
@@ -706,12 +706,12 @@ impl Camera {
             div()
                 .id(id)
                 .flex_1()
-                .h(dp(48.))
+                .h(px(48.))
                 .rounded_full()
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_size(dp(15.))
+                .text_size(px(15.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .cursor_pointer()
                 .child(label)
@@ -735,28 +735,28 @@ impl Camera {
                     .left(px(INSET))
                     .right(px(INSET))
                     .bottom(px(GESTURE_INSET))
-                    .p(dp(20.))
+                    .p(px(20.))
                     .flex()
                     .flex_col()
-                    .gap(dp(6.))
+                    .gap(px(6.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
-                            .text_size(dp(17.))
+                            .text_size(px(17.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(tr("Delete this photo?")),
                     )
                     .child(
                         div()
-                            .text_size(dp(14.))
+                            .text_size(px(14.))
                             .text_color(solid(look.palette.secondary))
                             .child(tr("It is removed from Pictures/Camera. This cannot be undone.")),
                     )
                     .child(
                         div()
-                            .mt(dp(14.))
+                            .mt(px(14.))
                             .flex()
-                            .gap(dp(8.))
+                            .gap(px(8.))
                             .child(
                                 button("cancel", tr("Cancel"))
                                     .bg(solid(control))
@@ -820,10 +820,10 @@ impl Camera {
                 .gap(px(TILE_GAP))
                 .child(
                     div()
-                        .pt(dp(16.))
-                        .pb(dp(8.))
-                        .px(dp(4.))
-                        .text_size(dp(15.))
+                        .pt(px(16.))
+                        .pb(px(8.))
+                        .px(px(4.))
+                        .text_size(px(15.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(label),
                 )
@@ -839,15 +839,15 @@ impl Camera {
             .inset_0()
             .overflow_y_scroll()
             .px(px(INSET))
-            .pt(px(INSET + f32::from(dp(GROUP_HEIGHT))))
+            .pt(px(INSET + GROUP_HEIGHT))
             .pb(px(GESTURE_INSET + INSET))
             .children(sections)
             .when(self.photos.is_empty(), |content| {
                 content.child(
                     island(look)
-                        .mt(dp(16.))
-                        .p(dp(16.))
-                        .text_size(dp(15.))
+                        .mt(px(16.))
+                        .p(px(16.))
+                        .text_size(px(15.))
                         .child(tr("No photos yet. The ones you take appear here.")),
                 )
             });

@@ -20,12 +20,12 @@ use ::messages::dmail::{
 };
 use denial_contacts::{Contacts, Watch, dialable, same_number};
 use denial_look::mobile::{
-    COMPOSER_HEIGHT, GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom, dp as dp_lp,
+    COMPOSER_HEIGHT, GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom,
 };
 use denial_look::{
     INSET, Look, SettingsWatch, Tween, decelerate, ease_in_cubic, ease_out_cubic, motion, stagger,
 };
-use denial_look_gpui::{Icon, backing, dp, glass_group, solid};
+use denial_look_gpui::{Icon, backing, glass_group, solid};
 use futures_lite::{Stream, StreamExt};
 use gpui::{
     AnyElement, App, AsyncApp, ClipboardItem, Context, Div, Entity, FocusHandle, Focusable, Font,
@@ -171,7 +171,7 @@ impl Arrival {
         let (t, rise) = if self.launch {
             let delay = stagger(motion::LAUNCH_DELAY, motion::LAUNCH_STEP, index);
             let t = self.clock.segment(delay, motion::LAUNCH).progress(now);
-            (ease_out_cubic(t), dp_lp(motion::LAUNCH_RISE))
+            (ease_out_cubic(t), motion::LAUNCH_RISE)
         } else {
             let delay = stagger(motion::OUT, motion::IN_STEP, index);
             let t = self.clock.segment(delay, motion::IN).progress(now);
@@ -384,7 +384,7 @@ impl Messages {
                 this.keyboard_moved(window.keyboard_inset(), window, cx)
             }));
         }
-        let thread_list = ListState::new(0, ListAlignment::Bottom, dp(600.));
+        let thread_list = ListState::new(0, ListAlignment::Bottom, px(600.));
         let view = cx.weak_entity();
         thread_list.set_scroll_handler(move |event, _, cx| {
             if event.visible_range.start < OLDER_MARGIN {
@@ -444,11 +444,11 @@ impl Messages {
             screen,
             arrival,
             keyboard,
-            composer_height: Rc::new(Cell::new(dp_lp(COMPOSER_HEIGHT))),
-            rows: ListState::new(0, ListAlignment::Top, dp(600.)),
-            archive: ListState::new(0, ListAlignment::Top, dp(600.)),
-            found: ListState::new(0, ListAlignment::Bottom, dp(600.)),
-            candidates: ListState::new(0, ListAlignment::Bottom, dp(600.)),
+            composer_height: Rc::new(Cell::new(COMPOSER_HEIGHT)),
+            rows: ListState::new(0, ListAlignment::Top, px(600.)),
+            archive: ListState::new(0, ListAlignment::Top, px(600.)),
+            found: ListState::new(0, ListAlignment::Bottom, px(600.)),
+            candidates: ListState::new(0, ListAlignment::Bottom, px(600.)),
             thread_list,
             shown: Vec::new(),
             archived_shown: Vec::new(),
@@ -1912,7 +1912,7 @@ impl Messages {
     fn follow_scroll(&mut self) {
         match self.scrolled(&self.screen) {
             Some(offset) if !self.searching => {
-                self.top_away.follow(offset, INSET + dp_lp(GROUP_HEIGHT));
+                self.top_away.follow(offset, INSET + GROUP_HEIGHT);
             }
             offset => self.top_away = ScrollAway::shown(offset.unwrap_or(0.0)),
         }
@@ -1945,7 +1945,7 @@ impl Messages {
             .top(px(INSET - self.top_away.away()))
             .left(px(INSET))
             .right(px(INSET))
-            .h(dp(GROUP_HEIGHT))
+            .h(px(GROUP_HEIGHT))
             .child(
                 glass_group(&self.look)
                     .size_full()

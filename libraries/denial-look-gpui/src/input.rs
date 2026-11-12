@@ -18,7 +18,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{color, dp, solid};
+use crate::{color, solid};
 
 actions!(
     text_input,
@@ -42,9 +42,9 @@ actions!(
     ]
 );
 
-/// Height of one line of text, in dp.
+/// Height of one line of text.
 pub const LINE: f32 = 22.0;
-/// Size of the text, in dp.
+/// Size of the text.
 const TEXT: f32 = 16.0;
 /// What a secret field shows for each of its characters.
 const DOT: char = '•';
@@ -879,7 +879,7 @@ impl Render for TextInput {
             .flex_col()
             .flex_1()
             .min_w_0()
-            .max_h(dp(LINE) * self.lines as f32)
+            .max_h(px(LINE) * self.lines as f32)
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .key_context("TextInput")
@@ -905,8 +905,8 @@ impl Render for TextInput {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .line_height(dp(LINE))
-            .text_size(dp(TEXT))
+            .line_height(px(LINE))
+            .text_size(px(TEXT))
             .child(TextElement { input: cx.entity() })
     }
 }

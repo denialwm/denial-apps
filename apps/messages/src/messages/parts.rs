@@ -8,7 +8,7 @@ use std::time::Instant;
 use denial_look::mobile::{AVATAR, TOUCH};
 use denial_look::{INSET, PRESSED_FILL, lerp_rgb, motion, on, palette};
 use denial_look_gpui::{
-    Icon, color, control_fill, control_radius, dp, glass_group, icon, island, solid,
+    Icon, color, control_fill, control_radius, glass_group, icon, island, solid,
 };
 use gpui::{
     Context, Div, FontWeight, HitboxBehavior, LongPressEvent, MouseButton, ObjectFit, Stateful,
@@ -18,9 +18,9 @@ use gpui::{
 use super::{Confirm, Held, Messages, Motion};
 use crate::data;
 
-/// Size of an icon in a button, in dp.
+/// Size of an icon in a button.
 pub(super) const ICON: f32 = 22.0;
-/// Size of an icon in a chip, in dp.
+/// Size of an icon in a chip.
 pub(super) const CHIP_ICON: f32 = 14.0;
 
 /// What a button looks like.
@@ -49,7 +49,7 @@ impl Messages {
     /// The contact's photo, else initials on the peer's colour, bare on the
     /// frost.
     pub(super) fn avatar(&self, peer: &str, diameter: f32) -> Div {
-        let circle = div().flex_none().size(dp(diameter));
+        let circle = div().flex_none().size(px(diameter));
         if let Some(photo) = self.people.photo(peer) {
             return circle.child(
                 img(photo)
@@ -65,7 +65,7 @@ impl Messages {
             .items_center()
             .justify_center()
             .bg(solid(fill))
-            .text_size(dp(diameter * 0.36))
+            .text_size(px(diameter * 0.36))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(on(fill)))
             .child(data::initials(self.people.name(peer)))
@@ -114,19 +114,19 @@ impl Messages {
         let mut button = div()
             .id(id)
             .flex_none()
-            .h(dp(TOUCH))
-            .min_w(dp(TOUCH))
+            .h(px(TOUCH))
+            .min_w(px(TOUCH))
             .flex()
             .items_center()
             .justify_center()
-            .gap(dp(8.))
+            .gap(px(8.))
             .rounded(control_radius(&self.look))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(ink))
-            .children(glyph.map(|glyph| icon(glyph, dp(ICON), solid(ink))))
+            .children(glyph.map(|glyph| icon(glyph, px(ICON), solid(ink))))
             .children(label);
         if label.is_some() {
-            button = button.px(dp(18.));
+            button = button.px(px(18.));
         }
         if let Some(fill) = self.fill(fill) {
             button = button.bg(solid(fill));
@@ -201,8 +201,8 @@ impl Messages {
             glass_group(&self.look)
                 .flex()
                 .flex_wrap()
-                .gap(dp(4.))
-                .p(dp(4.))
+                .gap(px(4.))
+                .p(px(4.))
                 .children(buttons),
         )
     }
@@ -211,8 +211,8 @@ impl Messages {
     /// islands.
     pub(super) fn section(&self, label: impl Into<gpui::SharedString>) -> Div {
         div()
-            .pt(dp(10.))
-            .pl(dp(AVATAR) + px(INSET))
+            .pt(px(10.))
+            .pl(px(AVATAR) + px(INSET))
             .flex()
             .child(denial_look_gpui::chip(&self.look).child(label.into()))
     }
@@ -232,7 +232,7 @@ impl Messages {
         };
         denial_look_gpui::chip(&self.look)
             .text_color(solid(ink))
-            .child(icon(glyph, dp(CHIP_ICON), solid(ink)))
+            .child(icon(glyph, px(CHIP_ICON), solid(ink)))
             .child(text.into())
     }
 
@@ -249,23 +249,23 @@ impl Messages {
             .flex()
             .flex_col()
             .items_start()
-            .gap(dp(9.))
-            .px(dp(21.))
-            .pt(dp(24.))
-            .pb(dp(20.))
+            .gap(px(9.))
+            .px(px(21.))
+            .pt(px(24.))
+            .pb(px(20.))
             .child(
                 div()
-                    .size(dp(46.))
+                    .size(px(46.))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(control_radius(&self.look))
                     .bg(control_fill(&self.look))
-                    .child(icon(glyph, dp(ICON), solid(self.look.palette.foreground))),
+                    .child(icon(glyph, px(ICON), solid(self.look.palette.foreground))),
             )
             .child(
                 div()
-                    .text_size(dp(20.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .line_height(gpui::relative(1.2))
                     .child(title),
@@ -275,7 +275,7 @@ impl Messages {
                     .text_color(solid(self.look.palette.secondary))
                     .child(body),
             )
-            .children(action.map(|action| div().pt(dp(6.)).child(action)))
+            .children(action.map(|action| div().pt(px(6.)).child(action)))
     }
 
     /// The dialog that asks before something that cannot be undone, in the
@@ -323,14 +323,14 @@ impl Messages {
             .opacity(appear)
             .flex()
             .flex_col()
-            .gap(dp(7.))
-            .px(dp(20.))
-            .pt(dp(21.))
-            .pb(dp(16.))
+            .gap(px(7.))
+            .px(px(20.))
+            .pt(px(21.))
+            .pb(px(16.))
             .on_click(|_, _, cx| cx.stop_propagation())
             .child(
                 div()
-                    .text_size(dp(20.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(title),
             )
@@ -341,7 +341,7 @@ impl Messages {
             )
             .child(
                 div()
-                    .pt(dp(9.))
+                    .pt(px(9.))
                     .flex()
                     .justify_end()
                     .gap(px(INSET))

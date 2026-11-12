@@ -10,7 +10,7 @@ use std::time::Instant;
 use denial_look::INSET;
 use denial_look::mobile::{GROUP_HEIGHT, TOUCH, content_top};
 use denial_look::palette;
-use denial_look_gpui::{Icon, control_fill, control_radius, dp, glass_group, icon, solid};
+use denial_look_gpui::{Icon, control_fill, control_radius, glass_group, icon, solid};
 use gpui::{AnyElement, Context, Div, FontWeight, Stateful, Window, div, prelude::*, px};
 
 use super::keypad::CALL;
@@ -20,7 +20,7 @@ use crate::data;
 
 /// Tones the call screen shows at most, the latest.
 const TONES: usize = 24;
-/// The round control of a glass group, in dp.
+/// The round control of a glass group.
 const CONTROL: f32 = 56.0;
 
 impl Calls {
@@ -58,7 +58,7 @@ impl Calls {
             self.people.name(&live.number).to_owned(),
             vec![
                 div()
-                    .text_size(dp(17.))
+                    .text_size(px(17.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(self.status(live, now)),
                 self.secondary(detail),
@@ -81,7 +81,7 @@ impl Calls {
                 div()
                     .flex()
                     .justify_around()
-                    .pb(dp(16.))
+                    .pb(px(16.))
                     .child(self.round(
                         "decline",
                         Icon::HangUp,
@@ -162,8 +162,8 @@ impl Calls {
         glass_group(&self.look)
             .flex()
             .flex_col()
-            .gap(dp(4.))
-            .p(dp(8.))
+            .gap(px(4.))
+            .p(px(8.))
             .child(row([
                 self.control_face(
                     "mute",
@@ -273,21 +273,21 @@ impl Calls {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .py(dp(6.))
+            .gap(px(6.))
+            .py(px(6.))
             .rounded(control_radius(&self.look))
             .when(!active, |control| control.opacity(0.5))
             .child(
                 div()
-                    .size(dp(CONTROL))
+                    .size(px(CONTROL))
                     .rounded_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .bg(tile)
-                    .child(icon(glyph, dp(ICON), solid(ink))),
+                    .child(icon(glyph, px(ICON), solid(ink))),
             )
-            .child(div().text_size(dp(12.)).child(label));
+            .child(div().text_size(px(12.)).child(label));
         if !active {
             return control;
         }
@@ -334,16 +334,16 @@ impl Calls {
         let active = layer.live();
         let mut bar = glass_group(&self.look)
             .id("call-bar")
-            .h(dp(GROUP_HEIGHT))
+            .h(px(GROUP_HEIGHT))
             .flex()
             .items_center()
-            .gap(dp(12.))
-            .pl(dp(18.))
-            .pr(dp(4.))
+            .gap(px(12.))
+            .pl(px(18.))
+            .pr(px(4.))
             .child(
                 div()
                     .flex_none()
-                    .size(dp(10.))
+                    .size(px(10.))
                     .rounded_full()
                     .bg(solid(palette::CALL)),
             )
@@ -362,7 +362,7 @@ impl Calls {
                     .child(
                         div()
                             .truncate()
-                            .text_size(dp(12.))
+                            .text_size(px(12.))
                             .child(self.status(live, now)),
                     ),
             )
@@ -375,7 +375,7 @@ impl Calls {
                     cx,
                     |this, window, cx| this.hang_up(window, cx),
                 )
-                .size(dp(TOUCH))
+                .size(px(TOUCH))
                 .rounded_full(),
             );
         if active {

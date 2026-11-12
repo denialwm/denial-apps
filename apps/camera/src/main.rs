@@ -55,8 +55,6 @@ fn main() {
                 .unwrap();
             window
                 .update(cx, |view, window, cx| {
-                    // Default text and rem spacing follow the dp layout too.
-                    window.set_rem_size(denial_look_gpui::dp(16.));
                     window.focus(&view.focus_handle(cx), cx);
                 })
                 .unwrap();

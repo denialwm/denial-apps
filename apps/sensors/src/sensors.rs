@@ -10,10 +10,10 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use async_channel::Sender;
-use denial_look::mobile::{GROUP_HEIGHT, content_bottom, content_top, dp as dp_lp};
+use denial_look::mobile::{GROUP_HEIGHT, content_bottom, content_top};
 use denial_look::words::fill;
 use denial_look::{INSET, Look, SettingsWatch, Tween, decelerate, ease_out_cubic, motion, stagger};
-use denial_look_gpui::{backing, control_fill, dp, glass_group, island, say, solid};
+use denial_look_gpui::{backing, control_fill, glass_group, island, say, solid};
 use gpui::{
     App, AsyncApp, Context, Div, FocusHandle, Focusable, Font, FontWeight, SharedString,
     Subscription, Task, WeakEntity, Window, actions, canvas, div, prelude::*, px, relative,
@@ -28,11 +28,11 @@ actions!(sensors, [Back]);
 const STAGGERED: usize = 6;
 /// The gyroscope's bars reach their ends at this rate, in degrees a second.
 const GYRO_FULL: f64 = 180.0;
-/// The phone and the rings, in dp.
+/// The phone and the rings.
 const DRAWING: f32 = 112.0;
-/// An island's padding, in dp.
+/// An island's padding.
 const PAD: f32 = 16.0;
-/// The column's widest, in dp, for a window turned to landscape.
+/// The column's widest, for a window turned to landscape.
 const COLUMN: f32 = 560.0;
 /// How often the light graph moves on while it shows.
 const GRAPH_TICK: Duration = Duration::from_millis(250);
@@ -280,9 +280,9 @@ impl Sensors {
         });
         div()
             .w_full()
-            .max_w(dp(COLUMN))
+            .max_w(px(COLUMN))
             .relative()
-            .top(px(dp_lp(motion::LAUNCH_RISE) * (1.0 - t)))
+            .top(px(motion::LAUNCH_RISE * (1.0 - t)))
             .opacity(t)
             .child(island)
     }
@@ -290,7 +290,7 @@ impl Sensors {
     /// The name of an island, inside it, in accent text.
     fn label(&self, label: &'static str) -> Div {
         div()
-            .text_size(dp(12.))
+            .text_size(px(12.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(solid(self.look.accent_text))
             .child(say(label).to_uppercase())
@@ -299,7 +299,7 @@ impl Sensors {
     /// What a sensor reads, large.
     fn reading(&self, text: impl Into<SharedString>) -> Div {
         div()
-            .text_size(dp(26.))
+            .text_size(px(26.))
             .line_height(relative(1.2))
             .font_weight(FontWeight::SEMIBOLD)
             .child(text.into())
@@ -307,7 +307,7 @@ impl Sensors {
 
     fn secondary(&self, text: impl Into<SharedString>, size: f32) -> Div {
         div()
-            .text_size(dp(size))
+            .text_size(px(size))
             .text_color(solid(self.look.palette.secondary))
             .child(text.into())
     }
@@ -321,18 +321,18 @@ impl Sensors {
         detail: impl Into<SharedString>,
     ) -> Div {
         island(&self.look)
-            .p(dp(PAD))
+            .p(px(PAD))
             .flex()
             .items_center()
-            .gap(dp(PAD))
-            .child(div().flex_none().size(dp(DRAWING)).child(drawing))
+            .gap(px(PAD))
+            .child(div().flex_none().size(px(DRAWING)).child(drawing))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(dp(4.))
+                    .gap(px(4.))
                     .child(self.label(label))
                     .child(self.reading(reading))
                     .child(self.secondary(detail, 15.)),
@@ -449,10 +449,10 @@ impl Sensors {
                 div()
                     .flex()
                     .items_center()
-                    .gap(dp(10.))
+                    .gap(px(10.))
                     .child(
                         div()
-                            .w(dp(56.))
+                            .w(px(56.))
                             .flex_none()
                             .child(self.secondary(say(axis), 13.)),
                     )
@@ -460,7 +460,7 @@ impl Sensors {
                         div()
                             .flex_1()
                             .relative()
-                            .h(dp(8.))
+                            .h(px(8.))
                             .rounded_full()
                             .bg(control_fill(&self.look))
                             .child(
@@ -476,7 +476,7 @@ impl Sensors {
                     )
                     .child(
                         div()
-                            .w(dp(64.))
+                            .w(px(64.))
                             .flex_none()
                             .flex()
                             .justify_end()
@@ -484,10 +484,10 @@ impl Sensors {
                     )
             });
         island(&self.look)
-            .p(dp(PAD))
+            .p(px(PAD))
             .flex()
             .flex_col()
-            .gap(dp(10.))
+            .gap(px(10.))
             .child(self.label("Gyroscope"))
             .child(self.reading(reading))
             .children(axes)
@@ -526,25 +526,25 @@ impl Sensors {
                 .child(self.secondary(say(right), 12.))
         };
         island(&self.look)
-            .p(dp(PAD))
+            .p(px(PAD))
             .flex()
             .flex_col()
-            .gap(dp(10.))
+            .gap(px(10.))
             .child(self.label("Ambient light"))
             .child(
                 div()
                     .flex()
                     .items_end()
                     .justify_between()
-                    .gap(dp(12.))
+                    .gap(px(12.))
                     .child(
                         div()
                             .flex()
                             .items_baseline()
-                            .gap(dp(6.))
+                            .gap(px(6.))
                             .child(
                                 div()
-                                    .text_size(dp(44.))
+                                    .text_size(px(44.))
                                     .line_height(relative(1.1))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(lux_text(lux)),
@@ -553,8 +553,8 @@ impl Sensors {
                     )
                     .child(
                         div()
-                            .pb(dp(6.))
-                            .text_size(dp(17.))
+                            .pb(px(6.))
+                            .text_size(px(17.))
                             .truncate()
                             .child(say(kind_of_light(lux))),
                     ),
@@ -562,7 +562,7 @@ impl Sensors {
             .child(
                 div()
                     .relative()
-                    .h(dp(8.))
+                    .h(px(8.))
                     .rounded_full()
                     .bg(control_fill(&self.look))
                     .child(
@@ -577,20 +577,20 @@ impl Sensors {
                     ),
             )
             .child(ends("Dark", "Direct sun"))
-            .child(div().mt(dp(6.)).h(dp(96.)).child(graph))
+            .child(div().mt(px(6.)).h(px(96.)).child(graph))
             .child(ends("1 min ago", "Now"))
     }
 
     /// One island saying why there is nothing to show.
     fn blocked(&self, title: &'static str, detail: &'static str) -> Div {
         island(&self.look)
-            .p(dp(PAD))
+            .p(px(PAD))
             .flex()
             .flex_col()
-            .gap(dp(4.))
+            .gap(px(4.))
             .child(
                 div()
-                    .text_size(dp(17.))
+                    .text_size(px(17.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(say(title)),
             )
@@ -647,17 +647,17 @@ impl Sensors {
             .top(px(INSET))
             .left(px(INSET))
             .right(px(INSET))
-            .h(dp(GROUP_HEIGHT))
+            .h(px(GROUP_HEIGHT))
             .child(
                 glass_group(&self.look)
                     .size_full()
                     .flex()
                     .items_center()
-                    .px(dp(17.))
+                    .px(px(17.))
                     .child(
                         div()
                             .opacity(fade)
-                            .text_size(dp(20.))
+                            .text_size(px(20.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(say("Sensors")),
                     ),

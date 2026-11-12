@@ -3,9 +3,7 @@
 
 use denial_look::mobile::TOUCH;
 use denial_look::{CONTROL_FILL, PRESSED_FILL, lerp_rgb, on, palette};
-use denial_look_gpui::{
-    Icon, chip, color, control_fill, control_radius, dp, icon, island, say, solid,
-};
+use denial_look_gpui::{Icon, chip, color, control_fill, control_radius, icon, island, say, solid};
 use gpui::{
     ClickEvent, Context, Div, Entity, FontWeight, SharedString, Stateful, Window, div, prelude::*,
     px,
@@ -14,13 +12,13 @@ use gpui::{
 use super::{Back, Layer, Motion, Settings};
 use denial_look_gpui::input::TextInput;
 
-/// Size of an icon in a button, in dp.
+/// Size of an icon in a button.
 pub(super) const ICON: f32 = 22.0;
-/// A row's padding from its island's edge, in dp.
+/// A row's padding from its island's edge.
 pub(super) const ROW_PAD: f32 = 16.0;
-/// Between a row's icon tile and its text, in dp.
+/// Between a row's icon tile and its text.
 pub(super) const ROW_GAP: f32 = 14.0;
-/// A setting's icon tile, in dp.
+/// A setting's icon tile.
 pub(super) const TILE: f32 = 33.0;
 
 /// What a button looks like.
@@ -93,12 +91,12 @@ impl Settings {
         let button = div()
             .id(id)
             .flex_none()
-            .size(dp(TOUCH))
+            .size(px(TOUCH))
             .flex()
             .items_center()
             .justify_center()
             .rounded(control_radius(&self.look))
-            .child(icon(glyph, dp(ICON), solid(self.look.palette.foreground)));
+            .child(icon(glyph, px(ICON), solid(self.look.palette.foreground)));
         if live {
             self.tappable(button, cx, action)
         } else {
@@ -118,8 +116,8 @@ impl Settings {
             .size_full()
             .flex()
             .items_center()
-            .gap(dp(8.))
-            .px(dp(4.))
+            .gap(px(8.))
+            .px(px(4.))
     }
 
     pub(super) fn title(&self, title: impl Into<SharedString>) -> Div {
@@ -127,7 +125,7 @@ impl Settings {
             .flex_1()
             .min_w_0()
             .truncate()
-            .text_size(dp(20.))
+            .text_size(px(20.))
             .font_weight(FontWeight::SEMIBOLD)
             .child(say(title))
     }
@@ -137,11 +135,11 @@ impl Settings {
         div()
             .flex_1()
             .min_w_0()
-            .h(dp(TOUCH))
+            .h(px(TOUCH))
             .flex()
             .items_center()
-            .gap(dp(8.))
-            .px(dp(11.))
+            .gap(px(8.))
+            .px(px(11.))
             .rounded(control_radius(&self.look))
             .bg(color(self.look.palette.foreground, CONTROL_FILL))
             .text_color(solid(self.look.palette.secondary))
@@ -158,7 +156,7 @@ impl Settings {
     /// A chip that names the island under it, on the frost.
     pub(super) fn chip_row(&self, label: impl Into<SharedString>) -> Div {
         div()
-            .pt(dp(6.))
+            .pt(px(6.))
             .flex()
             .child(chip(&self.look).child(say(label)))
     }
@@ -168,29 +166,29 @@ impl Settings {
     pub(super) fn labelled(&self, label: impl Into<SharedString>) -> Div {
         island(&self.look).child(
             div()
-                .px(dp(ROW_PAD))
-                .pt(dp(12.))
-                .pb(dp(2.))
-                .text_size(dp(12.))
+                .px(px(ROW_PAD))
+                .pt(px(12.))
+                .pb(px(2.))
+                .text_size(px(12.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(self.look.accent_text))
                 .child(say(label).to_uppercase()),
         )
     }
 
-    /// The hairline between two rows, from `indent` dp in.
+    /// The hairline between two rows, from `indent` in.
     pub(super) fn separator(&self, indent: f32) -> Div {
-        div().h(px(1.)).ml(dp(indent)).bg(color(
+        div().h(px(1.)).ml(px(indent)).bg(color(
             self.look.palette.separator,
             self.look.palette.separator_alpha,
         ))
     }
 
-    /// An icon on a square of the control fill, `size` dp.
+    /// An icon on a square of the control fill, `size`.
     pub(super) fn tile(&self, glyph: Icon, size: f32) -> Div {
         div()
             .flex_none()
-            .size(dp(size))
+            .size(px(size))
             .flex()
             .items_center()
             .justify_center()
@@ -198,7 +196,7 @@ impl Settings {
             .bg(control_fill(&self.look))
             .child(icon(
                 glyph,
-                dp(size * 0.58),
+                px(size * 0.58),
                 solid(self.look.palette.foreground),
             ))
     }
@@ -214,11 +212,11 @@ impl Settings {
             .min_w_0()
             .flex()
             .flex_col()
-            .gap(dp(2.))
+            .gap(px(2.))
             .child(div().child(say(title)))
             .children(detail.map(|detail| {
                 div()
-                    .text_size(dp(14.))
+                    .text_size(px(14.))
                     .text_color(solid(self.look.palette.secondary))
                     .child(say(detail))
             }))
@@ -238,9 +236,9 @@ impl Settings {
             .id(id)
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
-            .px(dp(ROW_PAD))
-            .py(dp(12.))
+            .gap(px(ROW_GAP))
+            .px(px(ROW_PAD))
+            .py(px(12.))
             .when(last, |row| row.rounded_b(px(self.look.group_radius())))
             .child(self.tile(glyph, 40.))
             .child(self.text_column(title, Some(detail.into())))
@@ -279,8 +277,8 @@ impl Settings {
             .id(id)
             .flex_1()
             .min_w_0()
-            .h(dp(TOUCH))
-            .px(dp(18.))
+            .h(px(TOUCH))
+            .px(px(18.))
             .flex()
             .items_center()
             .justify_center()
@@ -311,7 +309,7 @@ impl Settings {
 
     /// Buttons side by side, as wide as their row.
     pub(super) fn buttons(&self, buttons: impl IntoIterator<Item = Stateful<Div>>) -> Div {
-        div().flex().gap(dp(10.)).children(buttons)
+        div().flex().gap(px(10.)).children(buttons)
     }
 
     /// A row of an island: an icon tile when there is `glyph`, the title and
@@ -330,16 +328,16 @@ impl Settings {
             .id(id)
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
-            .px(dp(ROW_PAD))
-            .py(dp(12.))
+            .gap(px(ROW_GAP))
+            .px(px(ROW_PAD))
+            .py(px(12.))
             .when(first, |row| row.rounded_t(radius))
             .when(last, |row| row.rounded_b(radius))
             .children(glyph.map(|glyph| self.tile(glyph, TILE)))
             .child(self.text_column(title, detail))
     }
 
-    /// `rows` in an island, a hairline between each two from `indent` dp in.
+    /// `rows` in an island, a hairline between each two from `indent` in.
     /// Each row is told whether it is first and last.
     pub(super) fn rows_island<T>(
         &self,
@@ -369,7 +367,7 @@ impl Settings {
 
     /// The chevron at the end of a row that opens something.
     pub(super) fn chevron(&self) -> gpui::Svg {
-        icon(Icon::Chevron, dp(20.), solid(self.look.palette.secondary))
+        icon(Icon::Chevron, px(20.), solid(self.look.palette.secondary))
     }
 
     /// An on or off switch.
@@ -381,14 +379,14 @@ impl Settings {
         };
         div()
             .flex_none()
-            .w(dp(45.))
-            .h(dp(26.))
-            .p(dp(3.))
+            .w(px(45.))
+            .h(px(26.))
+            .p(px(3.))
             .flex()
             .when(on, |toggle| toggle.justify_end())
             .rounded_full()
             .bg(track)
-            .child(div().size(dp(20.)).rounded_full().bg(solid(knob)))
+            .child(div().size(px(20.)).rounded_full().bg(solid(knob)))
     }
 
     /// `element` with its press and `action`, on the shown screen.

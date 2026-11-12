@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use denial_look::words::{self, tr};
-use denial_look_gpui::{Icon, dp, icon, solid};
+use denial_look_gpui::{Icon, icon, solid};
 use gpui::{
     Context, Div, Focusable, ObjectFit, SharedString, Stateful, StyledImage, Window, div, img,
     prelude::*, px,
@@ -20,7 +20,7 @@ use crate::catalog::{self, Item, Section};
 use crate::countries::COUNTRIES;
 use crate::{about, apps, clock, country, denial, droidloom, language};
 
-/// An app's icon in the installed apps, in dp.
+/// An app's icon in the installed apps.
 pub(super) const APP_ICON: f32 = 36.0;
 
 impl Settings {
@@ -347,7 +347,7 @@ impl Settings {
             .id("country-field")
             .flex()
             .child(self.field(
-                icon(Icon::Search, dp(ICON), solid(self.look.palette.secondary)),
+                icon(Icon::Search, px(ICON), solid(self.look.palette.secondary)),
                 &self.country_field,
             ))
             .on_click(cx.listener(|this, _, window, cx| {
@@ -465,12 +465,12 @@ impl Settings {
             .id(SharedString::from(app.id.clone()))
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
-            .px(dp(ROW_PAD))
-            .py(dp(10.))
+            .gap(px(ROW_GAP))
+            .px(px(ROW_PAD))
+            .py(px(10.))
             .when(first, |row| row.rounded_t(radius))
             .when(last, |row| row.rounded_b(radius))
-            .child(div().flex_none().size(dp(APP_ICON)).child(picture))
+            .child(div().flex_none().size(px(APP_ICON)).child(picture))
             .child(div().flex_1().min_w_0().truncate().child(app.name.clone()))
     }
 }

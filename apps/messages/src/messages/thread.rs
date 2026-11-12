@@ -4,9 +4,9 @@
 use denial_look::words::tr;
 use std::time::Instant;
 
-use denial_look::mobile::{AVATAR_SMALL, COMPOSER_HEIGHT, TOUCH, content_top, dp as dp_lp};
+use denial_look::mobile::{AVATAR_SMALL, COMPOSER_HEIGHT, TOUCH, content_top};
 use denial_look::{INSET, MIN_RADIUS, ease_out_cubic, motion};
-use denial_look_gpui::{Icon, chip, dp, glass_island, icon, island_run, lifted, solid};
+use denial_look_gpui::{Icon, chip, glass_island, icon, island_run, lifted, solid};
 use gpui::{
     AnyElement, ClickEvent, Context, Div, Focusable, FontWeight, HighlightStyle, MouseButton,
     StyledText, UnderlineStyle, div, list, prelude::*, px, relative,
@@ -19,7 +19,7 @@ use crate::segments;
 use denial_look_gpui::input;
 
 /// Space beside the bubbles.
-const SIDE: f32 = 16.0;
+const SIDE: f32 = 11.0;
 /// The composer shows how much of the last SMS is left from this many
 /// characters, and always on a long message.
 const COUNTER_FROM: usize = 20;
@@ -46,7 +46,7 @@ impl Messages {
                     .child(
                         div()
                             .truncate()
-                            .text_size(dp(15.))
+                            .text_size(px(15.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .line_height(relative(1.2))
                             .child(name.to_owned()),
@@ -54,7 +54,7 @@ impl Messages {
                     .child(
                         div()
                             .truncate()
-                            .text_size(dp(12.))
+                            .text_size(px(12.))
                             .text_color(solid(self.look.palette.secondary))
                             .child(detail),
                     ),
@@ -124,7 +124,7 @@ impl Messages {
             .map_or(1.0, |appear| ease_out_cubic(appear.progress(now)));
         let day = new_day.then(|| {
             div()
-                .pt(dp(12.))
+                .pt(px(12.))
                 .flex()
                 .justify_center()
                 .child(chip(&self.look).child(data::day(message.time, data::now())))
@@ -140,14 +140,12 @@ impl Messages {
         let details = lift.map(|_| chip(&self.look).child(message.details(data::now())));
         let label = match (lift, last) {
             (Some(_), _) => Some(self.message_actions(message, now, cx)),
-            (None, true) => Some(div().pt(dp(4.)).child(self.label_chip(message))),
+            (None, true) => Some(div().pt(px(4.)).child(self.label_chip(message))),
             (None, false) => None,
         };
         div()
             .relative()
-            .top(px(
-                motion.offset + dp_lp(motion::NEW_MESSAGE_RISE) * (1.0 - appear)
-            ))
+            .top(px(motion.offset + motion::NEW_MESSAGE_RISE * (1.0 - appear)))
             .opacity(motion.opacity * appear)
             .children(day)
             .child(
@@ -155,8 +153,8 @@ impl Messages {
                     .flex()
                     .flex_col()
                     .map(side)
-                    .pt(dp(if first { 12. } else { 3. }))
-                    .children(details.map(|details| div().pb(dp(6.)).child(details)))
+                    .pt(px(if first { 12. } else { 3. }))
+                    .children(details.map(|details| div().pb(px(6.)).child(details)))
                     .child(bubble)
                     .children(label),
             )
@@ -208,8 +206,8 @@ impl Messages {
         let mut bubble = fill
             .id(("message", message.id as usize))
             .max_w(relative(0.78))
-            .px(dp(14.))
-            .py(dp(9.))
+            .px(px(14.))
+            .py(px(9.))
             .text_color(solid(ink))
             .line_height(relative(1.4))
             .child(text);
@@ -302,7 +300,7 @@ impl Messages {
             return div()
                 .flex()
                 .justify_center()
-                .pb(dp(12.))
+                .pb(px(12.))
                 .child(chip(&self.look).child(tr("This sender takes no replies")))
                 .into_any_element();
         }
@@ -328,18 +326,18 @@ impl Messages {
             .id("composer")
             .flex_1()
             .min_w_0()
-            .min_h(dp(COMPOSER_HEIGHT))
-            .px(dp(14.))
-            .py(dp((COMPOSER_HEIGHT - input::LINE) / 2.0))
+            .min_h(px(COMPOSER_HEIGHT))
+            .px(px(14.))
+            .py(px((COMPOSER_HEIGHT - input::LINE) / 2.0))
             .flex()
             .items_end()
-            .gap(dp(8.))
+            .gap(px(8.))
             .child(self.composer.clone())
             .children(counter.map(|counter| {
                 div()
                     .flex_none()
-                    .line_height(dp(input::LINE))
-                    .text_size(dp(12.))
+                    .line_height(px(input::LINE))
+                    .text_size(px(12.))
                     .text_color(solid(palette.secondary))
                     .child(counter)
             }));
@@ -362,7 +360,7 @@ impl Messages {
             glass_island(&self.look)
                 .id("send")
                 .text_color(solid(palette.secondary))
-                .child(icon(Icon::Send, dp(ICON), solid(palette.secondary)))
+                .child(icon(Icon::Send, px(ICON), solid(palette.secondary)))
         };
         div()
             .flex()
@@ -374,7 +372,7 @@ impl Messages {
             .child(
                 div().flex().items_end().gap(px(INSET)).child(field).child(
                     send.flex_none()
-                        .size(dp(TOUCH))
+                        .size(px(TOUCH))
                         .flex()
                         .items_center()
                         .justify_center()

@@ -21,11 +21,6 @@ pub fn say(text: impl Into<gpui::SharedString>) -> gpui::SharedString {
     }
 }
 
-/// `value` dp in logical pixels.
-pub fn dp(value: f32) -> Pixels {
-    px(mobile::dp(value))
-}
-
 pub fn color(rgb: u32, alpha: f32) -> Hsla {
     rgba((rgb << 8) | (alpha.clamp(0.0, 1.0) * 255.0).round() as u32).into()
 }
@@ -126,14 +121,14 @@ pub fn chip(look: &Look) -> Div {
         .flex_none()
         .flex()
         .items_center()
-        .gap(dp(6.))
-        .px(dp(11.))
-        .py(dp(3.))
+        .gap(px(6.))
+        .px(px(11.))
+        .py(px(3.))
         .rounded_full()
         .bg(color(look.palette.glass, look.chip_alpha()))
         .border(px(floating::EDGE_WIDTH))
         .border_color(color(look.palette.foreground, look.palette.edge_alpha))
-        .text_size(dp(mobile::CHIP_TEXT))
+        .text_size(px(mobile::CHIP_TEXT))
         .line_height(relative(1.3))
         .text_color(solid(look.palette.foreground))
         .whitespace_nowrap()

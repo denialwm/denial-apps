@@ -9,7 +9,7 @@ use std::ops::Range;
 
 use denial_contacts::same_number;
 use denial_look::INSET;
-use denial_look_gpui::{Icon, dp, island, island_run, solid};
+use denial_look_gpui::{Icon, island, island_run, solid};
 use gpui::{
     Context, Div, FontWeight, SharedString, StyledText, Window, div, prelude::*, px, relative,
 };
@@ -35,13 +35,13 @@ const KEYS: [(char, &str); 12] = [
 ];
 /// Characters the keypad holds at most.
 const LONGEST: usize = 32;
-/// Height of a key, in dp; of an in-call key.
+/// Height of a key; of an in-call key.
 const KEY: f32 = 60.0;
 const TONE_KEY: f32 = 52.0;
-/// The round Call, in dp; backspace beside it.
+/// The round Call; backspace beside it.
 pub(super) const CALL: f32 = 72.0;
 const BACKSPACE: f32 = 56.0;
-/// Height of the number's island, in dp.
+/// Height of the number's island.
 const NUMBER: f32 = 92.0;
 /// Suggestions shown at most.
 const SUGGESTIONS: usize = 3;
@@ -319,7 +319,7 @@ impl Calls {
         let palette = &self.look.palette;
         let shown = if self.typed.is_empty() {
             div()
-                .text_size(dp(18.))
+                .text_size(px(18.))
                 .text_color(solid(palette.secondary))
                 .child(tr("Enter a number"))
         } else {
@@ -331,7 +331,7 @@ impl Calls {
             div()
                 .max_w_full()
                 .truncate()
-                .text_size(dp(size))
+                .text_size(px(size))
                 .line_height(relative(1.15))
                 .child(self.typed.clone())
         };
@@ -345,7 +345,7 @@ impl Calls {
                 .id("owner")
                 .max_w_full()
                 .truncate()
-                .px(dp(8.))
+                .px(px(8.))
                 .rounded(denial_look_gpui::control_radius(&self.look))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(self.look.accent_text))
@@ -362,13 +362,13 @@ impl Calls {
             owner
         });
         island(&self.look)
-            .h(dp(NUMBER))
+            .h(px(NUMBER))
             .flex()
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(dp(2.))
-            .px(dp(16.))
+            .gap(px(2.))
+            .px(px(16.))
             .child(shown)
             .children(owner)
     }
@@ -415,7 +415,7 @@ impl Calls {
             let dial = number.clone();
             let mut row = self
                 .segment_row(("suggestion", ix), segment)
-                .py(dp(8.))
+                .py(px(8.))
                 .child(self.avatar(suggestion.contact, &number, ROW_AVATAR))
                 .child(self.row_text(title, None, div().truncate().child(detail)))
                 .child(self.button(
@@ -446,7 +446,7 @@ impl Calls {
         })
     }
 
-    /// The twelve keys, each an island of a run, `height` dp tall: the
+    /// The twelve keys, each an island of a run, `height` tall: the
     /// digit large, its letters small under it. A long press on 0 types a
     /// plus, but on the in-call keypad.
     fn keys(
@@ -473,14 +473,14 @@ impl Calls {
                     .rounded(radius)
                     .child(
                         div()
-                            .text_size(dp(30.))
+                            .text_size(px(30.))
                             .line_height(relative(1.05))
                             .child(digit.to_string()),
                     )
                     .child(
                         div()
-                            .h(dp(13.))
-                            .text_size(dp(10.))
+                            .h(px(13.))
+                            .text_size(px(10.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(solid(palette.secondary))
                             .child(letters),
@@ -498,7 +498,7 @@ impl Calls {
                         key = self.long_press(key, cx, move |this, cx| plus(this, '+', cx));
                     }
                 }
-                keys = keys.child(island_run(&self.look).flex_1().h(dp(height)).child(key));
+                keys = keys.child(island_run(&self.look).flex_1().h(px(height)).child(key));
             }
             grid = grid.child(keys);
         }

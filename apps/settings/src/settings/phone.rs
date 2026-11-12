@@ -4,8 +4,8 @@
 //! here or on the Bluetooth page; everything else is read, not set.
 
 use denial_look::words::{fill, tr};
-use denial_look_gpui::{Icon, control_fill, dp, island, solid};
-use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*};
+use denial_look_gpui::{Icon, control_fill, island, solid};
+use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px};
 
 use super::parts::ROW_PAD;
 use super::{Layer, Settings};
@@ -174,15 +174,15 @@ impl Settings {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .p(dp(ROW_PAD))
-            .pt(dp(22.))
-            .pb(dp(20.))
+            .gap(px(6.))
+            .p(px(ROW_PAD))
+            .pt(px(22.))
+            .pb(px(20.))
             .child(self.tile(Icon::Phone, 56.))
             .child(
                 div()
-                    .pt(dp(6.))
-                    .text_size(dp(20.))
+                    .pt(px(6.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(model),
             )
@@ -199,9 +199,9 @@ impl Settings {
         island(&self.look)
             .flex()
             .flex_col()
-            .gap(dp(10.))
-            .px(dp(ROW_PAD))
-            .py(dp(14.))
+            .gap(px(10.))
+            .px(px(ROW_PAD))
+            .py(px(14.))
             .child(
                 div()
                     .flex()
@@ -213,7 +213,7 @@ impl Settings {
             .child(
                 div()
                     .w_full()
-                    .h(dp(6.))
+                    .h(px(6.))
                     .rounded_full()
                     .bg(control_fill(&self.look))
                     .child(

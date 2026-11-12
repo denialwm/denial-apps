@@ -119,17 +119,17 @@ pub mod palette {
 /// Geometry shared by every floating group, island and chip; the alphas that
 /// go with it are in the palette.
 pub mod floating {
-    pub const EDGE_WIDTH: f32 = 0.75;
-    pub const SHADOW_BLUR: f32 = 24.0;
-    pub const SHADOW_OFFSET_Y: f32 = 6.0;
+    pub const EDGE_WIDTH: f32 = 0.5;
+    pub const SHADOW_BLUR: f32 = 17.0;
+    pub const SHADOW_OFFSET_Y: f32 = 4.0;
     /// The deeper shadow of an island lifted by a long press: black at this
     /// alpha, in either appearance.
     pub const LIFT_SHADOW_ALPHA: f32 = 0.35;
-    pub const LIFT_SHADOW_BLUR: f32 = 30.0;
-    pub const LIFT_SHADOW_OFFSET_Y: f32 = 10.0;
+    pub const LIFT_SHADOW_BLUR: f32 = 21.0;
+    pub const LIFT_SHADOW_OFFSET_Y: f32 = 7.0;
     /// Radius of the blur under glass groups and text fields: two standard
     /// deviations, so what scrolls under them reads as shapes, not words.
-    pub const BACKDROP_BLUR: f32 = 40.0;
+    pub const BACKDROP_BLUR: f32 = 28.0;
 }
 
 /// Durations in milliseconds, on Denial's duration scale through
@@ -141,7 +141,6 @@ pub mod motion {
     pub const LAUNCH_DELAY: u64 = 120;
     pub const LAUNCH_STEP: u64 = 45;
     pub const LAUNCH: u64 = 380;
-    /// dp.
     pub const LAUNCH_RISE: f32 = 18.0;
     /// Glass groups fade in at launch.
     pub const GROUP_FADE: u64 = 160;
@@ -150,11 +149,10 @@ pub mod motion {
     pub const OUT: u64 = 160;
     pub const IN: u64 = 240;
     pub const IN_STEP: u64 = 18;
-    /// lp.
-    pub const IN_RISE: f32 = 24.0;
+    pub const IN_RISE: f32 = 17.0;
     /// A bottom group drops away by this much, and composer islands rise by
-    /// it, lp; they arrive `BOTTOM_DELAY` into the switch.
-    pub const BOTTOM_TRAVEL: f32 = 40.0;
+    /// it; they arrive `BOTTOM_DELAY` into the switch.
+    pub const BOTTOM_TRAVEL: f32 = 28.0;
     pub const BOTTOM_DELAY: u64 = 120;
     /// Between tabs the screens slide side by side, the way the tabs are
     /// ordered, on the decelerate curve; nothing fades.
@@ -164,7 +162,7 @@ pub mod motion {
     pub const GROUP_OUT: u64 = 100;
     pub const GROUP_IN_DELAY: u64 = 140;
     pub const GROUP_IN: u64 = 140;
-    /// A new message rises and fades in, ease-out cubic; dp.
+    /// A new message rises and fades in, ease-out cubic.
     pub const NEW_MESSAGE: u64 = 300;
     pub const NEW_MESSAGE_RISE: f32 = 16.0;
     /// Long press: the island lifts over `LIFT`, its shadow deepening to
@@ -181,44 +179,36 @@ pub mod motion {
     pub const NOTICE: u64 = 1800;
 }
 
-/// Layout of a phone screen, in logical pixels (lp) unless marked dp.
-/// Handhelds run at scale 2 for 225 ppi.
+/// Layout of a phone screen, in logical pixels: deniald draws apps on a
+/// handheld at 160 of them per inch, as Android's dp.
 pub mod mobile {
-    /// Logical pixels in an Android dp: Denial lays handheld panels out at
-    /// 225 logical pixels per inch (deniald's HANDHELD_LOGICAL_PPI) and a dp
-    /// is 1/160 inch, so one dp is the same on every Denial phone.
-    pub const DP: f32 = 225.0 / 160.0;
     /// Denial's status strip, above the window: the app is configured below
     /// it, and the strip is painted with the window's pixel at (5, 5).
-    pub const STATUS_STRIP: f32 = 48.0;
+    pub const STATUS_STRIP: f32 = 34.0;
     /// The shell's gesture zone at the bottom of the window: its pill and
     /// home gesture. No controls there.
-    pub const GESTURE_INSET: f32 = 52.0;
+    pub const GESTURE_INSET: f32 = 37.0;
     /// The shell lifts the whole scene by this much at most while the
     /// on-screen keyboard is up.
-    pub const KEYBOARD_LIFT: f32 = 368.0;
+    pub const KEYBOARD_LIFT: f32 = 262.0;
     /// Space between the on-screen keyboard and what rides on it: the
     /// gutter, as between any two islands.
     pub const KEYBOARD_GAP: f32 = super::INSET;
-    /// Smallest tappable control, dp.
+    /// Smallest tappable control.
     pub const TOUCH: f32 = 48.0;
-    /// Height of the top and of the bottom glass group, dp.
+    /// Height of the top and of the bottom glass group.
     pub const GROUP_HEIGHT: f32 = 56.0;
-    /// Height of a tab bar's tabs, dp. The bar is anchored: opaque, the
+    /// Height of a tab bar's tabs. The bar is anchored: opaque, the
     /// window's full width, from the bottom edge up, the gesture zone under
     /// its tabs.
     pub const TAB_BAR: f32 = 52.0;
-    /// Height of the composer field and its Send island, dp.
+    /// Height of the composer field and its Send island.
     pub const COMPOSER_HEIGHT: f32 = 48.0;
-    /// Avatar in a list row, and in the top group, dp.
+    /// Avatar in a list row, and in the top group.
     pub const AVATAR: f32 = 46.0;
     pub const AVATAR_SMALL: f32 = 36.0;
-    /// Text on a chip, dp.
+    /// Text on a chip.
     pub const CHIP_TEXT: f32 = 12.0;
-
-    pub fn dp(value: f32) -> f32 {
-        value * DP
-    }
 
     /// Where what rides on the on-screen keyboard sits, lp above the
     /// window's bottom edge while the keyboard is `keyboard` lp tall, 0 when
@@ -232,7 +222,7 @@ pub mod mobile {
     /// Padding above the first island of a scroll viewport, which starts at
     /// the top group's upper edge: the group and the gutter under it.
     pub fn content_top() -> f32 {
-        dp(GROUP_HEIGHT) + super::INSET
+        GROUP_HEIGHT + super::INSET
     }
 
     /// Padding under the last island of a scroll viewport, which runs to the
@@ -292,14 +282,14 @@ pub mod mobile {
 
 /// Distance of floating groups and islands from the window edge and from
 /// each other: the gutter.
-pub const INSET: f32 = 8.0;
+pub const INSET: f32 = 6.0;
 /// Foreground at this alpha fills a control inside an island or group;
 /// controls never get their own glass.
 pub const CONTROL_FILL: f32 = 0.08;
 /// Foreground at this alpha fills a control while it is pressed.
 pub const PRESSED_FILL: f32 = 0.16;
-pub const MIN_RADIUS: f32 = 4.0;
-const WINDOW_RADIUS: f32 = 28.0;
+pub const MIN_RADIUS: f32 = 3.0;
+const WINDOW_RADIUS: f32 = 20.0;
 /// Below this the compositor would leave soft shadows as isolated frost.
 const MIN_WINDOW_ALPHA: f32 = 3.0 / 255.0;
 /// The shell's glass opacity when the settings hold none.

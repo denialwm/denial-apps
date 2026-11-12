@@ -11,7 +11,7 @@ use denial_look::words::fill;
 use denial_look_gpui::say;
 use std::rc::Rc;
 
-use denial_look_gpui::{Icon, dp, island, solid};
+use denial_look_gpui::{Icon, island, solid};
 use gpui::{
     AppContext, Context, Div, Focusable, FontWeight, SharedString, Window, div, prelude::*, px,
 };
@@ -119,8 +119,8 @@ impl Settings {
         };
         let bar = div()
             .w_full()
-            .mt(dp(8.))
-            .h(dp(6.))
+            .mt(px(8.))
+            .h(px(6.))
             .rounded_full()
             .bg(denial_look_gpui::control_fill(&self.look))
             .child(
@@ -148,14 +148,14 @@ impl Settings {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .p(dp(ROW_PAD))
-            .pt(dp(22.))
+            .gap(px(6.))
+            .p(px(ROW_PAD))
+            .pt(px(22.))
             .child(self.tile(Icon::Fingerprint, 56.))
             .child(
                 div()
-                    .pt(dp(6.))
-                    .text_size(dp(20.))
+                    .pt(px(6.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(fill("Adding {name}", &[("name", &adding.name)])),
             )
@@ -170,7 +170,7 @@ impl Settings {
                     .child(say(said)),
             )
             .child(bar)
-            .child(self.buttons([cancel]).w_full().pt(dp(12.)))
+            .child(self.buttons([cancel]).w_full().pt(px(12.)))
     }
 
     /// The ring around the sensor under the screen, while a finger is added
@@ -187,7 +187,7 @@ impl Settings {
                 .w(px(width * window_width))
                 .h(px(height * window_height))
                 .rounded_full()
-                .border(dp(3.))
+                .border(px(3.))
                 .border_color(solid(self.look.accent)),
         )
     }

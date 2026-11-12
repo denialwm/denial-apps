@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use denial_look::mobile::TOUCH;
 use denial_look::nested_radius;
-use denial_look_gpui::{Icon, control_fill, control_radius, dp, icon, island, say, solid};
+use denial_look_gpui::{Icon, control_fill, control_radius, icon, island, say, solid};
 use gpui::{
     Context, DispatchPhase, Div, FontWeight, HitboxBehavior, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, TouchDragEvent, TouchPhase,
@@ -24,7 +24,7 @@ pub(super) const FAINT: f32 = 0.5;
 /// go.
 pub(super) type OnSlide = Rc<dyn Fn(&mut Settings, f32, bool, &mut Context<Settings>)>;
 
-/// A slider's knob, in dp; the track runs between its centre's ends.
+/// A slider's knob; the track runs between its centre's ends.
 const KNOB: f32 = 24.0;
 const TRACK: f32 = 6.0;
 
@@ -56,7 +56,7 @@ impl Settings {
                 )
                 .flex()
                 .items_center()
-                .gap(dp(ROW_GAP))
+                .gap(px(ROW_GAP))
                 .child(self.tile(Icon::Info, TILE))
                 .child(
                     div()
@@ -87,8 +87,8 @@ impl Settings {
         let radius = px(self.look.group_radius());
         div()
             .id(key)
-            .px(dp(ROW_PAD))
-            .py(dp(12.))
+            .px(px(ROW_PAD))
+            .py(px(12.))
             .when(first, |row| row.rounded_t(radius))
             .when(last, |row| row.rounded_b(radius))
     }
@@ -98,7 +98,7 @@ impl Settings {
         div()
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
+            .gap(px(ROW_GAP))
             .children(glyph.map(|glyph| self.tile(glyph, TILE)))
             .child(self.text_column(title, detail))
     }
@@ -153,7 +153,7 @@ impl Settings {
         self.frame(key, ends)
             .flex()
             .flex_col()
-            .gap(dp(4.))
+            .gap(px(4.))
             .child(
                 self.line(glyph, title.into(), detail).child(
                     div()
@@ -183,7 +183,7 @@ impl Settings {
         self.frame(key, ends)
             .flex()
             .flex_col()
-            .gap(dp(10.))
+            .gap(px(10.))
             .child(self.line(None, title.into(), detail))
             .child(self.segmented(options, picked, live, cx, pick))
     }
@@ -243,7 +243,7 @@ impl Settings {
             Kind::Choice(..) | Kind::Opens => {
                 let row = row.child(line(item.title.into(), Some(self.shown(item))).child(icon(
                     Icon::Chevron,
-                    dp(20.),
+                    px(20.),
                     solid(palette.secondary),
                 )));
                 self.live(row, live, cx, move |this, window, cx| {
@@ -291,15 +291,15 @@ impl Settings {
             .absolute()
             .top_0()
             .bottom_0()
-            .left(dp(KNOB / 2.))
-            .right(dp(KNOB / 2.))
+            .left(px(KNOB / 2.))
+            .right(px(KNOB / 2.))
             .child(
                 div()
                     .absolute()
                     .left_0()
                     .right_0()
-                    .top(dp((TOUCH - TRACK) / 2.))
-                    .h(dp(TRACK))
+                    .top(px((TOUCH - TRACK) / 2.))
+                    .h(px(TRACK))
                     .rounded_full()
                     .bg(control_fill(&self.look))
                     .child(
@@ -314,13 +314,13 @@ impl Settings {
                 div()
                     .absolute()
                     .left(relative(level))
-                    .ml(-dp(KNOB / 2.))
-                    .top(dp((TOUCH - KNOB) / 2.))
-                    .size(dp(KNOB))
+                    .ml(-px(KNOB / 2.))
+                    .top(px((TOUCH - KNOB) / 2.))
+                    .size(px(KNOB))
                     .rounded_full()
                     .bg(solid(self.look.accent)),
             );
-        let slider = div().relative().h(dp(TOUCH)).child(travel);
+        let slider = div().relative().h(px(TOUCH)).child(travel);
         if !live {
             return slider;
         }
@@ -329,7 +329,7 @@ impl Settings {
             canvas(
                 |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
                 move |bounds, hitbox, window, _| {
-                    let pad = dp(KNOB / 2.);
+                    let pad = px(KNOB / 2.);
                     let level_at =
                         move |x: Pixels| (x - bounds.left() - pad) / (bounds.size.width - pad * 2.);
                     let touch_view = view.clone();
@@ -417,7 +417,7 @@ impl Settings {
                 .id(ix)
                 .flex_1()
                 .min_w_0()
-                .h(dp(36.))
+                .h(px(36.))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -440,8 +440,8 @@ impl Settings {
         });
         div()
             .flex()
-            .p(dp(3.))
-            .gap(dp(3.))
+            .p(px(3.))
+            .gap(px(3.))
             .rounded(control_radius(&self.look))
             .bg(control_fill(&self.look))
             .children(segments)

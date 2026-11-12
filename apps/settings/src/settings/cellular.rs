@@ -10,8 +10,8 @@ use denial_look_gpui::say;
 use std::rc::Rc;
 use std::time::Duration;
 
-use denial_look_gpui::{Icon, dp, island};
-use gpui::{Context, Div, SharedString, Window, prelude::*};
+use denial_look_gpui::{Icon, island};
+use gpui::{Context, Div, SharedString, Window, prelude::*, px};
 
 use super::parts::{Fill, ROW_GAP, ROW_PAD, TILE};
 use super::{Dialog, Layer, Settings};
@@ -122,7 +122,7 @@ impl Settings {
                 cx,
                 |this, window, cx| this.ask_pin(None, window, cx),
             );
-            self.buttons([unlock]).px(dp(ROW_PAD)).pb(dp(ROW_PAD))
+            self.buttons([unlock]).px(px(ROW_PAD)).pb(px(ROW_PAD))
         });
         let status = self.row("network", Some(Icon::Network), title, detail, (true, false));
 

@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use denial_look::INSET;
 use denial_look::words::fill;
-use denial_look_gpui::{Icon, dp, icon, island, say, solid};
+use denial_look_gpui::{Icon, icon, island, say, solid};
 use gpui::{
     AnyElement, Context, Div, Focusable, ObjectFit, SharedString, Stateful, StyledImage, Task,
     Window, div, img, prelude::*, px,
@@ -26,7 +26,7 @@ use super::{Layer, Settings};
 use crate::wallhaven::{self, Found};
 use crate::wallpaper::{self, Choice, MAX_ZOOM, Placement};
 
-/// Pictures to a row, and the space between them, in dp.
+/// Pictures to a row, and the space between them.
 const COLUMNS: usize = 3;
 const GAP: f32 = 8.0;
 const PAD: f32 = 10.0;
@@ -35,7 +35,7 @@ const PAD: f32 = 10.0;
 const TYPING: Duration = Duration::from_millis(700);
 /// Thumbnails fetched at once.
 const FETCHING: usize = 4;
-/// The placement preview's width, in dp.
+/// The placement preview's width.
 const PREVIEW_WIDTH: f32 = 150.0;
 
 /// Where the pictures offered come from: the screen's tabs.
@@ -78,7 +78,7 @@ fn rows(tiles: Vec<Stateful<Div>>) -> Vec<Div> {
         rows.push(
             div()
                 .flex()
-                .gap(dp(GAP))
+                .gap(px(GAP))
                 .children(tiles.by_ref().take(COLUMNS)),
         );
     }
@@ -126,7 +126,7 @@ impl Settings {
                 )
             }),
         );
-        parts.push(div().pt(dp(6.)).child(tabs));
+        parts.push(div().pt(px(6.)).child(tabs));
         parts.push(match shown.tab {
             Tab::Local => self.local_island(width, live, cx),
             Tab::Wallhaven => self.wallhaven_island(width, live, cx),
@@ -212,10 +212,10 @@ impl Settings {
             .child(self.separator(0.))
             .child(
                 div()
-                    .p(dp(PAD))
+                    .p(px(PAD))
                     .flex()
                     .flex_col()
-                    .gap(dp(GAP))
+                    .gap(px(GAP))
                     .children(rows(tiles.collect()))
                     .when(empty, |pictures| {
                         pictures.child(self.note_line("Pictures you put in this folder show here"))
@@ -232,9 +232,9 @@ impl Settings {
             (w, h) if w > 0 && h > 0 => (w as f32, h as f32),
             _ => (270.0, 585.0),
         };
-        let width = f32::from(dp(PREVIEW_WIDTH));
+        let width = PREVIEW_WIDTH;
         let height = width * screen_h / screen_w;
-        let radius = px((self.look.group_radius() - f32::from(dp(PAD))).max(6.0));
+        let radius = px((self.look.group_radius() - PAD).max(6.0));
         let picture = shown
             .preview
             .as_ref()
@@ -249,7 +249,7 @@ impl Settings {
                     .h(px(h))
                     .object_fit(ObjectFit::Fill)
             });
-        let preview = div().flex().justify_center().py(dp(PAD)).child(
+        let preview = div().flex().justify_center().py(px(PAD)).child(
             div()
                 .relative()
                 .w(px(width))
@@ -325,8 +325,8 @@ impl Settings {
             .child(down)
             .child(
                 div()
-                    .px(dp(super::parts::ROW_PAD))
-                    .pb(dp(super::parts::ROW_PAD))
+                    .px(px(super::parts::ROW_PAD))
+                    .pb(px(super::parts::ROW_PAD))
                     .child(self.buttons([reset])),
             )
     }
@@ -407,13 +407,13 @@ impl Settings {
         picked: bool,
         width: f32,
     ) -> Stateful<Div> {
-        let inner = width - 2.0 * INSET - 2.0 * f32::from(dp(PAD));
-        let tile_width = (inner - (COLUMNS - 1) as f32 * f32::from(dp(GAP))) / COLUMNS as f32;
+        let inner = width - 2.0 * INSET - 2.0 * PAD;
+        let tile_width = (inner - (COLUMNS - 1) as f32 * GAP) / COLUMNS as f32;
         let tile_height = match self.wallpaper_screen() {
             (wide, high) if wide > 0 && high > 0 => tile_width * high as f32 / wide as f32,
             _ => tile_width * 585.0 / 270.0,
         };
-        let radius = px((self.look.group_radius() - f32::from(dp(PAD))).max(6.0));
+        let radius = px((self.look.group_radius() - PAD).max(6.0));
         let picture: AnyElement = match thumb {
             Some(thumb) => img(thumb.clone())
                 .size_full()
@@ -438,7 +438,7 @@ impl Settings {
             .overflow_hidden()
             .bg(denial_look_gpui::control_fill(&self.look))
             .when(picked, |tile| {
-                tile.border(dp(3.)).border_color(solid(self.look.accent))
+                tile.border(px(3.)).border_color(solid(self.look.accent))
             })
             .child(picture)
     }
@@ -452,7 +452,7 @@ impl Settings {
             .id("wallhaven-field")
             .flex()
             .child(self.field(
-                icon(Icon::Search, dp(ICON), solid(self.look.palette.secondary)),
+                icon(Icon::Search, px(ICON), solid(self.look.palette.secondary)),
                 &self.wallhaven_field,
             ))
             .on_click(cx.listener(|this, _, window, cx| {
@@ -506,7 +506,7 @@ impl Settings {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(dp(GAP))
+                    .gap(px(GAP))
                     .child(self.note_line(why.clone()))
                     .child(self.buttons([self.button(
                         "wallhaven-again",
@@ -532,10 +532,10 @@ impl Settings {
             None => None,
         };
         island(&self.look)
-            .p(dp(PAD))
+            .p(px(PAD))
             .flex()
             .flex_col()
-            .gap(dp(GAP))
+            .gap(px(GAP))
             .child(field)
             .children(rows(tiles))
             .children(status)
@@ -544,7 +544,7 @@ impl Settings {
     /// A quiet line of text inside an island.
     fn note_line(&self, text: impl Into<SharedString>) -> Div {
         div()
-            .py(dp(8.))
+            .py(px(8.))
             .flex()
             .justify_center()
             .text_color(solid(self.look.palette.secondary))

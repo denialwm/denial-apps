@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use denial_look::mobile::GESTURE_INSET;
 use denial_look::{Appearance, INSET, Look, SettingsWatch, Tween, decelerate, floating, motion, palette};
-use denial_look_gpui::{Icon, chip, color, dp, icon, island, solid};
+use denial_look_gpui::{Icon, chip, color, icon, island, solid};
 use gpui::{
     App, AsyncApp, AsyncWindowContext, ClickEvent, Context, FocusHandle, Focusable, Font, FontWeight, ObjectFit,
     RenderImage, SharedString, Stateful, Subscription, Task, Transformation, WeakEntity, Window, actions, div, img,
@@ -32,23 +32,23 @@ use gallery::Viewer;
 
 actions!(camera, [Back]);
 
-/// The top pill, which holds the timer and the grid, dp.
+/// The top pill, which holds the timer and the grid.
 const BAR: f32 = 44.0;
-/// The shutter: a ring, a gap and the release disc, dp.
+/// The shutter: a ring, a gap and the release disc.
 const SHUTTER: f32 = 80.0;
 const RING: f32 = 4.0;
 const RELEASE: f32 = 64.0;
 const RELEASE_PRESSED: f32 = 56.0;
 const RELEASE_BUSY: f32 = 44.0;
-/// The stop square the shutter shows during the timer, dp.
+/// The stop square the shutter shows during the timer.
 const STOP: f32 = 26.0;
-/// The last photo and the camera switch, dp.
+/// The last photo and the camera switch.
 const SIDE: f32 = 52.0;
 const SIDE_RADIUS: f32 = 12.0;
 const ICON: f32 = 24.0;
-/// Room under the preview for a chip above the shutter, dp.
+/// Room under the preview for a chip above the shutter.
 const CHIP_ROOM: f32 = 30.0;
-/// The lens buttons on the preview, dp, and their glass.
+/// The lens buttons on the preview, and their glass.
 const ZOOM: f32 = 38.0;
 const ZOOM_TINT: f32 = 0.35;
 /// The crops each way's own camera offers.
@@ -57,7 +57,7 @@ const ZOOMS: [f32; 2] = [1.0, 2.0];
 const TIMERS: [u32; 3] = [0, 3, 10];
 /// The last photo grows from this part of its size when a photo is saved.
 const ARRIVAL_FROM: f32 = 0.5;
-/// The focus mark, dp: it lands this much larger and settles.
+/// The focus mark: it lands this much larger and settles.
 const MARK: f32 = 64.0;
 const MARK_LAND: f32 = 1.3;
 const MARK_FOR: Duration = Duration::from_millis(900);
@@ -541,8 +541,8 @@ impl Camera {
     /// pill above and the controls below.
     fn preview_bounds(&self, width: f32, height: f32) -> (f32, f32, f32, f32) {
         let aspect = self.aspect;
-        let above = 2.0 * INSET + f32::from(dp(BAR));
-        let below = GESTURE_INSET + f32::from(dp(SHUTTER + 2.0 * CHIP_ROOM));
+        let above = 2.0 * INSET + BAR;
+        let below = GESTURE_INSET + (SHUTTER + 2.0 * CHIP_ROOM);
         let room = (height - above - below).max(0.0);
         let mut preview_width = width - 2.0 * INSET;
         let mut preview_height = preview_width * aspect;
@@ -577,7 +577,7 @@ impl Camera {
         island(&self.look)
             .id(id)
             .flex_none()
-            .size(dp(diameter))
+            .size(px(diameter))
             .rounded_full()
             .flex()
             .items_center()
@@ -594,23 +594,23 @@ impl Camera {
             div()
                 .id(id)
                 .h_full()
-                .min_w(dp(BAR))
-                .px(dp(10.))
+                .min_w(px(BAR))
+                .px(px(10.))
                 .flex()
                 .items_center()
                 .justify_center()
-                .gap(dp(6.))
+                .gap(px(6.))
                 .rounded_full()
                 .cursor_pointer()
                 .active(move |button| button.bg(pressed))
         };
         let timer_on = self.timer > 0;
         let timer = button("timer")
-            .child(icon(Icon::Timer, dp(20.), tint(timer_on)))
+            .child(icon(Icon::Timer, px(20.), tint(timer_on)))
             .when(timer_on, |button| {
                 button
                     .text_color(tint(true))
-                    .text_size(dp(14.))
+                    .text_size(px(14.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(fill("{seconds} s", &[("seconds", &self.timer.to_string())]))
             })
@@ -624,7 +624,7 @@ impl Camera {
                 cx.notify();
             }));
         let grid = button("grid")
-            .child(icon(Icon::Gridlines, dp(20.), tint(self.grid)))
+            .child(icon(Icon::Gridlines, px(20.), tint(self.grid)))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.grid = !this.grid;
                 cx.notify();
@@ -634,17 +634,17 @@ impl Camera {
             .top(px(top))
             .left_0()
             .right_0()
-            .h(dp(BAR))
+            .h(px(BAR))
             .flex()
             .justify_center()
             .child(
                 island(look)
                     .h_full()
                     .rounded_full()
-                    .p(dp(2.))
+                    .p(px(2.))
                     .flex()
                     .items_center()
-                    .gap(dp(2.))
+                    .gap(px(2.))
                     .child(timer)
                     .child(grid),
             )
@@ -698,7 +698,7 @@ impl Camera {
         if let Some(mark) = self.mark.as_ref().filter(|mark| now - mark.at < MARK_FOR) {
             let t = (now - mark.at).as_secs_f32() / MARK_FOR.as_secs_f32();
             let land = MARK_LAND + (1.0 - MARK_LAND) * decelerate(mark.settle.progress(now));
-            let size = f32::from(dp(MARK)) * land;
+            let size = MARK * land;
             area = area.child(
                 div()
                     .absolute()
@@ -706,7 +706,7 @@ impl Camera {
                     .top(px(mark.y * height - size / 2.0))
                     .size(px(size))
                     .rounded_full()
-                    .border(dp(1.5))
+                    .border(px(1.5))
                     .border_color(color(0xffffff, 0.9 * (1.0 - t * t))),
             );
         }
@@ -715,7 +715,7 @@ impl Camera {
             area = area.child(
                 layer().flex().items_center().justify_center().child(
                     div()
-                        .text_size(dp(120.))
+                        .text_size(px(120.))
                         .font_weight(FontWeight::LIGHT)
                         .text_color(solid(0xffffff))
                         .child(format!("{left}")),
@@ -727,10 +727,10 @@ impl Camera {
             State::Opening | State::Live => None,
         };
         area = area.children(message.map(|message| {
-            div().absolute().inset_0().flex().items_center().justify_center().p(dp(24.)).child(
+            div().absolute().inset_0().flex().items_center().justify_center().p(px(24.)).child(
                 island(look)
-                    .p(dp(16.))
-                    .text_size(dp(15.))
+                    .p(px(16.))
+                    .text_size(px(15.))
                     .text_color(solid(look.palette.foreground))
                     .child(message),
             )
@@ -746,16 +746,16 @@ impl Camera {
             let chosen = self.camera.as_deref() == Some(id.as_str()) && crop == self.zoom;
             div()
                 .id(("lens", index))
-                .h(dp(ZOOM))
-                .min_w(dp(ZOOM))
-                .px(dp(6.))
+                .h(px(ZOOM))
+                .min_w(px(ZOOM))
+                .px(px(6.))
                 .rounded_full()
                 .flex()
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
                 .when(chosen, |button| button.bg(color(look.palette.glass, ZOOM_TINT)))
-                .text_size(dp(if chosen { 13. } else { 12. }))
+                .text_size(px(if chosen { 13. } else { 12. }))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(solid(if chosen { look.accent } else { look.palette.foreground }))
                 .child(zoom_label(zoom, chosen))
@@ -768,14 +768,14 @@ impl Camera {
             .absolute()
             .left_0()
             .right_0()
-            .bottom(dp(12.))
+            .bottom(px(12.))
             .flex()
             .justify_center()
             .child(
                 div()
                     .occlude()
-                    .p(dp(3.))
-                    .gap(dp(4.))
+                    .p(px(3.))
+                    .gap(px(4.))
                     .flex()
                     .rounded_full()
                     .backdrop_blur(px(floating::BACKDROP_BLUR))
@@ -794,11 +794,11 @@ impl Camera {
         let last = newest.map(|thumbnail| {
             let grow = self.arrival.map_or(1.0, |arrival| decelerate(arrival.progress(now)));
             let size = SIDE * (ARRIVAL_FROM + (1.0 - ARRIVAL_FROM) * grow);
-            let radius = dp(SIDE_RADIUS * size / SIDE);
+            let radius = px(SIDE_RADIUS * size / SIDE);
             div()
                 .id("last")
                 .flex_none()
-                .size(dp(SIDE))
+                .size(px(SIDE))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -807,18 +807,18 @@ impl Camera {
                 .child(
                     div()
                         .relative()
-                        .size(dp(size))
+                        .size(px(size))
                         .child(img(thumbnail).size_full().rounded(radius).object_fit(ObjectFit::Cover))
                         .when(self.developing > 0, |frame| frame.child(self.developing_arc(radius))),
                 )
                 .on_click(cx.listener(|this, _, window, cx| this.open_viewer(0, false, window, cx)))
         });
         let disc = if self.countdown.is_some() {
-            div().size(dp(STOP)).rounded(dp(6.)).bg(solid(foreground))
+            div().size(px(STOP)).rounded(px(6.)).bg(solid(foreground))
         } else {
             let release = if self.capturing { RELEASE_BUSY } else { RELEASE };
             div()
-                .size(dp(release))
+                .size(px(release))
                 .rounded_full()
                 .bg(color(foreground, if ready { 1.0 } else { 0.4 }))
         };
@@ -826,23 +826,23 @@ impl Camera {
             .id("shutter")
             .group("shutter")
             .flex_none()
-            .size(dp(SHUTTER))
+            .size(px(SHUTTER))
             .rounded_full()
-            .border(dp(RING))
+            .border(px(RING))
             .border_color(solid(foreground))
             .flex()
             .items_center()
             .justify_center()
             .cursor_pointer()
             .child(div().id("release").child(disc).when(ready && self.countdown.is_none(), |disc| {
-                disc.group_active("shutter", |disc| disc.size(dp(RELEASE_PRESSED)))
+                disc.group_active("shutter", |disc| disc.size(px(RELEASE_PRESSED)))
             }))
             .on_click(cx.listener(|this, _, _, cx| this.release(cx)));
         let turn = self.turn.map_or(0.0, |turn| decelerate(turn.progress(now)));
         let flip = self
             .round("flip", SIDE)
             .child(
-                icon(Icon::Flip, dp(ICON), solid(foreground))
+                icon(Icon::Flip, px(ICON), solid(foreground))
                     .with_transformation(Transformation::rotate(radians(std::f32::consts::PI * turn))),
             )
             .on_click(cx.listener(|this, _, _, cx| this.switch(cx)));
@@ -873,7 +873,7 @@ impl Camera {
             .items_center()
             .justify_center()
             .child(
-                icon(Icon::Progress, dp(ICON), solid(0xffffff))
+                icon(Icon::Progress, px(ICON), solid(0xffffff))
                     .with_transformation(Transformation::rotate(radians(std::f32::consts::TAU * turn.fract()))),
             )
     }
@@ -904,7 +904,7 @@ impl Camera {
         let height = f32::from(size.height);
         let bounds = self.preview_bounds(f32::from(size.width), height);
         let below = bounds.1 + bounds.3;
-        let bar_top = ((bounds.1 - f32::from(dp(BAR))) / 2.0).max(INSET);
+        let bar_top = ((bounds.1 - BAR) / 2.0).max(INSET);
         div()
             .size_full()
             .relative()

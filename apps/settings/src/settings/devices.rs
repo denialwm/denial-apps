@@ -9,8 +9,10 @@ use denial_look_gpui::say;
 use std::future::Future;
 use std::rc::Rc;
 
-use denial_look_gpui::{Icon, dp, island, solid};
-use gpui::{Context, Div, Focusable, FontWeight, SharedString, Stateful, Window, div, prelude::*};
+use denial_look_gpui::{Icon, island, solid};
+use gpui::{
+    Context, Div, Focusable, FontWeight, SharedString, Stateful, Window, div, prelude::*, px,
+};
 
 use super::parts::{Fill, ROW_GAP, ROW_PAD, TILE};
 use super::{Dialog, Layer, Screen, Settings};
@@ -178,7 +180,7 @@ impl Settings {
                 Some(self.device_status(device)),
                 ends,
             )
-            .pr(dp(4.))
+            .pr(px(4.))
             .child(details);
         let device = device.clone();
         self.live(row, live, cx, move |this, _, cx| {
@@ -264,14 +266,14 @@ impl Settings {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .p(dp(ROW_PAD))
-            .pt(dp(22.))
+            .gap(px(6.))
+            .p(px(ROW_PAD))
+            .pt(px(22.))
             .child(self.tile(glyph(device.kind), 56.))
             .child(
                 div()
-                    .pt(dp(6.))
-                    .text_size(dp(20.))
+                    .pt(px(6.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(device.name.clone()),
             )
@@ -280,7 +282,7 @@ impl Settings {
                     .text_color(solid(self.look.palette.secondary))
                     .child(self.device_status(device)),
             )
-            .child(self.buttons([connect, forget]).w_full().pt(dp(12.)));
+            .child(self.buttons([connect, forget]).w_full().pt(px(12.)));
 
         let mut info: Vec<(&str, String)> = vec![("Type", device.kind.label().to_owned())];
         if let Some(battery) = device.battery {
@@ -558,8 +560,8 @@ impl Settings {
     ) -> (SharedString, Option<Div>, bool, Option<&'static str>) {
         let code = |code: String| {
             div()
-                .py(dp(10.))
-                .text_size(dp(32.))
+                .py(px(10.))
+                .text_size(px(32.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(grouped(&code))
         };

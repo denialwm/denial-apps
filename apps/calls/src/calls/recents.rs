@@ -6,14 +6,14 @@ use std::time::Instant;
 
 use denial_look::mobile::{GESTURE_INSET, GROUP_HEIGHT, TAB_BAR, content_top};
 use denial_look::{INSET, floating};
-use denial_look_gpui::{Icon, color, dp, glass_group, icon, island_fill, solid};
+use denial_look_gpui::{Icon, color, glass_group, icon, island_fill, solid};
 use gpui::{AnyElement, Context, Div, FontWeight, Window, div, list, prelude::*, px, relative};
 
 use super::parts::{Face, Fill, ROW_AVATAR, SMALL_ICON, Segment, place};
 use super::{Calls, Confirm, Held, Layer, Overlay, Screen};
 use crate::data::{self, Direction};
 
-/// The accent pill under the shown tab's icon, in dp.
+/// The accent pill under the shown tab's icon.
 const PILL_WIDTH: f32 = 56.0;
 const PILL_HEIGHT: f32 = 28.0;
 const PILL_TOP: f32 = 6.0;
@@ -162,8 +162,8 @@ impl Calls {
                         .min_w_0()
                         .flex()
                         .items_center()
-                        .gap(dp(5.))
-                        .child(icon(glyph, dp(SMALL_ICON), solid(ink)))
+                        .gap(px(5.))
+                        .child(icon(glyph, px(SMALL_ICON), solid(ink)))
                         .child(
                             div()
                                 .flex_1()
@@ -176,7 +176,7 @@ impl Calls {
             .child(
                 div()
                     .flex_none()
-                    .text_size(dp(12.))
+                    .text_size(px(12.))
                     .text_color(solid(palette.secondary))
                     .child(data::list_time(call.time, data::now())),
             )
@@ -267,14 +267,14 @@ impl Calls {
             _ => to,
         };
         let count = TABS.len() as f32;
-        let mut tabs = div().relative().h(dp(TAB_BAR)).flex().child(
+        let mut tabs = div().relative().h(px(TAB_BAR)).flex().child(
             div()
                 .absolute()
-                .top(dp(PILL_TOP))
+                .top(px(PILL_TOP))
                 .left(relative((at + 0.5) / count))
-                .ml(-dp(PILL_WIDTH / 2.))
-                .w(dp(PILL_WIDTH))
-                .h(dp(PILL_HEIGHT))
+                .ml(-px(PILL_WIDTH / 2.))
+                .w(px(PILL_WIDTH))
+                .h(px(PILL_HEIGHT))
                 .rounded_full()
                 .bg(solid(self.look.accent)),
         );
@@ -292,9 +292,9 @@ impl Calls {
                 .flex()
                 .flex_col()
                 .items_center()
-                .pt(dp(PILL_TOP))
-                .gap(dp(2.))
-                .text_size(dp(11.))
+                .pt(px(PILL_TOP))
+                .gap(px(2.))
+                .text_size(px(11.))
                 .font_weight(if selected {
                     FontWeight::BOLD
                 } else {
@@ -303,12 +303,12 @@ impl Calls {
                 .text_color(solid(label_ink))
                 .child(
                     div()
-                        .w(dp(PILL_WIDTH))
-                        .h(dp(PILL_HEIGHT))
+                        .w(px(PILL_WIDTH))
+                        .h(px(PILL_HEIGHT))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(icon(glyph, dp(20.), solid(glyph_ink))),
+                        .child(icon(glyph, px(20.), solid(glyph_ink))),
                 )
                 .child(div().max_w_full().truncate().child(tr(label)));
             if live && *shown != screen {
@@ -362,7 +362,7 @@ impl Calls {
         Some(
             div()
                 .absolute()
-                .top(px(INSET * 2. - self.top_away.away()) + dp(GROUP_HEIGHT))
+                .top(px(INSET * 2. - self.top_away.away()) + px(GROUP_HEIGHT))
                 .right(px(INSET))
                 .opacity(self.dim(now))
                 .child(
@@ -370,7 +370,7 @@ impl Calls {
                         .flex()
                         .flex_col()
                         .items_stretch()
-                        .p(dp(4.))
+                        .p(px(4.))
                         .child(item(
                             "samples",
                             Face::Both(

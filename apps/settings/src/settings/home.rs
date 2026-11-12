@@ -3,14 +3,14 @@
 
 use denial_look::words::fill;
 use denial_look_gpui::say;
-use denial_look_gpui::{Icon, dp, icon, solid};
-use gpui::{Context, Div, SharedString, prelude::*};
+use denial_look_gpui::{Icon, icon, solid};
+use gpui::{Context, Div, SharedString, prelude::*, px};
 
 use super::parts::{ICON, ROW_GAP, ROW_PAD};
 use super::{Layer, Screen, Settings};
 use crate::catalog::{self, Content, GROUPS, Page};
 
-/// Where a row's separator starts: after its 40 dp tile.
+/// Where a row's separator starts: after its 40 pixel tile.
 const SEPARATOR: f32 = ROW_PAD + 40.0 + ROW_GAP;
 
 impl Settings {
@@ -149,7 +149,7 @@ impl Settings {
             return self
                 .top_row()
                 .child(self.field(
-                    icon(Icon::Search, dp(ICON), solid(self.look.palette.secondary)),
+                    icon(Icon::Search, px(ICON), solid(self.look.palette.secondary)),
                     &self.search,
                 ))
                 .child(self.icon_button(
@@ -161,7 +161,7 @@ impl Settings {
                 ));
         }
         self.top_row()
-            .pl(dp(17.))
+            .pl(px(17.))
             .child(self.title("Settings"))
             .child(
                 self.icon_button("search", Icon::Search, live, cx, |this, window, cx| {

@@ -9,8 +9,8 @@ use denial_look_gpui::say;
 use std::future::Future;
 use std::rc::Rc;
 
-use denial_look_gpui::{Icon, dp, icon, island, solid};
-use gpui::{Context, Div, FontWeight, SharedString, Window, div, prelude::*};
+use denial_look_gpui::{Icon, icon, island, solid};
+use gpui::{Context, Div, FontWeight, SharedString, Window, div, prelude::*, px};
 
 use super::parts::{Fill, ROW_GAP, ROW_PAD, TILE};
 use super::{Dialog, Layer, Screen, Settings};
@@ -222,7 +222,7 @@ impl Settings {
             .when(locked, |row| {
                 row.child(icon(
                     Icon::Lock,
-                    dp(18.),
+                    px(18.),
                     solid(self.look.palette.secondary),
                 ))
             });
@@ -376,14 +376,14 @@ impl Settings {
             .flex()
             .flex_col()
             .items_center()
-            .gap(dp(6.))
-            .p(dp(ROW_PAD))
-            .pt(dp(22.))
+            .gap(px(6.))
+            .p(px(ROW_PAD))
+            .pt(px(22.))
             .child(self.tile(glyph, 56.))
             .child(
                 div()
-                    .pt(dp(6.))
-                    .text_size(dp(20.))
+                    .pt(px(6.))
+                    .text_size(px(20.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(saved.name.clone()),
             )
@@ -395,7 +395,7 @@ impl Settings {
             .child(
                 self.buttons(connect.into_iter().chain([forget]))
                     .w_full()
-                    .pt(dp(12.)),
+                    .pt(px(12.)),
             );
         let mut parts = vec![hero];
 

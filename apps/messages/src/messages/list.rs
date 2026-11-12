@@ -10,7 +10,7 @@ use denial_contacts::dialable;
 use denial_look::mobile::{AVATAR, GROUP_HEIGHT, TOUCH, content_top};
 use denial_look::{CONTROL_FILL, INSET, MIN_RADIUS, floating};
 use denial_look_gpui::{
-    Icon, chip, color, control_radius, dp, glass_group, icon, island_edge, island_fill, island_run,
+    Icon, chip, color, control_radius, glass_group, icon, island_edge, island_fill, island_run,
     lifted, solid,
 };
 use gpui::{
@@ -23,11 +23,11 @@ use super::{Back, Candidate, Found, Held, Layer, Link, Messages, Overlay, Screen
 use crate::data;
 use denial_look_gpui::input::TextInput;
 
-/// A row's padding from its island's edge, in dp.
+/// A row's padding from its island's edge.
 const ROW_PAD: f32 = 16.0;
-/// A row's avatar, in dp.
+/// A row's avatar.
 const ROW_AVATAR: f32 = 42.0;
-/// Between a row's avatar and its text, in dp.
+/// Between a row's avatar and its text.
 const ROW_GAP: f32 = 12.0;
 
 /// The section island a conversation lists in, in list order.
@@ -253,10 +253,10 @@ impl Messages {
             island
                 .children(label.map(|label| {
                     div()
-                        .px(dp(ROW_PAD))
-                        .pt(dp(11.))
-                        .pb(dp(3.))
-                        .text_size(dp(12.))
+                        .px(px(ROW_PAD))
+                        .pt(px(11.))
+                        .pb(px(3.))
+                        .text_size(px(12.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(solid(look.accent_text))
                         .child(label.to_uppercase())
@@ -264,7 +264,7 @@ impl Messages {
                 .children((!segment.first).then(|| {
                     div()
                         .h(px(1.))
-                        .ml(dp(ROW_PAD + ROW_AVATAR + ROW_GAP))
+                        .ml(px(ROW_PAD + ROW_AVATAR + ROW_GAP))
                         .bg(color(palette.separator, palette.separator_alpha))
                 }))
                 .child(row),
@@ -277,9 +277,9 @@ impl Messages {
             .id(id)
             .flex()
             .items_center()
-            .gap(dp(ROW_GAP))
-            .px(dp(ROW_PAD))
-            .py(dp(10.))
+            .gap(px(ROW_GAP))
+            .px(px(ROW_PAD))
+            .py(px(10.))
             .when(segment.last, |row| {
                 row.rounded_b(px(self.look.group_radius()))
             });
@@ -341,12 +341,12 @@ impl Messages {
                         .min_w_0()
                         .flex()
                         .flex_col()
-                        .gap(dp(2.))
+                        .gap(px(2.))
                         .child(
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(dp(7.))
+                                .gap(px(7.))
                                 .child(
                                     div()
                                         .flex_1()
@@ -360,12 +360,12 @@ impl Messages {
                                         .child(self.marked_text(name, marks)),
                                 )
                                 .children(self.pins.contains(&peer).then(|| {
-                                    icon(Icon::Pin, dp(CHIP_ICON), solid(palette.secondary))
+                                    icon(Icon::Pin, px(CHIP_ICON), solid(palette.secondary))
                                 }))
                                 .child(
                                     div()
                                         .flex_none()
-                                        .text_size(dp(12.))
+                                        .text_size(px(12.))
                                         .text_color(solid(ink))
                                         .child(time),
                                 ),
@@ -374,20 +374,20 @@ impl Messages {
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(dp(7.))
+                                .gap(px(7.))
                                 .child(
                                     div()
                                         .flex_1()
                                         .min_w_0()
                                         .truncate()
-                                        .text_size(dp(14.))
+                                        .text_size(px(14.))
                                         .text_color(solid(ink))
                                         .child(preview),
                                 )
                                 .children(dot.map(|opacity| {
                                     div()
                                         .flex_none()
-                                        .size(dp(10.))
+                                        .size(px(10.))
                                         .rounded_full()
                                         .bg(solid(self.look.accent))
                                         .opacity(opacity)
@@ -614,8 +614,8 @@ impl Messages {
             .max_w_full()
             .rounded(px(self.look.bubble_radius()))
             .rounded_bl(px(MIN_RADIUS))
-            .px(dp(14.))
-            .py(dp(9.))
+            .px(px(14.))
+            .py(px(9.))
             .line_height(gpui::relative(1.4))
             .child(self.marked_text(text, marks));
         if layer.live() {
@@ -625,7 +625,7 @@ impl Messages {
             }));
         }
         div()
-            .pt(dp(9.))
+            .pt(px(9.))
             .flex()
             .items_end()
             .gap(px(INSET))
@@ -637,7 +637,7 @@ impl Messages {
                     .flex()
                     .flex_col()
                     .items_start()
-                    .gap(dp(4.))
+                    .gap(px(4.))
                     .child(bubble)
                     .child(
                         chip(&self.look)
@@ -717,13 +717,13 @@ impl Messages {
         let avatar = if *typed {
             div()
                 .flex_none()
-                .size(dp(ROW_AVATAR))
+                .size(px(ROW_AVATAR))
                 .rounded_full()
                 .flex()
                 .items_center()
                 .justify_center()
                 .bg(color(ink, 0.15))
-                .child(icon(Icon::Send, dp(ICON), solid(ink)))
+                .child(icon(Icon::Send, px(ICON), solid(ink)))
         } else {
             self.avatar(peer, ROW_AVATAR)
         };
@@ -737,7 +737,7 @@ impl Messages {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(dp(2.))
+                    .gap(px(2.))
                     .child(
                         div()
                             .truncate()
@@ -747,7 +747,7 @@ impl Messages {
                     .child(
                         div()
                             .truncate()
-                            .text_size(dp(14.))
+                            .text_size(px(14.))
                             .text_color(solid(secondary))
                             .when(*typed, |detail| detail.opacity(0.8))
                             .child(detail.replace('\n', " ")),
@@ -769,11 +769,11 @@ impl Messages {
         div()
             .flex_1()
             .min_w_0()
-            .h(dp(TOUCH))
+            .h(px(TOUCH))
             .flex()
             .items_center()
-            .gap(dp(8.))
-            .px(dp(11.))
+            .gap(px(8.))
+            .px(px(11.))
             .rounded(control_radius(&self.look))
             .bg(color(self.look.palette.foreground, CONTROL_FILL))
             .text_color(solid(self.look.palette.secondary))
@@ -795,7 +795,7 @@ impl Messages {
             return self
                 .top_row()
                 .child(self.field(
-                    icon(Icon::Search, dp(ICON), solid(self.look.palette.secondary)),
+                    icon(Icon::Search, px(ICON), solid(self.look.palette.secondary)),
                     &self.search,
                 ))
                 .child(self.button(
@@ -808,7 +808,7 @@ impl Messages {
                 ));
         }
         self.top_row()
-            .pl(dp(17.))
+            .pl(px(17.))
             .child(self.title("Messages"))
             .child(self.button(
                 "search",
@@ -856,9 +856,9 @@ impl Messages {
             .size_full()
             .flex()
             .items_center()
-            .gap(dp(8.))
-            .pl(dp(4.))
-            .pr(dp(4.))
+            .gap(px(8.))
+            .pl(px(4.))
+            .pr(px(4.))
     }
 
     pub(super) fn title(&self, title: impl Into<SharedString>) -> Div {
@@ -866,7 +866,7 @@ impl Messages {
             .flex_1()
             .min_w_0()
             .truncate()
-            .text_size(dp(20.))
+            .text_size(px(20.))
             .font_weight(FontWeight::SEMIBOLD)
             .child(title.into())
     }
@@ -903,7 +903,7 @@ impl Messages {
         Some(
             div()
                 .absolute()
-                .top(px(INSET * 2. - self.top_away.away()) + dp(GROUP_HEIGHT))
+                .top(px(INSET * 2. - self.top_away.away()) + px(GROUP_HEIGHT))
                 .right(px(INSET))
                 .opacity(self.dim(now))
                 .child(
@@ -911,7 +911,7 @@ impl Messages {
                         .flex()
                         .flex_col()
                         .items_stretch()
-                        .p(dp(4.))
+                        .p(px(4.))
                         .child(
                             self.button(
                                 "archived",
