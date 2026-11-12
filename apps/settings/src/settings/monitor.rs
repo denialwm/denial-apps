@@ -318,10 +318,10 @@ impl Settings {
 }
 
 /// A scale as people say it: "150%".
-fn percent(scale: f64) -> SharedString {
+pub(super) fn percent(scale: f64) -> SharedString {
     format!("{:.0}%", scale * 100.0).into()
 }
 
-fn same(a: f64, b: f64) -> bool {
+pub(super) fn same(a: f64, b: f64) -> bool {
     (a - b).abs() < 0.005
 }

@@ -9,12 +9,15 @@ use std::rc::Rc;
 use denial_look_gpui::{Icon, island};
 use gpui::{Context, Div, SharedString, Window, prelude::*};
 
+use super::monitor::{percent, same};
 use super::{Dialog, Layer, Settings};
 use crate::denial::{self, Output};
 
 /// The slider's key while the finger holds it.
 const BRIGHTNESS: &str = "display.brightness";
 /// Seconds the idle screen may stay on; None for always.
+/// How much larger than the screen's scale apps are drawn.
+const APP_SIZES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 const SCREEN_OFF: [Option<u32>; 7] = [
     Some(30),
     Some(60),
@@ -27,7 +30,7 @@ const SCREEN_OFF: [Option<u32>; 7] = [
 
 impl Settings {
     /// The Display page's islands, top to bottom: brightness, appearance,
-    /// then the screen's timeout and refresh rate.
+    /// then the screen's timeout, refresh rate and app size.
     pub(super) fn display_page(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
         let display = &self.denial;
         if !display.read {
@@ -76,7 +79,7 @@ impl Settings {
                 None,
                 "Screen timeout",
                 Some("When nothing touches it".into()),
-                (true, display.output.is_none()),
+                (true, false),
             )
             .child(self.value(screen_off(prefs.screen_off)))
             .child(self.chevron());
@@ -88,7 +91,7 @@ impl Settings {
             .filter(|output| output.rates.len() > 1)
         {
             let rate = self
-                .row("display.rate", None, "Refresh rate", None, (false, true))
+                .row("display.rate", None, "Refresh rate", None, (false, false))
                 .child(self.value(hertz(output.rate)))
                 .child(self.chevron());
             screen =
@@ -96,6 +99,20 @@ impl Settings {
                     .child(self.separator(0.))
                     .child(self.live(rate, live, cx, |this, _, cx| this.choose_rate(cx)));
         }
+        let size = self
+            .row(
+                "display.apps",
+                None,
+                "App size",
+                Some("Apps opened after a change".into()),
+                (false, true),
+            )
+            .child(self.value(percent(self.app_size())))
+            .child(self.chevron());
+        screen =
+            screen
+                .child(self.separator(0.))
+                .child(self.live(size, live, cx, |this, _, cx| this.choose_app_size(cx)));
         parts.push(screen);
         parts
     }
@@ -192,6 +209,36 @@ impl Settings {
         self.change(
             "Screen timeout",
             move |document| denial::set_screen_off(document, seconds),
+            cx,
+        );
+    }
+
+    /// Apps' size beside the shell's: Denial's `apps.scale`.
+    fn app_size(&self) -> f64 {
+        self.kept("apps.scale")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(1.0)
+    }
+
+    fn choose_app_size(&mut self, cx: &mut Context<Self>) {
+        let size = self.app_size();
+        self.show(
+            Dialog::Pick {
+                title: "App size".into(),
+                options: APP_SIZES.iter().map(|&scale| percent(scale)).collect(),
+                picked: APP_SIZES
+                    .iter()
+                    .position(|&scale| same(scale, size))
+                    .unwrap_or(0),
+                pick: Rc::new(|this, option, _, cx| {
+                    let scale = serde_json::json!(APP_SIZES[option]);
+                    this.change(
+                        "App size",
+                        move |document| denial::put(document, "apps.scale", scale.clone()),
+                        cx,
+                    );
+                }),
+            },
             cx,
         );
     }

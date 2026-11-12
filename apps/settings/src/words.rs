@@ -486,6 +486,8 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Screen timeout", "熄屏时间"),
     ("When nothing touches it", "无操作时"),
     ("Refresh rate", "刷新率"),
+    ("App size", "应用大小"),
+    ("Apps opened after a change", "更改后打开的应用"),
     (
         "Could not change the refresh rate: {why}",
         "无法更改刷新率：{why}",
