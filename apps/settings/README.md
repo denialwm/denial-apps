@@ -117,7 +117,7 @@ Denial starts next; and the system's language, through systemd's localed.
 The apps translate through `denial_look::words`, each with its own table of
 words (`src/words.rs` here). The keyboard settings are not on the phone yet.
 
-timedated, localed and hostnamed change things only with polkit's yes: on the Ace 3
+timedated, localed and hostnamed change things only with polkit's yes: on the 12R
 Phonewave's `48-phone-settings.rules` gives it to the phone's owner at the
 phone; elsewhere Denial's polkit agent asks for the password.
 

@@ -10,7 +10,7 @@ use std::time::Duration;
 pub struct Facts {
     /// The name the owner gave the phone.
     pub name: Option<String>,
-    /// As the device tree or the firmware names it: "OnePlus Ace 3".
+    /// As the device tree or the firmware names it: "OnePlus 12R".
     pub model: Option<String>,
     /// The chip: "Snapdragon SM8550".
     pub chip: Option<String>,

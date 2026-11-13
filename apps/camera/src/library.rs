@@ -10,7 +10,7 @@ use std::sync::Arc;
 use gpui::RenderImage;
 use image::{Frame, RgbImage, RgbaImage};
 
-/// Side of a thumbnail, px: a third of the Ace 3's width.
+/// Side of a thumbnail, px: a third of the 12R's width.
 const THUMBNAIL: u32 = 420;
 /// Longest side of a photo as the viewer shows it, px.
 const SCREEN: u32 = 2048;
