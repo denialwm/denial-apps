@@ -52,7 +52,12 @@ pub fn status() -> Option<Status> {
     let answer = run(&["status"])?;
     (answer["event"] == "status").then(|| Status {
         length: answer["length"].as_u64().unwrap_or(0) as u32,
-        gatekeeper: answer["requires_current_pin"].as_bool().unwrap_or(false),
+        // A software provider holds the PIN too, but has no reader to tell;
+        // deniald before it named only requires_current_pin.
+        gatekeeper: answer["fingerprint_authorization"]
+            .as_bool()
+            .or_else(|| answer["requires_current_pin"].as_bool())
+            .unwrap_or(false),
     })
 }
 
