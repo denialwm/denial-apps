@@ -23,7 +23,7 @@ use super::system::APP_ICON;
 use super::{Dialog, Layer, Screen, Settings};
 use crate::apps::{self, App};
 use crate::catalog::Section;
-use crate::droidloom::{self, Action, Cell, Density, Details, Stats, Unit, UnitState};
+use crate::droidloom::{self, Action, Cell, Density, Details, GamesDriver, Stats, Unit, UnitState};
 use crate::{about, clock};
 
 /// How often the page reads how Android runs.
@@ -38,6 +38,11 @@ pub(super) const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
 /// side by side. Android's own 160 drew its apps smaller than Denial's.
 /// Droidloom draws apps at it until a size is picked.
 pub(super) const DEFAULT_DPI: f32 = 230.0;
+
+/// The OpenGL drivers games can start with, in the order `DRIVERS` names
+/// them.
+const DRIVERS: [&str; 2] = ["ANGLE", "Mesa"];
+const GAMES_DRIVERS: [GamesDriver; 2] = [GamesDriver::Angle, GamesDriver::Mesa];
 
 /// Android's density at the size `option` of `SIZES`.
 fn size_dpi(scale: f32, option: usize) -> Option<u32> {
@@ -74,6 +79,9 @@ pub(super) struct Android {
     /// shows; None until then.
     density: Option<Density>,
     reading_density: bool,
+    /// The driver games start with, read like the density.
+    games: Option<GamesDriver>,
+    reading_games: bool,
     reading: Option<Task<()>>,
 }
 
@@ -104,6 +112,7 @@ impl Settings {
         if self.screen.is_page("android") {
             self.android.release = droidloom::release();
             self.android.density = None;
+            self.android.games = None;
             self.read_android_apps(cx);
         }
         if let Screen::AndroidApp { package } = &self.screen {
@@ -179,13 +188,53 @@ impl Settings {
         let ready = android.stats.as_ref().is_some_and(|stats| stats.ready);
         if !ready {
             android.density = None;
-        } else if android.density.is_none()
-            && !android.reading_density
-            && self.screen.is_page("android")
-        {
-            self.read_density(cx);
+            android.games = None;
+        } else if self.screen.is_page("android") {
+            if android.density.is_none() && !android.reading_density {
+                self.read_density(cx);
+            }
+            if self.android.games.is_none() && !self.android.reading_games {
+                self.read_games_driver(cx);
+            }
         }
         cx.notify();
+    }
+
+    fn read_games_driver(&mut self, cx: &mut Context<Self>) {
+        self.android.reading_games = true;
+        cx.spawn(async move |this, cx| {
+            let driver = cx
+                .background_spawn(async { droidloom::games_driver() })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                view.android.reading_games = false;
+                view.android.games = driver.ok();
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Starts games on the driver picked from `DRIVERS`.
+    fn pick_games_driver(&mut self, option: usize, cx: &mut Context<Self>) {
+        let (Some(before), Some(&driver)) = (self.android.games, GAMES_DRIVERS.get(option)) else {
+            return;
+        };
+        self.android.games = Some(driver);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let set = cx
+                .background_spawn(async move { droidloom::set_games_driver(driver) })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if let Err(why) = set {
+                    view.android.games = Some(before);
+                    view.note(fill("Android said: {why}", &[("why", &why)]), cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn read_density(&mut self, cx: &mut Context<Self>) {
@@ -378,7 +427,9 @@ impl Settings {
             // The size Droidloom gives every screen; faint until Android
             // tells its density.
             let per_scale = self.densities.every.unwrap_or(DEFAULT_DPI);
-            let dpi = android.density.map(|_| (per_scale * self.scale).round() as u32);
+            let dpi = android
+                .density
+                .map(|_| (per_scale * self.scale).round() as u32);
             let picked = SIZE_SCALES
                 .iter()
                 .position(|share| dpi.is_some() && (DEFAULT_DPI * share - per_scale).abs() < 0.5)
@@ -403,6 +454,35 @@ impl Settings {
                             .child(tr("Open Android apps may restart to take the new size")),
                     )
                     .when(dpi.is_none(), |row| row.opacity(FAINT)),
+                ),
+            );
+        }
+        {
+            // Faint until Droidloom tells the driver.
+            let games = android.games;
+            let picked = games
+                .and_then(|games| GAMES_DRIVERS.iter().position(|driver| *driver == games))
+                .unwrap_or(DRIVERS.len());
+            parts.push(self.chip_row("Games"));
+            parts.push(
+                island(&self.look).child(
+                    self.options_row(
+                        "android.games-driver",
+                        "Graphics driver",
+                        None,
+                        &DRIVERS,
+                        picked,
+                        live && games.is_some(),
+                        (true, true),
+                        cx,
+                        Rc::new(|this, option, _, cx| this.pick_games_driver(option, cx)),
+                    )
+                    .child(
+                        div()
+                            .text_color(solid(self.look.palette.secondary))
+                            .child(tr("Open games take the new driver when they start again")),
+                    )
+                    .when(games.is_none(), |row| row.opacity(FAINT)),
                 ),
             );
         }

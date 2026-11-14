@@ -276,6 +276,36 @@ pub fn set_density(dpi: u32) -> Result<(), String> {
     ask(json!({"command": "set_dpi", "spec": SPEC, "dpi": dpi})).map(drop)
 }
 
+/// The OpenGL driver Android games start with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GamesDriver {
+    /// ANGLE, over the Vulkan driver.
+    Angle,
+    /// Mesa's own OpenGL driver.
+    Mesa,
+}
+
+/// Asks Droidloom which OpenGL driver games start with; Android must be
+/// running.
+pub fn games_driver() -> Result<GamesDriver, String> {
+    let answer = ask(json!({"command": "games_driver"}))?;
+    match answer["games_driver"].as_str() {
+        Some("angle") => Ok(GamesDriver::Angle),
+        Some("mesa") => Ok(GamesDriver::Mesa),
+        _ => Err("Droidloom did not say the driver".to_owned()),
+    }
+}
+
+/// Starts games on `driver` from now on; open games keep theirs until they
+/// start again.
+pub fn set_games_driver(driver: GamesDriver) -> Result<(), String> {
+    let driver = match driver {
+        GamesDriver::Angle => "angle",
+        GamesDriver::Mesa => "mesa",
+    };
+    ask(json!({"command": "set_games_driver", "driver": driver})).map(drop)
+}
+
 /// The release Droidloom runs, as its updater recorded it.
 pub fn release() -> Option<String> {
     let record: Value = serde_json::from_str(&std::fs::read_to_string(RELEASE).ok()?).ok()?;
