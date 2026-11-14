@@ -252,6 +252,11 @@ impl Link {
         Ok(())
     }
 
+    /// Asks the shell to edit the tablet lock screen's layout in place.
+    pub async fn edit_lock_screen(&self) -> Result<(), Refusal> {
+        self.call("shell.lockScreen.edit", None).await.map(drop)
+    }
+
     /// Denial's version: the release installed, or the build's identity.
     pub async fn version(&self) -> Result<String, Refusal> {
         let version = self.call("denial.version", None).await?;

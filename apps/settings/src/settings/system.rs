@@ -213,8 +213,22 @@ impl Settings {
             }
             "time.date" => self.ask_clock(true, None, window, cx),
             "time.time" => self.ask_clock(false, None, window, cx),
+            "style.lockLayout" => self.edit_lock_screen(cx),
             _ => {}
         }
+    }
+
+    /// The shell draws the lock screen over this app to edit it.
+    fn edit_lock_screen(&mut self, cx: &mut Context<Self>) {
+        let link = self.denial.link.clone();
+        cx.spawn(async move |this, cx| {
+            if link.edit_lock_screen().await.is_err() {
+                let _ = this.update(cx, |view, cx| {
+                    view.note(tr("Denial could not open the editor"), cx)
+                });
+            }
+        })
+        .detach();
     }
 
     /// Asks for the date, or the time, saying `error` when asked again.

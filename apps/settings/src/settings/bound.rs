@@ -79,6 +79,11 @@ impl Settings {
     /// Whether a row shows now: some only go with one option of another,
     /// or with a toggle off (0) or on (1).
     pub(super) fn applies(&self, item: &Item) -> bool {
+        // Only a tablet's lock screen has a layout to edit.
+        if item.key == "style.lockLayout" {
+            let (width, height) = self.window_pixels;
+            return width.min(height) as f32 / self.scale >= 600.0;
+        }
         item.only.is_none_or(|(key, options)| {
             catalog::find(key)
                 .and_then(|each| match each.kind {

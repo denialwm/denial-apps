@@ -114,6 +114,12 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Notifications and tiles", "通知和磁贴"),
     ("Roundness", "圆角"),
     ("Clock size", "时钟大小"),
+    ("Customize lock screen", "自定义锁屏"),
+    (
+        "Clock place and size, PIN pad side",
+        "时钟位置和大小、PIN 键盘位置",
+    ),
+    ("Denial could not open the editor", "Denial 无法打开编辑器"),
     ("Dim the wallpaper", "调暗壁纸"),
     ("Blur the wallpaper", "模糊壁纸"),
     ("Wallpaper set", "已设置壁纸"),

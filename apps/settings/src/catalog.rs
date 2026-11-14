@@ -476,6 +476,9 @@ pub static GROUPS: &[Group] = &[
                     section(
                         "Lock screen",
                         &[
+                            item("style.lockLayout", "Customize lock screen", Kind::Opens)
+                                .detail("Clock place and size, PIN pad side")
+                                .from(Source::Own),
                             item("style.clock", "Clock size", Kind::Slider(0.5))
                                 .from(Source::Range("lockScreen.clockScale", 0.65, 1.4)),
                             item("style.dim", "Dim the wallpaper", Kind::Slider(0.0))
