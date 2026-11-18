@@ -186,16 +186,20 @@ pub fn choices() -> Vec<Choice> {
         .collect()
 }
 
-/// Denial's own wallpaper in the shell's bundle, beside the compositor that
-/// started Settings, or where packages put it.
+/// Denial's own wallpaper in the shell's bundle. A package puts the bundle
+/// in `lib/denial/flutter` under the prefix that holds `bin/deniald`, the
+/// compositor that started Settings; a phone that runs Denial from a folder
+/// has it in `shell` there.
 pub fn denial_file() -> Option<PathBuf> {
     let asset = DENIAL.strip_prefix("asset:")?;
-    let beside = std::env::var_os("DENIAL_COMPOSITOR_BINARY")
+    let prefix = std::env::var_os("DENIAL_COMPOSITOR_BINARY")
         .map(PathBuf::from)
-        .and_then(|binary| Some(binary.parent()?.parent()?.join("shell")));
-    beside
-        .into_iter()
+        .and_then(|binary| Some(binary.parent()?.parent()?.to_path_buf()));
+    prefix
+        .iter()
+        .flat_map(|prefix| [prefix.join("lib/denial/flutter"), prefix.join("shell")])
         .chain([
+            PathBuf::from("/usr/lib/denial/flutter"),
             PathBuf::from("/usr/lib/denial/shell"),
             PathBuf::from("/usr/share/denial/shell"),
         ])
