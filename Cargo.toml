@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
 members = ["apps/*", "libraries/*"]
+# Settings is a workspace of its own, with its own lock: Denial builds it for
+# every distribution from this repository and gpui-touch alone, and Camera
+# needs Phonewave beside them.
+exclude = ["apps/settings"]
 
 [workspace.package]
 license = "GPL-3.0-or-later"

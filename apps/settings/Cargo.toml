@@ -2,8 +2,8 @@
 name = "settings"
 version = "0.1.0"
 edition = "2024"
-license.workspace = true
-publish.workspace = true
+license = "GPL-3.0-or-later"
+publish = false
 
 [dependencies]
 async-channel = "2.5"
@@ -23,3 +23,19 @@ zbus = "5.19"
 gpui = { path = "../../../gpui-touch/crates/gpui" }
 gpui_platform = { path = "../../../gpui-touch/crates/gpui_platform", features = ["wayland"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+# A workspace of its own: Denial builds Settings from this repository and
+# gpui-touch alone, where the other apps' workspace also needs Phonewave.
+# What follows is that workspace's, kept the same as the repository root's.
+[workspace]
+
+# zed's workspace patches; GPUI needs them in every dependent workspace.
+[patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/zed-industries/async-task.git", rev = "015845a19fc31752c02367567d3b8900a406f9da" }
+calloop = { git = "https://github.com/zed-industries/calloop", rev = "3759371fee14c40066d64777e2a36b6ffcc22590" }
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

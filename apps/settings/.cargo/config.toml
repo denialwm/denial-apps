@@ -1,0 +1,3 @@
+[build]
+# The repository's one target directory, which the other apps build into.
+target-dir = "../../target"

@@ -1,8 +1,9 @@
 # Settings
 
-Settings for Denial phones, written with GPUI. It is drawn to Denial's
-mobile materials, Islands (denial/docs/MOBILE_APP_MATERIALS.md), as Messages
-and Calls are. Denial's desktop settings app is a separate program.
+Denial's Settings, on the desktop and the phones, written with GPUI. It is
+drawn to Denial's mobile materials, Islands
+(denial/docs/MOBILE_APP_MATERIALS.md), as Messages and Calls are. The same
+program is Welcome, the desktop's first-start tour.
 
 The home screen lists the pages in one island per group (Connections,
 Device, Personal, System), the group's name inside its island; the top group
@@ -351,12 +352,23 @@ On the host:
 cargo run --release
 ```
 
-For the phones, Phonewave's `denial-apps` recipe packages every app, built
-against the Arch Linux ARM sysroot; from the workspace root,
-`phonewave/tools/phone-install HOST denial-apps` installs them on one. The
-package puts the binary in `/usr/lib/denial-apps/`.
+This is a Cargo workspace of its own, with its own `Cargo.lock`: run Cargo
+from this directory. It writes to `target/` at the denial-apps root, as the
+other apps do.
 
-Both write to `target/` at the denial-apps root.
+Denial builds and packages it. `denial/settings/SOURCE_LOCK.json` names the
+commit of this repository and of gpui-touch that Denial builds, for every
+distribution and for the phones; the `denial` package installs the binary as
+`/usr/lib/denial-apps/settings`, with `/usr/bin/denial-settings` naming it.
+A change here reaches a release once it is pushed and that lock names its
+commit. To build what is on disk the way Denial does, without moving the
+lock:
+
+```sh
+DENIAL_SETTINGS_SOURCE_ROOT=/mnt/development/denial-os denial/tools/denial-settings build
+```
+
+`denial/settings/README.md` has the rest.
 
 ## Testing on a phone
 
