@@ -47,8 +47,8 @@ them on one. Output goes to `target/` here.
 Each app's launcher icon, `apps/<name>/org.denialwm.<Name>.png`, comes from
 the [Yaru](https://github.com/ubuntu/yaru) icon theme (commit `7f18973e`),
 whose icons are under
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). They keep
-that license, not the one below. Calls, Camera, Messages, Settings and
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). They retain
+that license. Calls, Camera, Messages, Settings and
 Sensors are Yaru's `calls-app`, `camera-app`, `messaging-app`, `settings-app`
 and `system-monitor-app` from `icons/src/fullcolor/default/apps/`. Each is the 256-unit drawing of its
 source sheet, with the viewBox cropped to the drawing so it fills its square
@@ -64,15 +64,10 @@ names it.
 
 ## License
 
-denial-apps is source-available, not open source. It uses the
-[Sustainable Use License](LICENSE.md), the license n8n uses:
-
-- Anyone may use and change it, including inside a company.
-- Non-commercial projects may ship it, free of charge.
-- Shipping it for a commercial purpose, such as on phones, in OS images or in
-  paid apps and services, needs a separate license:
-  doctor.logix@gmail.com.
-
-[Denial](https://github.com/denialwm/denial),
-[linux-perpetua](https://github.com/denialwm/linux-perpetua) and
-[Phonewave](https://github.com/denialwm/phonewave) are open source.
+The original denial-apps source code is licensed under
+[GPL-3.0-or-later](LICENSE.md), like Denial. Bundled third-party components
+retain their licenses and attribution notices. The Yaru icons are
+[CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt), as described above. The shared
+text input includes code adapted from Zed's GPUI example under
+[Apache 2.0](LICENSES/Apache-2.0.txt), with attribution in
+[libraries/denial-look-gpui/src/input.rs](libraries/denial-look-gpui/src/input.rs).

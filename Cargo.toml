@@ -3,7 +3,7 @@ resolver = "3"
 members = ["apps/*", "libraries/*"]
 
 [workspace.package]
-license-file = "LICENSE.md"
+license = "GPL-3.0-or-later"
 publish = false
 
 # zed's workspace patches; GPUI needs them in every dependent workspace.
