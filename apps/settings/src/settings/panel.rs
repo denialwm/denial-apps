@@ -11,13 +11,18 @@ use gpui::{Context, Div, SharedString, Window, prelude::*};
 
 use super::monitor::{percent, same};
 use super::{Dialog, Layer, Settings};
-use crate::denial::{self, Output};
+use crate::denial::{self, Appearance, Output};
 
 /// The slider's key while the finger holds it.
 const BRIGHTNESS: &str = "display.brightness";
 /// Seconds the idle screen may stay on; None for always.
 /// How much larger than the screen's scale apps are drawn.
 const APP_SIZES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+const APPEARANCES: [Appearance; 3] = [
+    Appearance::Dark,
+    Appearance::Light,
+    Appearance::NoPreference,
+];
 const SCREEN_OFF: [Option<u32>; 7] = [
     Some(30),
     Some(60),
@@ -45,31 +50,30 @@ impl Settings {
         };
         let live = layer.live();
         let mut parts = Vec::new();
-        if let Some(level) = display.brightness {
-            parts.push(island(&self.look).child(self.level_row(
-                BRIGHTNESS,
-                Some(Icon::Display),
-                "Brightness",
-                None,
-                level,
-                live,
-                (true, true),
-                cx,
-                Rc::new(|this, level, _, cx| this.set_brightness(level, cx)),
-            )));
+        let levels = self.display_level_parts(layer, cx);
+        if levels.is_empty() && let Some(row) = self.panel_brightness_row(live, cx) {
+            parts.push(island(&self.look).child(row));
         }
+        parts.extend(levels);
 
         parts.push(self.chip_row("Appearance"));
         parts.push(island(&self.look).child(self.options_row(
             "display.scheme",
-            "Appearance",
+            // The chip over the island names it.
+            "",
             None,
-            &["Dark", "Light"],
-            usize::from(!prefs.dark),
+            &["Dark", "Light", "No preference"],
+            APPEARANCES.iter().position(|&choice| choice == prefs.appearance).unwrap_or(0),
             live,
             (true, true),
             cx,
-            Rc::new(|this, option, _, cx| this.set_dark(option == 0, cx)),
+            Rc::new(|this, option, _, cx| {
+                this.change(
+                    "Appearance",
+                    move |document| denial::set_appearance(document, APPEARANCES[option]),
+                    cx,
+                );
+            }),
         )));
 
         parts.push(self.chip_row("Screen"));
@@ -117,6 +121,24 @@ impl Settings {
         parts
     }
 
+    pub(super) fn panel_brightness_row(
+        &self,
+        live: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::Stateful<Div>> {
+        Some(self.level_row(
+            BRIGHTNESS,
+            None,
+            "Brightness",
+            None,
+            self.denial.brightness?,
+            live,
+            (false, false),
+            cx,
+            Rc::new(|this, level, _, cx| this.set_brightness(level, cx)),
+        ))
+    }
+
     /// Reads the panel and its brightness again: on the Display page, every
     /// second, so the shade's slider shows here too.
     pub(super) async fn read_panel(link: denial::Link) -> Option<(Output, Option<f32>)> {
@@ -133,7 +155,7 @@ impl Settings {
         let (output, level) = panel.unzip();
         display.output = output;
         // The finger's level stands until it lets go.
-        if self.sliding != Some(BRIGHTNESS) {
+        if self.sliding != Some(BRIGHTNESS.into()) {
             display.brightness = level.flatten();
         }
         cx.notify();
@@ -169,16 +191,6 @@ impl Settings {
             }
         })
         .detach();
-    }
-
-    /// Switches Denial to the dark or light appearance; every app follows,
-    /// this one too.
-    fn set_dark(&mut self, dark: bool, cx: &mut Context<Self>) {
-        self.change(
-            "Appearance",
-            move |document| denial::set_dark(document, dark),
-            cx,
-        );
     }
 
     fn choose_screen_off(&mut self, cx: &mut Context<Self>) {
@@ -358,7 +370,7 @@ pub(super) fn hertz(millihertz: u32) -> SharedString {
     format!("{} Hz", (millihertz + 500) / 1000).into()
 }
 
-fn screen_off(seconds: Option<u32>) -> SharedString {
+pub(super) fn screen_off(seconds: Option<u32>) -> SharedString {
     match seconds {
         None => "Never".into(),
         Some(60) => "1 minute".into(),

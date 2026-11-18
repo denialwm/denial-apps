@@ -171,6 +171,32 @@ pub struct Device {
     pub address: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Connectivity {
+    #[default]
+    Disconnected,
+    Connecting,
+    Local,
+    Limited,
+    CaptivePortal,
+    Routable,
+    Online,
+}
+
+impl Connectivity {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Disconnected => "Not connected",
+            Self::Connecting => "Connecting…",
+            Self::Local => "Local network only",
+            Self::Limited => "Limited internet access",
+            Self::CaptivePortal => "Network sign-in required",
+            Self::Routable => "Connected to network",
+            Self::Online => "Internet access",
+        }
+    }
+}
+
 /// Everything about Wi-Fi at one moment.
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -182,6 +208,7 @@ pub struct State {
     /// Switched off where software cannot switch it on: rfkill.
     pub blocked: bool,
     pub scanning: bool,
+    pub connectivity: Connectivity,
     /// In range, saved ones first, then the strongest first; the current
     /// network is not among them.
     pub networks: Vec<Network>,
@@ -419,7 +446,22 @@ async fn follow_manager(updates: &Sender<Update>) -> zbus::Result<()> {
         .msg_type(zbus::message::Type::Signal)
         .sender(sender)?
         .build();
-    let mut signals = MessageStream::for_match_rule(rule, &bus, Some(256)).await?;
+    let signals = MessageStream::for_match_rule(rule, &bus, Some(256)).await?;
+    let mut signals = std::pin::pin!(signals);
+    let mut networkd_signals = if manager == Some(Manager::Iwd) {
+        let rule = MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender(iwd::NETWORKD)?
+            .interface("org.freedesktop.DBus.Properties")?
+            .member("PropertiesChanged")?
+            .arg(0, "org.freedesktop.network1.Link")?
+            .build();
+        MessageStream::for_match_rule(rule, &bus, Some(32))
+            .await
+            .ok()
+    } else {
+        None
+    };
     send(updates, Update::Link(Some(link.clone()))).await?;
     loop {
         let mut state = match &link {
@@ -431,16 +473,22 @@ async fn follow_manager(updates: &Sender<Update>) -> zbus::Result<()> {
         send(updates, Update::State(state)).await?;
         // The next change, or the manager changing hands.
         let changed = async { signals.next().await.is_some() }
+            .or(async {
+                match networkd_signals.as_mut() {
+                    Some(signals) => signals.next().await.is_some(),
+                    None => std::future::pending().await,
+                }
+            })
             .or(async { owners.next().await.map(|_| false).unwrap_or(false) })
             .await;
         if !changed {
             return Ok(());
         }
         async_io::Timer::after(SETTLE).await;
-        while futures_lite::future::poll_once(signals.next())
-            .await
-            .is_some()
-        {}
+        while let Some(Some(_)) = futures_lite::future::poll_once(signals.next()).await {}
+        if let Some(signals) = networkd_signals.as_mut() {
+            while let Some(Some(_)) = futures_lite::future::poll_once(signals.next()).await {}
+        }
     }
 }
 

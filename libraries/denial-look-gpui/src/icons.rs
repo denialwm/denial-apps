@@ -77,10 +77,20 @@ pub enum Icon {
     Wifi,
     WifiFair,
     WifiGood,
+    Minus,
+    Plus,
+    FitScreen,
     WifiWeak,
+    Code,
+    Device,
+    Key,
+    Layout,
+    Power,
+    Cup,
+    Heart,
 }
 
-const ALL: [Icon; 71] = [
+const ALL: [Icon; 81] = [
     Icon::Accessibility,
     Icon::Airplane,
     Icon::Alert,
@@ -151,7 +161,17 @@ const ALL: [Icon; 71] = [
     Icon::Wifi,
     Icon::WifiFair,
     Icon::WifiGood,
+    Icon::Minus,
+    Icon::Plus,
+    Icon::FitScreen,
     Icon::WifiWeak,
+    Icon::Code,
+    Icon::Device,
+    Icon::Key,
+    Icon::Layout,
+    Icon::Power,
+    Icon::Cup,
+    Icon::Heart,
 ];
 
 impl Icon {
@@ -227,7 +247,17 @@ impl Icon {
             Icon::Wifi => "wifi",
             Icon::WifiFair => "wifi-fair",
             Icon::WifiGood => "wifi-good",
+            Icon::Minus => "minus",
+            Icon::Plus => "plus",
+            Icon::FitScreen => "fit-screen",
             Icon::WifiWeak => "wifi-weak",
+            Icon::Code => "code",
+            Icon::Device => "device",
+            Icon::Key => "key",
+            Icon::Layout => "layout",
+            Icon::Power => "power",
+            Icon::Cup => "cup",
+            Icon::Heart => "heart",
         }
     }
 
@@ -386,8 +416,28 @@ impl Icon {
             Icon::WifiGood => {
                 r#"<path d="M12 19.5v.5 M8.5 16a5 5 0 017 0 M5.5 12.5a9.5 9.5 0 0113 0"/><path stroke-opacity=".3" d="M2.5 9a14 14 0 0119 0"/>"#
             }
+            Icon::Minus => r#"<path d="M5 12h14"/>"#,
+            Icon::Plus => r#"<path d="M5 12h14M12 5v14"/>"#,
+            Icon::FitScreen => {
+                r#"<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/>"#
+            }
             Icon::WifiWeak => {
                 r#"<path d="M12 19.5v.5"/><path stroke-opacity=".3" d="M8.5 16a5 5 0 017 0 M5.5 12.5a9.5 9.5 0 0113 0 M2.5 9a14 14 0 0119 0"/>"#
+            }
+            Icon::Code => r#"<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 5l-3 14"/>"#,
+            Icon::Device => {
+                r#"<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>"#
+            }
+            Icon::Key => r#"<circle cx="8" cy="16" r="4"/><path d="M11 13l8.5-8.5M16 8l2.5 2.5"/>"#,
+            Icon::Layout => {
+                r#"<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M10 9v11"/>"#
+            }
+            Icon::Power => r#"<path d="M12 3.5v8M7 6.5a8 8 0 1010 0"/>"#,
+            Icon::Cup => {
+                r#"<path d="M5 8h11v6a4 4 0 01-4 4H9a4 4 0 01-4-4z"/><path d="M16 9.5h1.5a2.5 2.5 0 010 5H16"/>"#
+            }
+            Icon::Heart => {
+                r#"<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0112 7a4.3 4.3 0 017.5 2.8C19.5 15.4 12 20 12 20z"/>"#
             }
         }
     }

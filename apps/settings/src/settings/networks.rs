@@ -91,9 +91,13 @@ impl Settings {
             "wifi-on",
             Some(Icon::Wifi),
             "Use Wi-Fi",
-            state
-                .blocked
-                .then(|| "Off by airplane mode or a hardware switch".into()),
+            Some(say(if state.blocked {
+                "Off by airplane mode or a hardware switch"
+            } else if !state.enabled {
+                "Wi-Fi is off"
+            } else {
+                state.connectivity.label()
+            })),
             (true, state.current.is_none() || !state.enabled),
         );
         let enabled = state.enabled;
@@ -247,7 +251,7 @@ impl Settings {
     pub(super) fn saved_networks(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
         let state = &self.wifi.state;
         if state.saved.is_empty() {
-            return vec![self.chip_row("No saved networks")];
+            return vec![self.notice_row("No saved networks")];
         }
         let live = layer.live();
         let mut saved: Vec<_> = state.saved.iter().collect();
@@ -331,7 +335,7 @@ impl Settings {
     ) -> Vec<Div> {
         let state = &self.wifi.state;
         let Some(saved) = state.saved(id) else {
-            return vec![self.chip_row("This network is no longer saved")];
+            return vec![self.notice_row("This network is no longer saved")];
         };
         let live = layer.live();
         let current = self.on_network(id);

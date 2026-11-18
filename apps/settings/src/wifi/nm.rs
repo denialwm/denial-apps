@@ -14,7 +14,8 @@ use zbus::zvariant::{DynamicType, ObjectPath, OwnedObjectPath, OwnedValue, Value
 use zbus::{Connection, MatchRule, MessageStream};
 
 use super::{
-    Address, Current, Device, Failure, Metered, Network, Phase, Saved, Security, State, strongest,
+    Address, Connectivity, Current, Device, Failure, Metered, Network, Phase, Saved, Security,
+    State, strongest,
 };
 use crate::props::{self, Objects, Props, get, owned, path};
 
@@ -38,6 +39,7 @@ mod device_state {
     pub const PREPARE: u32 = 40;
     pub const NEED_AUTH: u32 = 60;
     pub const IP_CONFIG: u32 = 70;
+    pub const SECONDARIES: u32 = 90;
     pub const ACTIVATED: u32 = 100;
     pub const FAILED: u32 = 120;
 }
@@ -147,6 +149,19 @@ impl Nm {
             }));
         }
         state.current = current(&objects, device, wireless, &state.saved);
+        let primary = path(manager, "PrimaryConnection");
+        let wifi_active = path(device, "ActiveConnection");
+        let global = (primary.is_some() && primary == wifi_active)
+            .then(|| get::<u32>(manager, "Connectivity"))
+            .flatten();
+        state.connectivity = connectivity(
+            get(device, "State").unwrap_or_default(),
+            [
+                get(device, "Ip4Connectivity"),
+                get(device, "Ip6Connectivity"),
+                global,
+            ],
+        );
         Ok(state)
     }
 
@@ -526,6 +541,17 @@ fn point_security(point: Option<&Props>) -> Security {
 }
 
 /// The network the device is on or joining, with its addresses.
+fn connectivity(state: u32, checks: [Option<u32>; 3]) -> Connectivity {
+    match state {
+        device_state::PREPARE..=device_state::SECONDARIES => Connectivity::Connecting,
+        device_state::ACTIVATED if checks.contains(&Some(4)) => Connectivity::Online,
+        device_state::ACTIVATED if checks.contains(&Some(2)) => Connectivity::CaptivePortal,
+        device_state::ACTIVATED if checks.contains(&Some(3)) => Connectivity::Limited,
+        device_state::ACTIVATED => Connectivity::Local,
+        _ => Connectivity::Disconnected,
+    }
+}
+
 fn current(
     objects: &Objects,
     device: Option<&Props>,
@@ -594,4 +620,37 @@ fn addresses(config: Option<&Props>) -> Vec<String> {
             Some(format!("{address}/{prefix}"))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod connectivity_tests {
+    use super::*;
+
+    #[test]
+    fn connectivity_checks_only_describe_an_activated_wifi_device() {
+        assert_eq!(
+            connectivity(device_state::IP_CONFIG, [Some(4), None, None]),
+            Connectivity::Connecting
+        );
+        assert_eq!(
+            connectivity(device_state::DISCONNECTED, [Some(4), None, None]),
+            Connectivity::Disconnected
+        );
+        assert_eq!(
+            connectivity(device_state::ACTIVATED, [Some(2), Some(3), None]),
+            Connectivity::CaptivePortal
+        );
+        assert_eq!(
+            connectivity(device_state::ACTIVATED, [None, Some(3), None]),
+            Connectivity::Limited
+        );
+        assert_eq!(
+            connectivity(device_state::ACTIVATED, [Some(2), Some(4), None]),
+            Connectivity::Online
+        );
+        assert_eq!(
+            connectivity(device_state::ACTIVATED, [None, None, None]),
+            Connectivity::Local
+        );
+    }
 }

@@ -13,10 +13,16 @@ use serde::de::DeserializeOwned;
 use zbus::Connection;
 use zbus::zvariant::{DynamicType, OwnedObjectPath, OwnedValue, Value};
 
-use super::{Current, Device, Failure, Network, Phase, Saved, Security, State, kernel, strongest};
+use super::{
+    Connectivity, Current, Device, Failure, Network, Phase, Saved, Security, State, kernel,
+    strongest,
+};
 use crate::props::{self, Objects, Props, get, path};
 
 const SERVICE: &str = "net.connman.iwd";
+pub(super) const NETWORKD: &str = "org.freedesktop.network1";
+const NETWORKD_MANAGER: &str = "org.freedesktop.network1.Manager";
+const NETWORKD_LINK: &str = "org.freedesktop.network1.Link";
 const ADAPTER: &str = "net.connman.iwd.Adapter";
 const DEVICE: &str = "net.connman.iwd.Device";
 const STATION: &str = "net.connman.iwd.Station";
@@ -90,6 +96,27 @@ impl Agent {
 
     fn cancel(&self, _reason: String) {
         self.password.lock().unwrap().take();
+    }
+}
+
+fn networkd_connectivity(status: Option<&Props>) -> Connectivity {
+    let administrative = get::<String>(status, "AdministrativeState");
+    let online = get::<String>(status, "OnlineState");
+    let operational = get::<String>(status, "OperationalState");
+    let address = get::<String>(status, "AddressState");
+    if administrative.as_deref() == Some("configuring") {
+        Connectivity::Connecting
+    } else if administrative.as_deref() == Some("failed") || online.as_deref() == Some("partial") {
+        Connectivity::Limited
+    } else if online.as_deref() == Some("online")
+        || operational.as_deref() == Some("routable")
+        || address.as_deref() == Some("routable")
+    {
+        Connectivity::Routable
+    } else if matches!(operational.as_deref(), Some("carrier" | "enslaved")) {
+        Connectivity::Connecting
+    } else {
+        Connectivity::Local
     }
 }
 
@@ -180,6 +207,20 @@ impl Iwd {
         if station.is_none() {
             return Ok(state);
         }
+        state.connectivity = match get::<String>(station, "State").as_deref() {
+            Some("connecting" | "disconnecting" | "roaming") => Connectivity::Connecting,
+            Some("connected") => {
+                let status = self
+                    .networkd_status(&interface)
+                    .or(async {
+                        async_io::Timer::after(Duration::from_secs(2)).await;
+                        None
+                    })
+                    .await;
+                networkd_connectivity(status.as_ref())
+            }
+            _ => Connectivity::Disconnected,
+        };
         // Strongest first, signal in hundredths of a dBm.
         let ordered: Vec<(OwnedObjectPath, i16)> = self
             .call(device_path, STATION, "GetOrderedNetworks", &())
@@ -212,6 +253,37 @@ impl Iwd {
             .await;
         state.networks = strongest(networks);
         Ok(state)
+    }
+
+    async fn networkd_status(&self, interface: &str) -> Option<Props> {
+        let proxy = zbus::fdo::DBusProxy::new(&self.bus).await.ok()?;
+        if !proxy.name_has_owner(NETWORKD.try_into().ok()?).await.ok()? {
+            return None;
+        }
+        let reply = self
+            .bus
+            .call_method(
+                Some(NETWORKD),
+                "/org/freedesktop/network1",
+                Some(NETWORKD_MANAGER),
+                "GetLinkByName",
+                &(interface,),
+            )
+            .await
+            .ok()?;
+        let (_, link): (i32, OwnedObjectPath) = reply.body().deserialize().ok()?;
+        let reply = self
+            .bus
+            .call_method(
+                Some(NETWORKD),
+                link.as_str(),
+                Some("org.freedesktop.DBus.Properties"),
+                "GetAll",
+                &(NETWORKD_LINK,),
+            )
+            .await
+            .ok()?;
+        reply.body().deserialize().ok()
     }
 
     async fn current(

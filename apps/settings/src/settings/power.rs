@@ -1,6 +1,5 @@
 //! The Battery page: the level and what the battery is doing, then how worn
-//! it is. Everything comes from UPower as a fresh `battery::State`; nothing
-//! here changes the phone.
+//! it is. UPower supplies the battery readings and charge-limit controls.
 
 use denial_look::words::{fill, tr};
 use std::time::Duration;
@@ -9,12 +8,12 @@ use denial_look_gpui::{Icon, island};
 use gpui::{Context, Div, SharedString, prelude::*};
 
 use super::{Layer, Settings};
-use crate::battery::{Battery, Charge};
+use crate::battery::{self, Battery, Charge};
 
 impl Settings {
     /// The Battery page's islands, top to bottom: the level, then the
     /// battery's details.
-    pub(super) fn battery_page(&self, _layer: Layer, _cx: &mut Context<Self>) -> Vec<Div> {
+    pub(super) fn battery_page(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
         let power = &self.power;
         if !power.read {
             return Vec::new();
@@ -27,6 +26,9 @@ impl Settings {
             )];
         };
         let Some(battery) = &state.battery else {
+            if !state.charge_limits.is_empty() {
+                return self.charge_limit_parts(layer, cx);
+            }
             return vec![self.missing(
                 Icon::Battery,
                 "No battery",
@@ -68,7 +70,93 @@ impl Settings {
                 }),
             );
         }
+        parts.extend(self.charge_limit_parts(layer, cx));
         parts
+    }
+
+    pub(super) fn charge_limit_parts(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
+        let Some(state) = self
+            .power
+            .state
+            .as_ref()
+            .filter(|state| !state.charge_limits.is_empty())
+        else {
+            return Vec::new();
+        };
+        let group = self.rows_island(state.charge_limits.iter(), 0., |limit, ends| {
+            let detail = match (limit.start, limit.end, limit.firmware_optimized) {
+                (Some(start), Some(end), _) => fill(
+                    "Resume charging below {start}% and stop at {end}%.",
+                    &[("start", &start.to_string()), ("end", &end.to_string())],
+                ),
+                (_, Some(end), _) => fill("Stop charging at {end}%.", &[("end", &end.to_string())]),
+                (Some(start), _, _) => fill(
+                    "Resume charging below {start}%.",
+                    &[("start", &start.to_string())],
+                ),
+                (_, _, true) => tr("Firmware chooses the charging pattern.").to_owned(),
+                _ => tr("Limit the full charge level to reduce battery wear.").to_owned(),
+            };
+            let title = if state.charge_limits.len() == 1 || limit.name.is_empty() {
+                tr("Limit battery charging").to_owned()
+            } else {
+                fill("Limit charging for {battery}", &[("battery", &limit.name)])
+            };
+            let row = self
+                .row(
+                    SharedString::from(format!("charge-limit:{}", limit.path)),
+                    Some(Icon::Battery),
+                    title,
+                    Some(detail.into()),
+                    ends,
+                )
+                .child(self.toggle(limit.enabled));
+            let path = limit.path.clone();
+            let enabled = !limit.enabled;
+            self.live(
+                row,
+                layer.live() && !self.power.changing_limits.contains(&path),
+                cx,
+                move |this, _, cx| this.set_charge_limit(path.clone(), enabled, cx),
+            )
+        });
+        vec![self.chip_row("Charging limits"), group]
+    }
+
+    fn set_charge_limit(
+        &mut self,
+        path: zbus::zvariant::OwnedObjectPath,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.power.changing_limits.insert(path.clone()) {
+            return;
+        }
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = battery::set_charge_limit(&path, enabled).await;
+            let _ = this.update(cx, |view, cx| {
+                view.power.changing_limits.remove(&path);
+                match result {
+                    Ok(()) => {
+                        if let Some(limit) = view.power.state.as_mut().and_then(|state| {
+                            state
+                                .charge_limits
+                                .iter_mut()
+                                .find(|limit| limit.path == path)
+                        }) {
+                            limit.enabled = enabled;
+                        }
+                        cx.notify();
+                    }
+                    Err(error) => {
+                        eprintln!("settings: setting charge limit: {error}");
+                        view.note("Could not change the battery charge limit", cx);
+                    }
+                }
+            });
+        })
+        .detach();
     }
 
     /// Battery's line under its title on the home screen.

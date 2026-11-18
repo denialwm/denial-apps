@@ -54,26 +54,74 @@ pub struct Battery {
     pub temperature: Option<f64>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ChargeLimit {
+    pub path: OwnedObjectPath,
+    pub name: String,
+    pub enabled: bool,
+    pub start: Option<u32>,
+    pub end: Option<u32>,
+    pub firmware_optimized: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct State {
     /// None on mains power only.
     pub battery: Option<Battery>,
     /// Whether a charger is connected.
     pub plugged: bool,
+    pub charge_limits: Vec<ChargeLimit>,
 }
 
 /// One UPower device's properties.
-struct Device(HashMap<String, OwnedValue>);
+struct Device {
+    path: OwnedObjectPath,
+    properties: HashMap<String, OwnedValue>,
+}
 
 impl Device {
     fn get<T: TryFrom<OwnedValue>>(&self, name: &str) -> Option<T> {
-        self.0
+        self.properties
             .get(name)
             .and_then(|value| value.try_clone().ok()?.try_into().ok())
     }
 
     fn number(&self, name: &str) -> f64 {
         self.get(name).unwrap_or(0.0)
+    }
+}
+
+impl Device {
+    fn charge_limit(&self) -> Option<ChargeLimit> {
+        if self.get::<u32>("Type") != Some(BATTERY)
+            || self.get("PowerSupply") != Some(true)
+            || self.get("IsPresent") == Some(false)
+            || self.get("ChargeThresholdSupported") != Some(true)
+        {
+            return None;
+        }
+        let settings = self
+            .get::<u32>("ChargeThresholdSettingsSupported")
+            .unwrap_or(0);
+        let threshold = |bit, key| {
+            (settings & bit != 0)
+                .then(|| self.get::<u32>(key))
+                .flatten()
+                .filter(|&percentage| percentage <= 100)
+        };
+        let name = self
+            .get::<String>("Model")
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| self.get("NativePath"))
+            .unwrap_or_default();
+        Some(ChargeLimit {
+            path: self.path.clone(),
+            name,
+            enabled: self.get("ChargeThresholdEnabled").unwrap_or(false),
+            start: threshold(1_u32, "ChargeStartThreshold"),
+            end: threshold(2_u32, "ChargeEndThreshold"),
+            firmware_optimized: settings & 4 != 0,
+        })
     }
 }
 
@@ -164,7 +212,10 @@ async fn read(bus: &Connection) -> zbus::Result<State> {
                 &(DEVICE,),
             )
             .await?;
-        devices.push(Device(reply.body().deserialize()?));
+        devices.push(Device {
+            path,
+            properties: reply.body().deserialize()?,
+        });
     }
     let plugged = devices.iter().any(|device| {
         device.get::<u32>("Type") == Some(LINE_POWER)
@@ -174,7 +225,21 @@ async fn read(bus: &Connection) -> zbus::Result<State> {
     Ok(State {
         battery: battery(&devices),
         plugged,
+        charge_limits: devices.iter().filter_map(Device::charge_limit).collect(),
     })
+}
+
+pub async fn set_charge_limit(path: &OwnedObjectPath, enabled: bool) -> zbus::Result<()> {
+    let bus = Connection::system().await?;
+    bus.call_method(
+        Some(NAME),
+        path,
+        Some(DEVICE),
+        "EnableChargeThreshold",
+        &(enabled,),
+    )
+    .await
+    .map(drop)
 }
 
 /// Follows UPower for as long as `updates` is heard: what it reports, or
@@ -249,4 +314,41 @@ fn reads_upower() {
         read(&Connection::system().await.unwrap()).await.unwrap()
     });
     println!("{state:#?}");
+}
+
+#[cfg(test)]
+#[test]
+fn charge_limits_only_use_supported_levels_on_present_system_batteries() {
+    let mut device = Device {
+        path: OwnedObjectPath::try_from("/org/freedesktop/UPower/devices/battery_BAT0").unwrap(),
+        properties: [
+            ("Type".to_owned(), OwnedValue::from(BATTERY)),
+            ("PowerSupply".to_owned(), OwnedValue::from(true)),
+            (
+                "ChargeThresholdSupported".to_owned(),
+                OwnedValue::from(true),
+            ),
+            ("ChargeThresholdEnabled".to_owned(), OwnedValue::from(true)),
+            (
+                "ChargeThresholdSettingsSupported".to_owned(),
+                OwnedValue::from(6_u32),
+            ),
+            ("ChargeStartThreshold".to_owned(), OwnedValue::from(50_u32)),
+            ("ChargeEndThreshold".to_owned(), OwnedValue::from(80_u32)),
+        ]
+        .into(),
+    };
+    let limit = device.charge_limit().unwrap();
+    assert!(limit.enabled);
+    assert_eq!(limit.start, None);
+    assert_eq!(limit.end, Some(80));
+    assert!(limit.firmware_optimized);
+    device
+        .properties
+        .insert("ChargeEndThreshold".into(), OwnedValue::from(u32::MAX));
+    assert_eq!(device.charge_limit().unwrap().end, None);
+    device
+        .properties
+        .insert("IsPresent".into(), OwnedValue::from(false));
+    assert!(device.charge_limit().is_none());
 }

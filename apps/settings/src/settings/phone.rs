@@ -1,17 +1,223 @@
+//! About Denial: the wordmark, the ways to support the project, and its
+//! credits.
+//!
 //! The About phone page: the phone's model and Denial's version at the top,
 //! then the phone's name and addresses, its storage, its hardware and its
 //! software. The name is the one nearby devices and Android see, renamed
 //! here or on the Bluetooth page; everything else is read, not set.
 
-use denial_look::words::{fill, tr};
-use denial_look_gpui::{Icon, control_fill, island, solid};
-use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px};
+use denial_look::INSET;
+use denial_look::words::{Language, fill, language, tr};
+use denial_look_gpui::{Icon, control_fill, icon, island, say, solid};
+use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, svg};
 
-use super::parts::ROW_PAD;
+use super::parts::{ROW_GAP, ROW_PAD, TILE};
 use super::{Layer, Settings};
 use crate::about;
 
+const WORDMARK_LETTERS: &[u8] = include_bytes!("../../assets/denial-wordmark-letters.svg");
+const WORDMARK_ACCENT: &[u8] = include_bytes!("../../assets/denial-wordmark-accent.svg");
+
+/// Where Denial is supported, as its website's support page has them.
+const SPONSOR_PAGE: &str = "https://sponsor.denialwm.org/en";
+const SPONSOR_PAGE_CHINESE: &str = "https://sponsor.denialwm.org/cn";
+const GITHUB_SPONSORS: &str = "https://github.com/sponsors/doctorlogix";
+const KO_FI: &str = "https://ko-fi.com/E5P523D5FN";
+const REPOSITORY: &str = "https://github.com/denialwm/denial";
+const ISSUES: &str = "https://github.com/denialwm/denial/issues";
+
+/// A row that opens a web page: its icon, what it is, what it does, and
+/// where it leads.
+type Link = (&'static str, Icon, &'static str, &'static str, &'static str);
+
+const SUPPORT: &[Link] = &[
+    (
+        "about-sponsor",
+        Icon::Heart,
+        "Support Denial",
+        "One-off support",
+        SPONSOR_PAGE,
+    ),
+    (
+        "about-github-sponsors",
+        Icon::Person,
+        "GitHub Sponsors",
+        "Monthly or one-time",
+        GITHUB_SPONSORS,
+    ),
+    (
+        "about-ko-fi",
+        Icon::Cup,
+        "Ko-fi",
+        "Monthly or one-time",
+        KO_FI,
+    ),
+];
+
+const HELP: &[Link] = &[
+    (
+        "about-star",
+        Icon::Star,
+        "Star Denial on GitHub",
+        "Most people find Denial that way",
+        REPOSITORY,
+    ),
+    (
+        "about-report",
+        Icon::Alert,
+        "Report what breaks",
+        "Test on your hardware and say what went wrong",
+        ISSUES,
+    ),
+];
+
+/// What Denial stands on: the work, and what it does here.
+const BUILT_ON: &[(&str, &str)] = &[
+    ("Flutter", "The shell and everything it draws"),
+    ("Smithay", "The compositor's Wayland building blocks"),
+    ("GPUI", "The native apps, this one among them"),
+    ("Yaru", "App icons, under CC BY-SA 4.0"),
+];
+
 impl Settings {
+    /// About Denial: the wordmark, how to support the project, and who
+    /// and what it comes from.
+    pub(super) fn about_denial_page(
+        &self,
+        width: f32,
+        layer: Layer,
+        cx: &mut Context<Self>,
+    ) -> Vec<Div> {
+        let live = layer.live();
+        let wordmark_width = (width - 2.0 * (INSET + ROW_PAD)).clamp(1.0, 420.0);
+        let wordmark_height = wordmark_width * 150.0 / 490.0;
+        let foreground = solid(self.look.palette.foreground);
+        let secondary = solid(self.look.palette.secondary);
+        let wordmark = div()
+            .id("denial-wordmark")
+            .role(gpui::Role::Image)
+            .aria_label("Denial")
+            .relative()
+            .w(px(wordmark_width))
+            .h(px(wordmark_height))
+            .child(
+                svg()
+                    .data(WORDMARK_LETTERS)
+                    .absolute()
+                    .inset_0()
+                    .text_color(foreground),
+            )
+            .child(
+                svg()
+                    .data(WORDMARK_ACCENT)
+                    .absolute()
+                    .inset_0()
+                    .text_color(solid(0x7150B8)),
+            );
+        let hero = island(&self.look)
+            .px(px(ROW_PAD))
+            .py(px(40.))
+            .flex()
+            .justify_center()
+            .child(wordmark);
+
+        let free = div()
+            .p(px(ROW_PAD))
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(say("Denial and Droidloom are free for everyone.")),
+            )
+            .child(div().text_size(px(14.)).text_color(secondary).child(say(
+                "Nothing is locked behind a sponsorship: no paywalls, no sponsor-only \
+                         builds, no waiting period. Sponsoring pays for the development time, \
+                         test devices and hosting behind them.",
+            )));
+        let support = SUPPORT.iter().enumerate().fold(
+            island(&self.look).child(free),
+            |island, (ix, link)| {
+                island.child(self.separator(0.)).child(self.link_row(
+                    link,
+                    (false, ix + 1 == SUPPORT.len()),
+                    live,
+                    cx,
+                ))
+            },
+        );
+        let help = self.rows_island(HELP.iter(), ROW_PAD + TILE + ROW_GAP, |link, ends| {
+            self.link_row(link, ends, live, cx)
+        });
+
+        let author = island(&self.look)
+            .px(px(ROW_PAD))
+            .py(px(24.))
+            .flex()
+            .flex_col()
+            .items_center()
+            .text_center()
+            .gap(px(6.))
+            .child(self.caption("Conceived, directed and tested by"))
+            .child(
+                div()
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("Doctor Logix"),
+            )
+            .child(
+                div()
+                    .max_w(px(440.))
+                    .text_size(px(14.))
+                    .text_color(secondary)
+                    .child(say(
+                        "Built in continuous collaboration with AI models, mostly Sol 6.1 and \
+                         Opus 5.5.",
+                    )),
+            );
+        let built_on = self.rows_island(BUILT_ON.iter(), 0., |(name, does), ends| {
+            self.row(*name, None, *name, None, ends)
+                .child(self.value(*does))
+        });
+
+        vec![
+            hero,
+            self.chip_row("Support"),
+            support,
+            self.chip_row("No money? It still helps"),
+            help,
+            self.chip_row("Credits"),
+            author,
+            self.chip_row("Built on"),
+            built_on,
+        ]
+    }
+
+    /// A row that opens `link`'s page in the browser.
+    fn link_row(
+        &self,
+        &(key, glyph, title, detail, url): &Link,
+        ends: (bool, bool),
+        live: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<Div> {
+        let row = self
+            .row(key, Some(glyph), title, Some(say(detail)), ends)
+            .child(icon(
+                Icon::Outgoing,
+                px(20.),
+                solid(self.look.palette.secondary),
+            ));
+        // The sponsor page has one address for each language.
+        self.live(row, live, cx, move |_, _, cx| {
+            cx.open_url(match (url, language()) {
+                (SPONSOR_PAGE, Language::Chinese) => SPONSOR_PAGE_CHINESE,
+                _ => url,
+            })
+        })
+    }
+
     /// Reads the phone's facts again, and Denial's version once.
     pub(super) fn read_about(&mut self, cx: &mut Context<Self>) {
         let link = self.denial.link.clone();

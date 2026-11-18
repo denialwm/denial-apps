@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use denial_look::words::{self, tr};
+use denial_look::words::tr;
 use denial_look_gpui::{Icon, icon, solid};
 use gpui::{
     Context, Div, Focusable, ObjectFit, SharedString, Stateful, StyledImage, Window, div, img,
@@ -138,23 +138,38 @@ impl Settings {
         }
     }
 
-    /// The language picked: Denial's, else the one the app shows.
     pub(super) fn language_picked(&self) -> usize {
         let kept = self.kept("localization.locale").and_then(Value::as_str);
-        match kept.and_then(|word| {
-            language::LANGUAGES
-                .iter()
-                .position(|language| language.denial == word)
-        }) {
-            Some(ix) => ix,
-            None => usize::from(words::language() == words::Language::Chinese),
-        }
+        language::LANGUAGES.iter().position(|language| Some(language.denial) == kept)
+            .map_or(0, |index| index + 1)
+    }
+
+    pub(super) fn use_system_language(&mut self, reset: bool, cx: &mut Context<Self>) {
+        self.change("Language", move |document| {
+            let current = denial::at(document, "localization.locale").as_str();
+            let previous = language::LANGUAGES.iter().find(|language| Some(language.denial) == current);
+            if let Some(variables) = document.get_mut("applicationEnvironment")
+                .and_then(|environment| environment.get_mut("default"))
+                .and_then(Value::as_object_mut)
+                && previous.is_some_and(|language| variables.get("LANG").and_then(Value::as_str) == Some(language.locale))
+            {
+                variables.remove("LANG");
+            }
+            denial::put(document, "localization.locale", json!("system"));
+            if reset {
+                denial::put(document, "localization.twentyFourHourClock", json!(true));
+            }
+        }, cx);
     }
 
     /// Changes the language of Denial, of the apps it starts and of the
     /// system. Settings changes with Denial's settings document.
     pub(super) fn set_language(&mut self, option: usize, cx: &mut Context<Self>) {
-        let Some(language) = language::LANGUAGES.get(option) else {
+        let Some(index) = option.checked_sub(1) else {
+            self.use_system_language(false, cx);
+            return;
+        };
+        let Some(language) = language::LANGUAGES.get(index) else {
             return;
         };
         let (word, locale) = (language.denial, language.locale);

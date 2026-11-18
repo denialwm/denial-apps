@@ -2,7 +2,7 @@
 name = "settings"
 version = "0.1.0"
 edition = "2024"
-license-file.workspace = true
+license.workspace = true
 publish.workspace = true
 
 [dependencies]
@@ -11,7 +11,7 @@ async-io = "2.6"
 denial-look = { path = "../../libraries/denial-look" }
 denial-look-gpui = { path = "../../libraries/denial-look-gpui" }
 futures-lite = "2.6"
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+image = { version = "0.25", default-features = false, features = ["ico", "jpeg", "png", "webp"] }
 libc = "0.2"
 log = "0.4"
 serde = "1"

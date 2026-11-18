@@ -226,7 +226,7 @@ impl Settings {
             .device(path)
             .filter(|device| device.paired)
         else {
-            return vec![self.chip_row("This device is no longer paired")];
+            return vec![self.notice_row("This device is no longer paired")];
         };
         let live = layer.live() && self.bluetooth.busy.is_none();
         let connect = {

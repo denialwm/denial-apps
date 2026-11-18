@@ -600,7 +600,7 @@ impl Settings {
         cx: &mut Context<Self>,
     ) -> Vec<Div> {
         let Some(app) = self.android_app(package) else {
-            return vec![self.chip_row("This app is no longer installed")];
+            return vec![self.notice_row("This app is no longer installed")];
         };
         let android = &self.android;
         let ready = android.stats.as_ref().is_some_and(|stats| stats.ready);

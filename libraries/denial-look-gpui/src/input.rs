@@ -60,14 +60,14 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("down", Down, context),
         KeyBinding::new("shift-left", SelectLeft, context),
         KeyBinding::new("shift-right", SelectRight, context),
-        KeyBinding::new("secondary-a", SelectAll, context),
-        KeyBinding::new("secondary-v", Paste, context),
-        KeyBinding::new("secondary-c", Copy, context),
-        KeyBinding::new("secondary-x", Cut, context),
+        KeyBinding::new(if cfg!(target_os = "macos") { "cmd-a" } else { "ctrl-a" }, SelectAll, context),
+        KeyBinding::new(if cfg!(target_os = "macos") { "cmd-v" } else { "ctrl-v" }, Paste, context),
+        KeyBinding::new(if cfg!(target_os = "macos") { "cmd-c" } else { "ctrl-c" }, Copy, context),
+        KeyBinding::new(if cfg!(target_os = "macos") { "cmd-x" } else { "ctrl-x" }, Cut, context),
         KeyBinding::new("home", Home, context),
         KeyBinding::new("end", End, context),
         KeyBinding::new("enter", Enter, context),
-        KeyBinding::new("secondary-enter", Submit, context),
+        KeyBinding::new(if cfg!(target_os = "macos") { "cmd-enter" } else { "ctrl-enter" }, Submit, context),
     ]);
 }
 
@@ -719,14 +719,6 @@ struct PrepaintState {
     layout: Option<Shaped>,
     cursor: Option<PaintQuad>,
     selection: Vec<PaintQuad>,
-}
-
-impl IntoElement for TextElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
 }
 
 impl Element for TextElement {

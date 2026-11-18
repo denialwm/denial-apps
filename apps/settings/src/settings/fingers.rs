@@ -284,7 +284,7 @@ impl Settings {
     }
 
     /// What the name dialog answers: adds a fingerprint called `name` in the
-    /// first free slot, or renames `finger`.
+    /// chosen slot, or renames `finger`.
     pub(super) fn name_finger(
         &mut self,
         finger: Option<String>,
@@ -302,11 +302,29 @@ impl Settings {
             }
             None => {
                 let enrolled = self.fingers.enrolled.clone().unwrap_or_default();
-                if let Some(slot) = SLOTS
+                let choices: Vec<_> = SLOTS
                     .iter()
-                    .find(|slot| !enrolled.iter().any(|each| each == *slot))
-                {
-                    self.add_finger(slot, name, cx);
+                    .copied()
+                    .filter(|slot| !enrolled.iter().any(|finger| finger == *slot))
+                    .collect();
+                if !choices.is_empty() {
+                    self.show(
+                        Dialog::Pick {
+                            title: "Choose a finger".into(),
+                            options: choices.iter().map(|slot| say(finger_label(slot))).collect(),
+                            picked: choices.len(),
+                            pick: Rc::new(move |this, index, _, cx| {
+                                if let Some(&slot) = choices.get(index)
+                                    && this.fingers.enrolled.as_ref().is_some_and(|fingers| {
+                                        !fingers.iter().any(|finger| finger == slot)
+                                    })
+                                {
+                                    this.add_finger(slot, name.clone(), cx);
+                                }
+                            }),
+                        },
+                        cx,
+                    );
                 }
             }
         }
@@ -395,5 +413,21 @@ impl Settings {
         }
         self.fingers.removing = Some(finger);
         cx.notify();
+    }
+}
+
+fn finger_label(slot: &str) -> &'static str {
+    match slot {
+        "left-thumb" => "Left thumb",
+        "left-index-finger" => "Left index finger",
+        "left-middle-finger" => "Left middle finger",
+        "left-ring-finger" => "Left ring finger",
+        "left-little-finger" => "Left little finger",
+        "right-thumb" => "Right thumb",
+        "right-index-finger" => "Right index finger",
+        "right-middle-finger" => "Right middle finger",
+        "right-ring-finger" => "Right ring finger",
+        "right-little-finger" => "Right little finger",
+        _ => "Fingerprint",
     }
 }

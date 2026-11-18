@@ -83,7 +83,13 @@ impl Settings {
                             .pt(px(12.))
                             .pb(px(8.)),
                     )
-                    .children(rows)
+                    .child(
+                        div()
+                            .id("pick-options")
+                            .max_h(px((self.window_pixels.1 as f32 / self.scale * 0.6).min(420.0)))
+                            .overflow_y_scroll()
+                            .children(rows),
+                    )
             }
             Dialog::Confirm {
                 title,
@@ -223,6 +229,25 @@ impl Settings {
                     .child(self.dialog_field(&self.password, true, cx))
                     .child(self.answers("Remove PIN", Fill::Accent, ready && !self.lock.busy, cx))
             }
+            Dialog::ProfilePhoto { image } => self.form(island)
+                .child(self.dialog_title("Preview profile photo"))
+                .child(gpui::img(image.clone()).size(px(112.)).rounded_full())
+                .child(self.answers("Save", Fill::Accent, true, cx)),
+            Dialog::TextEdit { title, detail, valid, .. } => self.form(island)
+                .child(self.dialog_title(*title))
+                .child(self.said(*detail, false))
+                .child(self.dialog_field(&self.output_field, false, cx))
+                .child(self.answers("Save", Fill::Accent, valid(self.output_field.read(cx).text()), cx)),
+            Dialog::OutputPosition { name } => self.form(island)
+                .child(self.dialog_title("Display position"))
+                .child(self.said("Enter X and Y, separated by a comma.", false))
+                .child(self.dialog_field(&self.output_field, false, cx))
+                .child(self.answers("Set", Fill::Accent, self.output_position(name, cx).is_some(), cx)),
+            Dialog::OutputScale { .. } => self.form(island)
+                .child(self.dialog_title("Custom scale"))
+                .child(self.said("Enter a percentage from 25 to 800.", false))
+                .child(self.dialog_field(&self.output_field, false, cx))
+                .child(self.answers("Set", Fill::Accent, self.custom_output_scale(cx).is_some(), cx)),
             Dialog::Rename => {
                 let named = !self.name_field.read(cx).text().trim().is_empty();
                 self.form(island)
@@ -427,6 +452,19 @@ impl Settings {
         };
         let password = self.password.read(cx).text().to_owned();
         match dialog {
+            Dialog::ProfilePhoto { image } => {
+                self.dismiss(window, cx);
+                self.save_profile(super::profile::Edit::Photo(image), cx);
+            }
+            Dialog::TextEdit { valid, save, .. } => {
+                let text = self.output_field.read(cx).text().to_owned();
+                if valid(&text) {
+                    self.dismiss(window, cx);
+                    save(self, text, cx);
+                }
+            }
+            Dialog::OutputPosition { name } => self.set_output_position(&name, window, cx),
+            Dialog::OutputScale { name } => self.set_custom_output_scale(&name, window, cx),
             Dialog::Pick { .. } => {}
             Dialog::Confirm { confirm, .. } => {
                 self.dismiss(window, cx);

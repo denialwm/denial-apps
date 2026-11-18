@@ -8,29 +8,37 @@ use denial_look::mobile::TOUCH;
 use denial_look::nested_radius;
 use denial_look_gpui::{Icon, control_fill, control_radius, icon, island, say, solid};
 use gpui::{
-    Context, DispatchPhase, Div, FontWeight, HitboxBehavior, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, TouchDragEvent, TouchPhase,
+    Context, DispatchPhase, Div, ElementId, FontWeight, HitboxBehavior, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Stateful, TouchDragEvent, TouchPhase, Transformation,
     canvas, div, prelude::*, px, relative,
 };
 
-use super::parts::{ROW_GAP, ROW_PAD, TILE};
+use super::parts::{CARD_INSET, ROW_GAP, ROW_PAD, TILE};
 use super::{Layer, OnPick, Settings};
 use crate::catalog::{Item, Kind, Section};
 
 /// A setting that cannot be changed is drawn at this opacity.
 pub(super) const FAINT: f32 = 0.5;
 
+/// Around and between the options of a segmented choice.
+const SEGMENT_GAP: f32 = 3.0;
+
 /// What a slider does with each new level, and whether the finger has let
 /// go.
 pub(super) type OnSlide = Rc<dyn Fn(&mut Settings, f32, bool, &mut Context<Settings>)>;
 
-/// A slider's knob; the track runs between its centre's ends.
-const KNOB: f32 = 24.0;
-const TRACK: f32 = 6.0;
+/// A slider's bar, as the shell's sliders are: filled in the accent up to
+/// its handle, a thin line that stays `HANDLE_PAD` inside the bar's ends.
+const BAR: f32 = 26.0;
+const HANDLE: f32 = 3.0;
+const HANDLE_PAD: f32 = 6.0;
+/// Between the fill's end and the handle.
+const HANDLE_GAP: f32 = 2.0;
 
 impl Settings {
     /// The page's islands, top to bottom: each section's chip, then its
-    /// island.
+    /// island. Sections under a disclosure are one card: its row, and once
+    /// opened, each section as a panel inside the card under it.
     pub(super) fn page(
         &self,
         sections: &'static [Section],
@@ -38,18 +46,79 @@ impl Settings {
         cx: &mut Context<Self>,
     ) -> Vec<Div> {
         let mut parts = Vec::new();
-        for section in sections {
-            if let Some(title) = section.title {
-                parts.push(self.chip_row(title));
+        for group in sections.chunk_by(|a, b| a.disclosure == b.disclosure) {
+            let visible = group.iter().filter(|section| {
+                section.pending.is_some() || section.items.iter().any(|item| self.applies(item))
+            });
+            let disclosure = group[0].disclosure;
+            if let Some(title) = disclosure {
+                if visible.clone().next().is_none() {
+                    continue;
+                }
+                let expanded = self.expanded_sections.contains(title);
+                let chevron = self.chevron().when(expanded, |icon| {
+                    icon.with_transformation(Transformation::rotate(gpui::Radians(
+                        std::f32::consts::FRAC_PI_2,
+                    )))
+                });
+                let header = self
+                    .row(title, None, title, None, (true, !expanded))
+                    .role(gpui::Role::Button)
+                    .aria_expanded(expanded)
+                    .child(chevron);
+                let header = self.live(header, layer.live(), cx, move |this, _, cx| {
+                    if !this.expanded_sections.remove(title) {
+                        this.expanded_sections.insert(title);
+                    }
+                    cx.notify();
+                });
+                let card = island(&self.look).child(header);
+                if !expanded {
+                    parts.push(card);
+                    continue;
+                }
+                let mut opened = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(CARD_INSET))
+                    .px(px(CARD_INSET))
+                    .pb(px(CARD_INSET));
+                self.nested.set(true);
+                for section in visible {
+                    if let Some(named) = section.title
+                        && named != title
+                    {
+                        opened = opened.child(self.caption(named).px(px(CARD_INSET)).pt(px(4.)));
+                    }
+                    if section.title == Some("Lock screen") && title == "Lock screen" {
+                        opened = opened.child(self.lock_screen_preview());
+                    }
+                    opened = opened.child(self.section_in(self.panel(), section, layer, cx));
+                }
+                self.nested.set(false);
+                parts.push(card.child(self.appearing((title, 0usize), opened)));
+                continue;
             }
-            parts.push(self.section(section, layer, cx));
+            for section in visible {
+                if let Some(title) = section.title {
+                    parts.push(self.chip_row(title));
+                }
+                parts.push(self.section_in(island(&self.look), section, layer, cx));
+            }
         }
         parts
     }
 
-    fn section(&self, section: &'static Section, layer: Layer, cx: &mut Context<Self>) -> Div {
+    /// `section`'s rows in `holder`: an island, or a panel inside a card.
+    fn section_in(
+        &self,
+        holder: Div,
+        section: &'static Section,
+        layer: Layer,
+        cx: &mut Context<Self>,
+    ) -> Div {
         if let Some(said) = section.pending {
-            return island(&self.look).child(
+            return holder.child(
                 self.frame(
                     section.items.first().map_or("pending", |item| item.key),
                     (true, true),
@@ -74,17 +143,17 @@ impl Settings {
         items
             .into_iter()
             .enumerate()
-            .fold(island(&self.look), |island, (ix, item)| {
-                island
-                    .when(ix > 0, |island| island.child(self.separator(0.)))
+            .fold(holder, |holder, (ix, item)| {
+                holder
+                    .when(ix > 0, |holder| holder.child(self.separator(0.)))
                     .child(self.setting(item, ix == 0, ix + 1 == count, layer, cx))
             })
     }
 
     /// A setting row's frame, rounded as its island is when first or last,
     /// so its press fills the island's corner.
-    fn frame(&self, key: &'static str, (first, last): (bool, bool)) -> Stateful<Div> {
-        let radius = px(self.look.group_radius());
+    fn frame(&self, key: impl Into<ElementId>, (first, last): (bool, bool)) -> Stateful<Div> {
+        let radius = self.row_radius();
         div()
             .id(key)
             .px(px(ROW_PAD))
@@ -139,9 +208,9 @@ impl Settings {
     #[expect(clippy::too_many_arguments)]
     pub(super) fn slider_row(
         &self,
-        key: &'static str,
+        key: impl Into<ElementId>,
         glyph: Option<Icon>,
-        title: &'static str,
+        title: impl Into<SharedString>,
         detail: Option<SharedString>,
         shown: SharedString,
         level: f32,
@@ -150,7 +219,8 @@ impl Settings {
         cx: &mut Context<Self>,
         slide: OnSlide,
     ) -> Stateful<Div> {
-        self.frame(key, ends)
+        let key = key.into();
+        self.frame(key.clone(), ends)
             .flex()
             .flex_col()
             .gap(px(4.))
@@ -166,7 +236,8 @@ impl Settings {
     }
 
     /// A row with a few short options side by side under its title. `pick`
-    /// takes the option tapped.
+    /// takes the option tapped. Without a title or detail the options are
+    /// all of it: for an island whose chip already names them.
     #[expect(clippy::too_many_arguments)]
     pub(super) fn options_row(
         &self,
@@ -184,7 +255,10 @@ impl Settings {
             .flex()
             .flex_col()
             .gap(px(10.))
-            .child(self.line(None, title.into(), detail))
+            .children(
+                (!title.is_empty() || detail.is_some())
+                    .then(|| self.line(None, title.into(), detail)),
+            )
             .child(self.segmented(options, picked, live, cx, pick))
     }
 
@@ -212,19 +286,22 @@ impl Settings {
                     row.child(line(item.title.into(), detail).child(self.toggle(self.on(item))));
                 self.live(row, live, cx, move |this, _, cx| this.flip(item, cx))
             }
-            Kind::Slider(_) => self
-                .level_row(
+            Kind::Slider(_) => {
+                let level = self.level(item);
+                self.slider_row(
                     item.key,
                     item.icon,
                     item.title,
                     detail,
-                    self.level(item),
+                    self.level_label(item, level),
+                    level,
                     live,
                     (first, last),
                     cx,
                     Rc::new(move |this, level, done, cx| this.slide(item, level, done, cx)),
                 )
-                .when(!changes, |row| row.opacity(FAINT)),
+                .when(!changes, |row| row.opacity(FAINT))
+            }
             Kind::Segmented(options, _) => self
                 .options_row(
                     item.key,
@@ -276,37 +353,51 @@ impl Settings {
         }
     }
 
-    /// A slider across the row: a faint track, the accent up to the level,
-    /// and the knob. A touch on it claims the drag, so the page does not
-    /// scroll under the finger.
+    /// A slider across the row: a bar in the control fill, the accent up
+    /// to the level, and the handle at its end. A touch on it claims the
+    /// drag, so the page does not scroll under the finger.
     fn slider(
         &self,
-        key: &'static str,
+        key: ElementId,
         level: f32,
         live: bool,
         cx: &mut Context<Self>,
         slide: OnSlide,
     ) -> Div {
+        let level = level.clamp(0.0, 1.0);
+        let radius = control_radius(&self.look);
+        let top = px((TOUCH - BAR) / 2.);
+        let bar = div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .top(top)
+            .h(px(BAR))
+            .rounded(radius)
+            .bg(control_fill(&self.look));
+        // Where the handle's centre goes: the bar less `HANDLE_PAD` at each
+        // end. The fill reaches from the bar's start to just before it.
         let travel = div()
             .absolute()
-            .top_0()
-            .bottom_0()
-            .left(px(KNOB / 2.))
-            .right(px(KNOB / 2.))
+            .top(top)
+            .h(px(BAR))
+            .left(px(HANDLE_PAD))
+            .right(px(HANDLE_PAD))
             .child(
                 div()
                     .absolute()
+                    .top_0()
+                    .bottom_0()
                     .left_0()
-                    .right_0()
-                    .top(px((TOUCH - TRACK) / 2.))
-                    .h(px(TRACK))
-                    .rounded_full()
-                    .bg(control_fill(&self.look))
+                    .w(relative(level))
                     .child(
                         div()
-                            .h_full()
-                            .w(relative(level))
-                            .rounded_full()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(-px(HANDLE_PAD))
+                            .right(px(HANDLE / 2. + HANDLE_GAP))
+                            .rounded_l(radius)
                             .bg(solid(self.look.accent)),
                     ),
             )
@@ -314,13 +405,14 @@ impl Settings {
                 div()
                     .absolute()
                     .left(relative(level))
-                    .ml(-px(KNOB / 2.))
-                    .top(px((TOUCH - KNOB) / 2.))
-                    .size(px(KNOB))
+                    .ml(-px(HANDLE / 2.))
+                    .top(px(4.))
+                    .bottom(px(4.))
+                    .w(px(HANDLE))
                     .rounded_full()
-                    .bg(solid(self.look.accent)),
+                    .bg(solid(self.look.palette.foreground)),
             );
-        let slider = div().relative().h(px(TOUCH)).child(travel);
+        let slider = div().relative().h(px(TOUCH)).child(bar).child(travel);
         if !live {
             return slider;
         }
@@ -329,13 +421,14 @@ impl Settings {
             canvas(
                 |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
                 move |bounds, hitbox, window, _| {
-                    let pad = px(KNOB / 2.);
+                    let pad = px(HANDLE_PAD);
                     let level_at =
                         move |x: Pixels| (x - bounds.left() - pad) / (bounds.size.width - pad * 2.);
                     let touch_view = view.clone();
                     let touch_hitbox = hitbox.clone();
                     let (touch_slide, down_slide, move_slide) =
                         (slide.clone(), slide.clone(), slide.clone());
+                    let touch_key = key.clone();
                     window.on_mouse_event(move |event: &TouchDragEvent, phase, window, cx| {
                         if phase != DispatchPhase::Bubble {
                             return;
@@ -347,8 +440,8 @@ impl Settings {
                         let done = matches!(event.phase, TouchPhase::Ended | TouchPhase::Cancelled);
                         let taken = touch_view.update(cx, |this, cx| {
                             if started {
-                                this.sliding = Some(key);
-                            } else if this.sliding != Some(key) {
+                                this.sliding = Some(touch_key.clone());
+                            } else if this.sliding.as_ref() != Some(&touch_key) {
                                 return false;
                             }
                             if done {
@@ -364,31 +457,34 @@ impl Settings {
                         }
                     });
                     let down_view = view.clone();
+                    let down_key = key.clone();
                     window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                         if phase.bubble()
                             && event.button == MouseButton::Left
                             && hitbox.is_hovered(window)
                         {
                             let _ = down_view.update(cx, |this, cx| {
-                                this.sliding = Some(key);
+                                this.sliding = Some(down_key.clone());
                                 down_slide(this, level_at(event.position.x), false, cx);
                             });
                         }
                     });
                     let move_view = view.clone();
+                    let move_key = key.clone();
                     window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
                         if phase.bubble() && event.pressed_button == Some(MouseButton::Left) {
                             let _ = move_view.update(cx, |this, cx| {
-                                if this.sliding == Some(key) {
+                                if this.sliding.as_ref() == Some(&move_key) {
                                     move_slide(this, level_at(event.position.x), false, cx);
                                 }
                             });
                         }
                     });
+                    let up_key = key.clone();
                     window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
                         if phase.bubble() && event.button == MouseButton::Left {
                             let _ = view.update(cx, |this, cx| {
-                                if this.sliding == Some(key) {
+                                if this.sliding.as_ref() == Some(&up_key) {
                                     this.sliding = None;
                                     slide(this, level_at(event.position.x), true, cx);
                                 }
@@ -412,6 +508,36 @@ impl Settings {
         pick: OnPick,
     ) -> Div {
         let radius = px(nested_radius(control_radius(&self.look).as_f32(), 3.0));
+        let count = options.len().max(1) as f32;
+        let accent = solid(self.look.accent);
+        // The accent under the picked option; it slides when another is
+        // picked. Its box is an option and the gap after it wide.
+        let marker = (picked < options.len()).then(|| {
+            div()
+                .absolute()
+                .top(px(SEGMENT_GAP))
+                .bottom(px(SEGMENT_GAP))
+                .left(px(SEGMENT_GAP))
+                .right_0()
+                .child(self.sprung("picked", picked as f32, move |at| {
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .left(relative(at.clamp(0.0, count - 1.0) / count))
+                        .w(relative(1.0 / count))
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .left_0()
+                                .right(px(SEGMENT_GAP))
+                                .rounded(radius)
+                                .bg(accent),
+                        )
+                }))
+        });
         let segments = options.iter().enumerate().map(|(ix, option)| {
             let segment = div()
                 .id(ix)
@@ -426,9 +552,7 @@ impl Settings {
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(say(*option));
             if ix == picked {
-                segment
-                    .bg(solid(self.look.accent))
-                    .text_color(solid(self.look.on_accent))
+                segment.text_color(solid(self.look.on_accent))
             } else if live {
                 let pick = pick.clone();
                 self.tappable(segment, cx, move |this, window, cx| {
@@ -439,11 +563,13 @@ impl Settings {
             }
         });
         div()
+            .relative()
             .flex()
-            .p(px(3.))
-            .gap(px(3.))
+            .p(px(SEGMENT_GAP))
+            .gap(px(SEGMENT_GAP))
             .rounded(control_radius(&self.look))
             .bg(control_fill(&self.look))
+            .children(marker)
             .children(segments)
     }
 }

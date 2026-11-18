@@ -22,7 +22,7 @@ use gpui::{
 };
 
 use super::parts::{Fill, ICON};
-use super::{Layer, Settings};
+use super::{Layer, Screen, Settings};
 use crate::wallhaven::{self, Found};
 use crate::wallpaper::{self, Choice, MAX_ZOOM, Placement};
 
@@ -106,9 +106,40 @@ impl Settings {
         let shown = &self.wallpapers;
         let live = layer.live();
         let mut parts = Vec::new();
-        if shown.current.is_some() {
-            parts.push(self.chip_row("Placement"));
-            parts.push(self.placement_island(live, cx));
+        if self.screen == Screen::Wallpapers {
+            parts.push(self.segmented(
+                &["Desktop", "Lock screen"],
+                usize::from(shown.lock_screen),
+                live && shown.online.downloading.is_none(),
+                cx,
+                Rc::new(|this, option, _, cx| this.pick_wallpaper_target(option == 1, cx)),
+            ));
+        }
+        if shown.lock_screen {
+            parts.push(self.lock_wallpaper_island(width, live, cx));
+        } else {
+            let status = match shown.status.as_deref() {
+                None => "Wallpaper status unavailable".into(),
+                Some([]) => "Saved wallpaper".into(),
+                Some(apps) => {
+                    let names = apps.iter().filter(|app| !app.is_empty()).cloned().collect::<Vec<_>>();
+                    if names.is_empty() {
+                        "Live / app-managed wallpaper active".into()
+                    } else {
+                        fill("Live / app-managed wallpaper: {apps}", &[("apps", &names.join(", "))])
+                    }
+                }
+            };
+            parts.push(self.notice_row(status));
+            if shown.current.is_some() {
+                let label = if shown.status.as_ref().is_some_and(|apps| !apps.is_empty()) {
+                    "Fallback wallpaper placement"
+                } else {
+                    "Placement"
+                };
+                parts.push(self.chip_row(label));
+                parts.push(self.placement_island(width, live, cx));
+            }
         }
         let tabs = self.segmented(
             &["Local", "Wallhaven"],
@@ -192,7 +223,7 @@ impl Settings {
                 picked,
                 width,
             );
-            if live && !picked {
+            if live && (!picked || shown.lock_screen) {
                 let choice = choice.clone();
                 self.tappable(tile, cx, move |this, _, cx| this.set_wallpaper(&choice, cx))
             } else {
@@ -223,17 +254,16 @@ impl Settings {
             )
     }
 
-    /// The shown wallpaper in a small screen, placed as the sliders under
-    /// it say, and Reset.
-    fn placement_island(&self, live: bool, cx: &mut Context<Self>) -> Div {
+    fn wallpaper_preview(&self, available: f32) -> Div {
         let shown = &self.wallpapers;
         let placement = shown.placement;
         let (screen_w, screen_h) = match self.wallpaper_screen() {
             (w, h) if w > 0 && h > 0 => (w as f32, h as f32),
             _ => (270.0, 585.0),
         };
-        let width = PREVIEW_WIDTH;
-        let height = width * screen_h / screen_w;
+        let aspect = screen_w / screen_h;
+        let width = available.min(if available > PREVIEW_WIDTH { 260.0 * aspect } else { available });
+        let height = width / aspect;
         let radius = px((self.look.group_radius() - PAD).max(6.0));
         let picture = shown
             .preview
@@ -249,7 +279,7 @@ impl Settings {
                     .h(px(h))
                     .object_fit(ObjectFit::Fill)
             });
-        let preview = div().flex().justify_center().py(px(PAD)).child(
+        div().flex().justify_center().py(px(PAD)).child(
             div()
                 .relative()
                 .w(px(width))
@@ -258,7 +288,64 @@ impl Settings {
                 .overflow_hidden()
                 .bg(denial_look_gpui::control_fill(&self.look))
                 .children(picture),
+        )
+    }
+
+    pub(super) fn lock_screen_preview(&self) -> Div {
+        let custom = self.kept("lockScreen.wallpaper")
+            .and_then(serde_json::Value::as_str).filter(|value| !value.is_empty());
+        let wallpaper = custom.or(self.wallpapers.current.as_deref()).unwrap_or(wallpaper::DENIAL);
+        let picture = if wallpaper == wallpaper::DENIAL {
+            wallpaper::denial_file()
+        } else {
+            wallpaper.strip_prefix("file:").map(PathBuf::from)
+        };
+        let value = |key, default: f64| self.kept(key).and_then(serde_json::Value::as_f64).unwrap_or(default) as f32;
+        let dim = value("lockScreen.dimAmount", 0.24).clamp(0.0, 0.85);
+        let blur = value("lockScreen.blurRadius", 8.0).clamp(0.0, 32.0);
+        let scale = value("lockScreen.clockScale", 1.0).clamp(0.65, 1.4);
+        let status = self.kept("lockScreen.showSystemStatus").and_then(serde_json::Value::as_bool).unwrap_or(true);
+        let military = self.kept("localization.twentyFourHourClock").and_then(serde_json::Value::as_bool).unwrap_or(true);
+        island(&self.look).child(div()
+            .id("lock-preview")
+            .role(gpui::Role::Image)
+            .aria_label("Lock screen preview")
+            .relative()
+            .w_full()
+            .h(px(160.))
+            .rounded(px(self.look.group_radius()))
+            .overflow_hidden()
+            .bg(solid(self.look.palette.raised))
+            .children(picture.map(|file| img(file).absolute().inset_0().object_fit(ObjectFit::Cover)))
+            .child(div().absolute().inset_0().backdrop_blur(px(blur / 2.0)).bg(denial_look_gpui::color(0, dim)))
+            .child(div().relative().p(px(18.)).text_color(solid(0xFFFFFF)).flex().flex_col().gap(px(5.))
+                .child(div().text_size(px(44. * scale)).child(if military { "09:41" } else { "9:41 AM" }))
+                .child(say("Monday, October 26"))
+                .when(status, |clock| clock.child(div().text_size(px(11.)).child(say("Wi-Fi · 80%"))))))
+    }
+
+    fn lock_wallpaper_island(&self, width: f32, live: bool, cx: &mut Context<Self>) -> Div {
+        let custom = self.kept("lockScreen.wallpaper").and_then(serde_json::Value::as_str).is_some_and(|value| !value.is_empty());
+        let button = self.button(
+            "use-desktop-wallpaper",
+            if custom { "Use desktop wallpaper" } else { "Using desktop wallpaper" },
+            Fill::Control,
+            live && self.denial.document.is_some() && custom,
+            cx,
+            |this, _, cx| this.set_lock_wallpaper(None, cx),
         );
+        island(&self.look)
+            .child(self.wallpaper_preview(if width >= 600.0 { 360.0 } else { PREVIEW_WIDTH }))
+            .child(div().p(px(PAD)).child(self.buttons([button])))
+    }
+
+    /// The desktop wallpaper and its placement controls share a row when
+    /// the detail pane can fit the preview beside the controls.
+    fn placement_island(&self, width: f32, live: bool, cx: &mut Context<Self>) -> Div {
+        let placement = self.wallpapers.placement;
+        let wide = width >= 600.0;
+        let preview_width = if wide { (width * 0.43).min(420.0) } else { PREVIEW_WIDTH };
+        let preview = self.wallpaper_preview(preview_width);
         let along = |at: f32| format!("{:.0}%", (at + 1.0) * 50.0);
         let slide = |set: fn(&mut Placement, f32)| -> super::page::OnSlide {
             Rc::new(
@@ -318,8 +405,10 @@ impl Settings {
                 this.place_wallpaper(cx);
             },
         );
-        island(&self.look)
-            .child(preview)
+        let controls = div()
+            .flex_1()
+            .min_w_0()
+            .when(wide, |controls| controls.max_w(px(470.0)))
             .child(zoom)
             .child(across)
             .child(down)
@@ -328,7 +417,13 @@ impl Settings {
                     .px(px(super::parts::ROW_PAD))
                     .pb(px(super::parts::ROW_PAD))
                     .child(self.buttons([reset])),
-            )
+            );
+        island(&self.look)
+            .when(wide, |panel| {
+                panel.flex().flex_row().items_center().justify_center().p(px(PAD))
+            })
+            .child(preview)
+            .child(controls)
     }
 
     /// Writes the placement the sliders have into the shell's file.
@@ -490,7 +585,7 @@ impl Settings {
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .child(format!("{:.0}%", share * 100.0))
                     }));
-                if live && !picked && online.downloading.is_none() {
+                if live && (!picked || self.wallpapers.lock_screen) && online.downloading.is_none() {
                     let found = found.clone();
                     self.tappable(tile, cx, move |this, window, cx| {
                         this.pick_wallhaven(found.clone(), window, cx)
@@ -557,7 +652,9 @@ impl Settings {
     /// is asked afresh when it changes, for that screen's size.
     pub(super) fn read_wallpapers(&mut self, output: Option<String>, cx: &mut Context<Self>) {
         let moved = self.wallpapers.output != output;
-        self.wallpapers.current = wallpaper::current(output.as_deref());
+        self.wallpapers.lock_screen = false;
+        self.wallpapers.current = wallpaper::current(output.as_deref())
+            .or_else(|| Some(wallpaper::DENIAL.to_owned()));
         self.wallpapers.placement = wallpaper::placement(output.as_deref());
         self.wallpapers.output = output;
         self.ask_wallhaven(moved, cx);
@@ -600,6 +697,69 @@ impl Settings {
             }
             let _ = this.update(cx, |view, _| view.wallpapers.reading = None);
         }));
+    }
+
+    pub(super) fn follow_wallpaper_status(&mut self, cx: &mut Context<Self>) {
+        self.wallpapers.status = None;
+        self.wallpapers.status_task = None;
+        if !matches!(self.screen, Screen::Wallpapers | Screen::MonitorWallpapers) {
+            return;
+        }
+        let output = if self.screen == Screen::MonitorWallpapers {
+            self.monitor.as_ref().map(|monitor| monitor.name.clone())
+        } else {
+            None
+        };
+        let link = self.denial.link.clone();
+        self.wallpapers.status_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                let status = link.wallpaper_status(output.as_deref()).await;
+                if this.update(cx, |view, cx| {
+                    if view.wallpapers.status != status {
+                        view.wallpapers.status = status;
+                        cx.notify();
+                    }
+                }).is_err() {
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_secs(3)).await;
+            }
+        }));
+    }
+
+    fn pick_wallpaper_target(&mut self, lock_screen: bool, cx: &mut Context<Self>) {
+        self.wallpapers.lock_screen = lock_screen;
+        if lock_screen {
+            self.read_lock_wallpaper(cx);
+        } else {
+            self.read_wallpapers(None, cx);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn read_lock_wallpaper(&mut self, cx: &mut Context<Self>) {
+        let custom = self.kept("lockScreen.wallpaper")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        self.wallpapers.placement = if custom.is_some() {
+            Placement::default()
+        } else {
+            wallpaper::placement(None)
+        };
+        self.wallpapers.current = custom
+            .or_else(|| wallpaper::current(None))
+            .or_else(|| Some(wallpaper::DENIAL.to_owned()));
+        self.read_preview(cx);
+    }
+
+    fn set_lock_wallpaper(&mut self, choice: Option<&Choice>, cx: &mut Context<Self>) {
+        let resource = choice.map_or("", |choice| choice.resource.as_str()).to_owned();
+        self.change("Lock screen wallpaper", move |document| {
+            crate::denial::put(document, "lockScreen.wallpaper", serde_json::json!(resource));
+            crate::denial::put(document, "lockScreen.useSystemWallpaper", serde_json::json!(true));
+        }, cx);
+        self.read_lock_wallpaper(cx);
     }
 
     /// Asks Wallhaven for what the field holds: afresh from the first page
@@ -729,6 +889,9 @@ impl Settings {
             return self.note("No wallpaper folder", cx);
         };
         window.focus(&self.focus_handle, cx);
+        let screen = self.screen.clone();
+        let lock_screen = self.wallpapers.lock_screen;
+        let output = self.wallpapers.output.clone();
         self.wallpapers.online.downloading = Some((found.id.clone(), 0.0));
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -765,11 +928,16 @@ impl Settings {
                             resource,
                             file: Some(file),
                         };
-                        view.set_wallpaper(&choice, cx);
-                        // It is one of yours now: list the folder again.
-                        view.wallpapers.reading = None;
-                        let output = view.wallpapers.output.clone();
-                        view.read_wallpapers(output, cx);
+                        if view.screen == screen
+                            && view.wallpapers.lock_screen == lock_screen
+                            && view.wallpapers.output == output
+                        {
+                            view.set_wallpaper(&choice, cx);
+                            if !view.wallpapers.choices.iter().any(|saved| saved.resource == choice.resource) {
+                                view.wallpapers.choices.push(choice);
+                            }
+                            view.read_preview(cx);
+                        }
                     }
                     Err(why) => view.note(
                         fill("Could not download the wallpaper: {why}", &[("why", &why)]),
@@ -785,13 +953,19 @@ impl Settings {
     /// Shows `choice` on the phone, and on every screen without its own,
     /// and gives the lock screen its depth; or on the monitor alone.
     fn set_wallpaper(&mut self, choice: &Choice, cx: &mut Context<Self>) {
+        if self.wallpapers.lock_screen {
+            self.set_lock_wallpaper(Some(choice), cx);
+            return;
+        }
         let choice = choice.clone();
         let output = self.wallpapers.output.clone();
         // The lock screen draws the home wallpaper, with depth, unless the
         // user told it otherwise.
         let depth = output.is_none()
             && self.denial.document.as_ref().is_none_or(|document| {
-                crate::denial::at(document, "lockScreen.useSystemWallpaper") != false
+                crate::denial::at(document, "lockScreen.wallpaper")
+                    .as_str()
+                    .is_none_or(str::is_empty)
             })
             && wallpaper::depth_installed();
         self.wallpapers.current = Some(choice.resource.clone());

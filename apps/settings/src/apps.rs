@@ -12,6 +12,8 @@ pub struct App {
     /// The desktop entry's id: "dev.denial.Settings.desktop".
     pub id: String,
     pub name: String,
+    pub startup_wm_class: Option<String>,
+    pub desktop_file: PathBuf,
     pub icon: Option<PathBuf>,
     /// For an Android app Droidloom put in the launcher: its package and
     /// launcher activity.
@@ -118,7 +120,9 @@ fn entry(id: &str, path: &Path, dirs: &[PathBuf]) -> Option<App> {
     }?;
     Some(App {
         id: id.to_owned(),
+        desktop_file: path.to_owned(),
         name: (*name).to_owned(),
+        startup_wm_class: fields.get("StartupWMClass").map(|class| (*class).to_owned()),
         icon: fields
             .get("Icon")
             .filter(|icon| !icon.is_empty())

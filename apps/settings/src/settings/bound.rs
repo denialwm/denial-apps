@@ -8,11 +8,11 @@ use denial_look_gpui::say;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gpui::{AppContext, Context, Focusable, SharedString, Window};
+use gpui::{AppContext, Context, Div, Focusable, SharedString, Window, prelude::*};
 use serde_json::{Value, json};
 
-use super::{Dialog, Screen, Settings};
-use crate::catalog::{self, ACCENTS, Item, Kind, LOCK_DELAYS, Source};
+use super::{Dialog, Layer, Screen, Settings};
+use crate::catalog::{self, ACCENTS, Item, Kind, LOCK_DELAYS, SliderUnit, Source};
 use crate::denial::{self, Refusal};
 use crate::fingerprint::{self, Opened};
 use crate::lock::{self, Outcome};
@@ -59,6 +59,21 @@ impl Settings {
         }
     }
 
+    pub(super) fn level_label(&self, item: &Item, level: f32) -> SharedString {
+        let (Some(unit), Source::Range(_, min, max)) = (item.slider_unit, item.source) else {
+            return format!("{:.0}%", level * 100.0).into();
+        };
+        let value = min + level * (max - min);
+        match unit {
+            SliderUnit::Percent => format!("{:.0}%", value * 100.0),
+            SliderUnit::Pixels => format!("{value:.1} px"),
+            SliderUnit::Degrees => format!("{value:.0}°"),
+            SliderUnit::Decimal => format!("{value:.2}"),
+            SliderUnit::Multiplier => format!("{value:.2}×"),
+            SliderUnit::Count => format!("{value:.0}"),
+        }.into()
+    }
+
     /// The option a choice or segmented setting is on; None when its value
     /// is none of them.
     pub(super) fn picked(&self, item: &Item) -> Option<usize> {
@@ -79,10 +94,12 @@ impl Settings {
     /// Whether a row shows now: some only go with one option of another,
     /// or with a toggle off (0) or on (1).
     pub(super) fn applies(&self, item: &Item) -> bool {
-        // Only a tablet's lock screen has a layout to edit.
+        // The editor is hosted by the mobile shell. Window size alone
+        // also matches large desktop windows, whose shell ignores the action.
         if item.key == "style.lockLayout" {
             let (width, height) = self.window_pixels;
-            return width.min(height) as f32 / self.scale >= 600.0;
+            return std::env::var("DENIAL_SHELL_PROFILE").as_deref() == Ok("mobile")
+                && width.min(height) as f32 / self.scale >= 600.0;
         }
         item.only.is_none_or(|(key, options)| {
             catalog::find(key)
@@ -130,6 +147,17 @@ impl Settings {
 
     /// What a choice, or a row that opens a screen, shows under its title.
     pub(super) fn shown(&self, item: &Item) -> SharedString {
+        if item.key == "style.cursorTheme" {
+            let selected = self.current_cursor();
+            return if selected == crate::cursor_theme::DEFAULT { "Bibata Modern Ice".into() } else { "Imported theme".into() };
+        }
+        if item.key == "style.customAccent" {
+            let argb = self.kept("appearance.customAccentColor").and_then(Value::as_u64).unwrap_or(0xFF6B3F73);
+            return format!("#{:06X}", argb & 0xFFFFFF).into();
+        }
+        if let Some(value) = self.idle_power_value(item.key) {
+            return value;
+        }
         if item.key == "security.fingerprint" {
             return match self.fingers.enrolled.as_ref().map(Vec::len) {
                 _ if self.lock.pin_length == Some(0) => "Needs a PIN".into(),
@@ -139,6 +167,13 @@ impl Settings {
                 Some(1) => "1 finger".into(),
                 Some(fingers) => fill("{count} fingers", &[("count", &fingers.to_string())]).into(),
             };
+        }
+        if item.key == "style.font" {
+            return self.kept("appearance.fontFamily")
+                .and_then(Value::as_str)
+                .filter(|family| !family.is_empty())
+                .unwrap_or("System default")
+                .into();
         }
         if item.key == "style.wallpaper" {
             return wallpaper::name(
@@ -206,7 +241,12 @@ impl Settings {
         let level = (level.clamp(0.0, 1.0) * 100.0).round() / 100.0;
         match item.source {
             Source::Range(path, low, high) => {
-                let value = json!(((low + level * (high - low)) * 1000.0).round() / 1000.0);
+                let value = low + level * (high - low);
+                let value = if matches!(item.slider_unit, Some(SliderUnit::Count)) {
+                    json!(value.round() as u32)
+                } else {
+                    json!((value * 1000.0).round() / 1000.0)
+                };
                 let edit = move |document: &mut Value| denial::put(document, path, value.clone());
                 if done {
                     self.change(item.title, edit, cx);
@@ -319,7 +359,89 @@ impl Settings {
 
     pub(super) fn act(&mut self, item: &'static Item, window: &mut Window, cx: &mut Context<Self>) {
         match item.kind {
+            Kind::Action(_) if item.key == "style.resetGlass" => {
+                self.change(item.title, |document| {
+                    for (page, _, item) in catalog::items() {
+                        if page.id != "style" || item.slider_unit.is_none() || item.key == "style.appPanelOpacity" {
+                            continue;
+                        }
+                        if let (Kind::Slider(start), Source::Range(path, min, max)) = (&item.kind, item.source)
+                            && path.starts_with("appearance.glass.")
+                        {
+                            let value = ((min + *start * (max - min)) * 1000.0).round() / 1000.0;
+                            denial::put(document, path, json!(value));
+                        }
+                    }
+                }, cx);
+            }
+            Kind::Action(_) if item.key == "layout.reset" => {
+                self.change(item.title, denial::reset_desktop_layout, cx);
+            }
+            Kind::Action(_) if item.key == "overlays.reset" => {
+                self.change(item.title, denial::reset_overlays, cx);
+            }
+            Kind::Action(_) if item.key == "style.resetMotion" => {
+                self.change(item.title, |document| {
+                    denial::put(document, "animations.durationScale", json!(1.0));
+                    denial::put(document, "animations.panelTravel", json!(32.0));
+                    denial::put(document, "animations.windowCloseEffect", json!("implode"));
+                    denial::put(document, "animations.animateLockScreen", json!(true));
+                }, cx);
+            }
+            Kind::Action(_) if item.key == "power.reset" => {
+                self.reset_idle_power(cx);
+            }
+            Kind::Action(_) if item.key == "language.reset" => self.use_system_language(true, cx),
+            Kind::Action(_) if item.key == "style.resetAccent" => self.change(item.title, |document| {
+                denial::put(document, "appearance.customAccentColor", json!(0xFF6B3F73_u32));
+            }, cx),
+            Kind::Action(_) if item.key == "style.reapplyTheme" => self.change(item.title, |_| {}, cx),
+            Kind::Action(_) if item.key == "style.resetAppearance" => self.change(item.title, |document| {
+                denial::put(document, "appearance", json!({
+                    "colorSchemePreference": "preferDark",
+                    "accentSource": "custom", "customAccentColor": 0xFF6B3F73_u32,
+                    "fontFamily": "", "cornerRadiusScale": 0.5, "monitorCornerRadiusScale": 0.5,
+                    "panelOpacity": 0.5, "cardOpacity": 0.4421052631578947,
+                    "transparencyMode": "glass", "backdropBlurLevel": "good",
+                    "backdropBlurOpacityThreshold": 0.19, "glass": {},
+                    "applicationThemingEnabled": true, "focusedWindowBorderEnabled": true,
+                    "focusedWindowOpacity": 1, "unfocusedWindowOpacity": 1,
+                    "cursorThemeId": crate::cursor_theme::DEFAULT, "allowClientCursorSurfaces": true,
+                }));
+            }, cx),
+            Kind::Action(_) if item.key == "style.resetLock" => self.change(item.title, |document| {
+                denial::put(document, "lockScreen", json!({
+                    "useSystemWallpaper": true, "wallpaper": "", "dimAmount": 0.24,
+                    "blurRadius": 8, "clockScale": 1, "showSystemStatus": true,
+                    "fingerprintUnlock": true, "callsApp": "org.denialwm.Calls",
+                    "tabletPadSide": "right", "tabletClockX": 0.5,
+                    "tabletClockY": 0.27, "tabletClockScale": 1.25
+                }));
+            }, cx),
+            Kind::Opens if item.key == "style.customAccent" => {
+                let initial = self.shown(item).to_string();
+                self.output_field.update(cx, |field, cx| field.set_text(initial, cx));
+                self.show(Dialog::TextEdit {
+                    title: "Custom accent colour",
+                    detail: "Enter a six-digit hex colour such as #6B3F73.",
+                    valid: Rc::new(|text| parse_rgb(text).is_some()),
+                    save: Rc::new(|this, text, cx| {
+                        if let Some(rgb) = parse_rgb(&text) {
+                            this.change("Custom accent colour", move |document| {
+                                denial::put(document, "appearance.accentSource", json!("custom"));
+                                denial::put(document, "appearance.customAccentColor", json!(0xFF000000 | rgb));
+                            }, cx);
+                        }
+                    }),
+                }, cx);
+                window.focus(&self.output_field.focus_handle(cx), cx);
+            }
+            Kind::Action(_) if item.key == "style.cursorImport" => self.import_cursor(cx),
+            Kind::Opens if item.key == "style.cursorTheme" => self.choose_cursor(false, cx),
+            Kind::Opens if item.key == "style.cursorRemove" => self.choose_cursor(true, cx),
             Kind::Action(said) => self.note(said, cx),
+            Kind::Opens if item.key.starts_with("power.") => self.choose_idle_power(item, cx),
+            Kind::Opens if item.key == "style.font" => self.choose_font(cx),
             Kind::Opens if item.key == "style.wallpaper" => {
                 self.open(Screen::Wallpapers, window, cx)
             }
@@ -331,6 +453,42 @@ impl Settings {
             Kind::Opens => self.own_open(item, window, cx),
             _ => {}
         }
+    }
+
+    fn choose_font(&mut self, cx: &mut Context<Self>) {
+        let mut fonts = cx.text_system().all_font_names();
+        fonts.retain(|family| {
+            !family.is_empty()
+                && family.chars().count() <= 128
+                && !family.chars().any(char::is_control)
+        });
+        fonts.sort_unstable();
+        fonts.dedup();
+        let current = self.kept("appearance.fontFamily")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let picked = if current.is_empty() {
+            0
+        } else {
+            fonts.iter().position(|family| family == current).map_or(fonts.len() + 1, |index| index + 1)
+        };
+        let options = std::iter::once("System default".into())
+            .chain(fonts.iter().map(|value| SharedString::from(value.clone())))
+            .collect();
+        self.show(Dialog::Pick {
+            title: "Font family".into(),
+            options,
+            picked,
+            pick: Rc::new(move |this, index, _, cx| {
+                let font = index.checked_sub(1)
+                    .and_then(|index| fonts.get(index))
+                    .cloned()
+                    .unwrap_or_default();
+                this.change("Font family", move |document| {
+                    denial::put(document, "appearance.fontFamily", json!(font));
+                }, cx);
+            }),
+        }, cx);
     }
 
     /// Changes Denial's settings document with `edit`: here at once, then in
@@ -407,6 +565,83 @@ impl Settings {
 
     /// The shade and the volume keys change the volume too, so the Sound
     /// page reads it again every second.
+    pub(super) fn application_audio(&self, layer: Layer, cx: &mut Context<Self>) -> Div {
+        let live = layer.live();
+        let streams = self.denial.audio_streams.as_deref().unwrap_or_default();
+        let mut group = denial_look_gpui::island(&self.look);
+        if streams.is_empty() {
+            let label = if self.denial.audio_streams.is_some() {
+                "No apps playing audio"
+            } else {
+                "Application audio unavailable"
+            };
+            group = group.child(self.row("audio-status", None, label, None, (true, false)));
+        }
+        for stream in streams {
+            let id = stream.id;
+            let shown = format!("{:.0}%", stream.level * 100.0);
+            group = group.child(self.slider_row(
+                ("audio-stream", id),
+                None,
+                SharedString::from(stream.name.clone()),
+                stream.muted.then(|| "Muted".into()),
+                shown.into(),
+                stream.level.clamp(0.0, 1.0),
+                live,
+                (false, false),
+                cx,
+                Rc::new(move |this, level, done, cx| this.adjust_audio_stream(id, level, done, cx)),
+            ));
+        }
+        group
+    }
+
+    /// Reads the apps' volumes again, from the heading over them.
+    pub(super) fn audio_actions(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<gpui::AnyElement> {
+        vec![self.action(
+            "refresh-audio",
+            denial_look_gpui::Icon::Flip,
+            "Refresh audio",
+            false,
+            layer.live(),
+            cx,
+            |this, _, cx| {
+                this.reading_volume = None;
+                this.follow_volume(cx);
+            },
+        )]
+    }
+
+    fn adjust_audio_stream(&mut self, id: u32, level: f32, done: bool, cx: &mut Context<Self>) {
+        let level = level.clamp(0.0, 1.0);
+        let Some(stream) = self.denial.audio_streams.as_mut()
+            .and_then(|streams| streams.iter_mut().find(|stream| stream.id == id))
+        else {
+            return;
+        };
+        stream.level = level;
+        cx.notify();
+        if !done {
+            return;
+        }
+        self.denial.audio_stream_revision += 1;
+        self.denial.audio_stream_writes += 1;
+        let link = self.denial.link.clone();
+        cx.spawn(async move |this, cx| {
+            let result = link.set_audio_stream(id, (level * 100.0).round() as u8).await;
+            let _ = this.update(cx, |view, cx| {
+                view.denial.audio_stream_writes -= 1;
+                if let Err(Refusal(why)) = result {
+                    view.note(fill("Could not change {what}: {why}", &[
+                        ("what", &say("Application audio").to_lowercase()),
+                        ("why", &why),
+                    ]), cx);
+                }
+                cx.notify();
+            });
+        }).detach();
+    }
+
     pub(super) fn follow_volume(&mut self, cx: &mut Context<Self>) {
         if !self.screen.is_page("sound") {
             self.reading_volume = None;
@@ -417,14 +652,23 @@ impl Settings {
         }
         self.reading_volume = Some(cx.spawn(async move |this, cx| {
             loop {
-                let Ok(link) = this.update(cx, |view, _| view.denial.link.clone()) else {
+                let Ok((link, revision)) = this.update(cx, |view, _| {
+                    (view.denial.link.clone(), view.denial.audio_stream_revision)
+                }) else {
                     return;
                 };
-                let volume = link.volume().await.ok();
+                let (volume, streams) = futures_lite::future::zip(link.volume(), link.audio_streams()).await;
                 let taken = this.update(cx, |view, cx| {
+                    if view.denial.audio_stream_revision == revision
+                        && view.denial.audio_stream_writes == 0
+                        && view.sliding.is_none()
+                    {
+                        view.denial.audio_streams = streams.ok();
+                        cx.notify();
+                    }
                     // The finger's level stands until it lets go.
-                    if view.sliding != Some(MEDIA) && !view.denial.volume_sending {
-                        view.denial.volume = volume;
+                    if view.sliding != Some(MEDIA.into()) && !view.denial.volume_sending {
+                        view.denial.volume = volume.ok();
                         cx.notify();
                     }
                 });
@@ -701,4 +945,10 @@ impl PinRequest {
             PinRequest::Clear { password } => (lock::clear_pin(&password), None),
         }
     }
+}
+
+fn parse_rgb(text: &str) -> Option<u32> {
+    let text = text.trim().trim_start_matches('#');
+    (text.len() == 6 && text.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| u32::from_str_radix(text, 16).ok()).flatten()
 }

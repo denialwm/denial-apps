@@ -8,21 +8,32 @@
 mod android;
 mod bound;
 mod cellular;
+mod developer;
 mod devices;
+mod display_controls;
 mod dialogs;
+mod cursor;
 mod fingers;
+mod environment;
 mod home;
+mod input;
+mod idle_power;
 mod monitor;
 mod networks;
+mod output_modes;
 mod page;
 mod panel;
 mod parts;
+mod permissions;
 mod phone;
+mod plugins;
+mod profile;
 mod power;
+mod shortcuts;
 mod system;
 mod wallpapers;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -31,10 +42,12 @@ use futures_lite::FutureExt;
 use denial_look::mobile::{GROUP_HEIGHT, ScrollAway, bottom_inset, content_bottom};
 use denial_look::{INSET, Look, SettingsWatch, Tween, decelerate, ease_out_cubic, motion, stagger};
 use denial_look_gpui::input::{Submitted, TextInput};
-use denial_look_gpui::{backing, chip, glass_group, say, solid};
+use denial_look_gpui::{
+    Icon, backing, chip, color, control_radius, glass_group, icon, say, shadow, solid,
+};
 use gpui::{
-    AnyElement, App, AsyncApp, Context, Div, Entity, FocusHandle, Focusable, Font, KeyboardInset,
-    ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, actions, div, prelude::*,
+    AnyElement, App, AsyncApp, Context, Div, ElementId, Entity, FocusHandle, Focusable, Font, KeyboardInset,
+    ScrollHandle, SharedString, Stateful, Subscription, Task, WeakEntity, Window, actions, div, prelude::*,
     px,
 };
 
@@ -56,6 +69,12 @@ actions!(settings, [Back]);
 
 /// Items past this many arrive together: further ones are off screen.
 const STAGGERED: usize = 12;
+/// Logical pixels needed for the existing rows and controls in two panes.
+const SIDEBAR_WIDTH: f32 = 320.0;
+const DETAIL_MIN_WIDTH: f32 = 480.0;
+/// A page beside the list is no wider than this: a row's value stays near
+/// its name.
+const DETAIL_MAX_WIDTH: f32 = 960.0;
 
 #[derive(Clone)]
 enum Screen {
@@ -243,11 +262,34 @@ impl Arrival {
         }
     }
 
+    /// Beside the list a page does not slide: what leaves fades out, 1 to
+    /// 0, while it still shows.
+    fn fading(&self, now: Instant) -> Option<f32> {
+        let out = self.clock.segment(0, motion::OUT);
+        (!self.launch && self.leaving.is_some() && out.running(now))
+            .then(|| 1.0 - out.progress(now))
+    }
+
+    /// Island `index` of the page that arrives beside the list: once what
+    /// left has faded, the islands rise in, the nearest first.
+    fn rising(&self, index: usize, now: Instant) -> Motion {
+        if self.launch {
+            return self.item(index, now);
+        }
+        let delay = stagger(motion::OUT, motion::IN_STEP, index.min(STAGGERED));
+        let t = decelerate(self.clock.segment(delay, motion::IN).progress(now));
+        Motion {
+            opacity: t,
+            offset: motion::IN_RISE * (1.0 - t),
+        }
+    }
+
     fn running(&self, now: Instant) -> bool {
         let end = if self.launch {
             stagger(motion::LAUNCH_DELAY, motion::LAUNCH_STEP, STAGGERED) + motion::LAUNCH
         } else {
-            motion::SLIDE
+            // The slide of a narrow window, or the fade and rise of a wide.
+            motion::SLIDE.max(stagger(motion::OUT, motion::IN_STEP, STAGGERED) + motion::IN)
         };
         self.clock.segment(end, 0).running(now)
     }
@@ -281,6 +323,15 @@ type OnConfirm = Rc<dyn Fn(&mut Settings, &mut Window, &mut Context<Settings>)>;
 #[derive(Clone)]
 enum Dialog {
     /// One of a few options, the picked one marked.
+    OutputScale { name: String },
+    OutputPosition { name: String },
+    ProfilePhoto { image: std::sync::Arc<gpui::Image> },
+    TextEdit {
+        title: &'static str,
+        detail: &'static str,
+        valid: Rc<dyn Fn(&str) -> bool>,
+        save: Rc<dyn Fn(&mut Settings, String, &mut Context<Settings>)>,
+    },
     Pick {
         title: SharedString,
         options: Vec<SharedString>,
@@ -378,6 +429,9 @@ struct Denial {
     volume_wanted: Option<u8>,
     volume_sending: bool,
     volume_serial: u32,
+    audio_streams: Option<Vec<denial::AudioStream>>,
+    audio_stream_revision: u64,
+    audio_stream_writes: usize,
 }
 
 impl Denial {
@@ -439,6 +493,9 @@ struct Wallpapers {
     reading: Option<Task<()>>,
     /// The tab the pictures come from.
     tab: wallpapers::Tab,
+    lock_screen: bool,
+    status: Option<Vec<String>>,
+    status_task: Option<Task<()>>,
     /// What Wallhaven offers.
     online: wallpapers::Online,
     /// Where the shown wallpaper sits, as the sliders have it.
@@ -485,6 +542,7 @@ struct Installed {
 struct Power {
     /// None while UPower does not run.
     state: Option<battery::State>,
+    changing_limits: HashSet<zbus::zvariant::OwnedObjectPath>,
     /// Whether UPower has been read, or found missing, once.
     read: bool,
 }
@@ -521,12 +579,29 @@ struct Bluetooth {
 
 pub struct Settings {
     look: Look,
+    input: input::Input,
     font: Font,
     focus_handle: FocusHandle,
     values: Values,
     search: Entity<TextInput>,
     /// The home screen's top group holds the search field.
     searching: bool,
+    permissions: permissions::Permissions,
+    plugins: plugins::Plugins,
+    developer: developer::Developer,
+    profile: profile::Profile,
+    environment_scope: Option<String>,
+    environment_editor: environment::Editor,
+    /// Narrows the applications listed, names an override and gives it
+    /// its value.
+    environment_search: Entity<TextInput>,
+    environment_name: Entity<TextInput>,
+    environment_value: Entity<TextInput>,
+    shortcuts: shortcuts::Shortcuts,
+    expanded_sections: HashSet<&'static str>,
+    /// Rows are being made for the panel inside an opened card: their
+    /// corners follow the panel's, not an island's.
+    nested: std::cell::Cell<bool>,
     /// The home screen's top group leaves as the pages scroll on, and comes
     /// back as they scroll back.
     top_away: ScrollAway,
@@ -554,13 +629,14 @@ pub struct Settings {
     finger_field: Entity<TextInput>,
     /// The date or the time, while setting the clock.
     clock_field: Entity<TextInput>,
+    output_field: Entity<TextInput>,
     /// What to look for on Wallhaven.
     wallhaven_field: Entity<TextInput>,
     /// What to look for among the countries.
     country_field: Entity<TextInput>,
     /// The slider under a finger or the mouse.
     /// The key of the slider the finger holds.
-    sliding: Option<&'static str>,
+    sliding: Option<ElementId>,
     /// A short note above the gesture zone, until its task hides it.
     notice: Option<(SharedString, Tween, Task<()>)>,
     screen: Screen,
@@ -571,6 +647,8 @@ pub struct Settings {
     mobile: Mobile,
     power: Power,
     denial: Denial,
+    display_controls: display_controls::DisplayControls,
+    output_modes: output_modes::OutputModes,
     lock: Lock,
     fingers: Fingers,
     about: About,
@@ -592,6 +670,8 @@ pub struct Settings {
     densities: crate::droidloom::Densities,
     /// Device pixels per pixel of the window, as the compositor scales it.
     scale: f32,
+    /// The window is wide enough for the list beside a page.
+    wide: bool,
     /// The window in device pixels, wide by high: the phone's screen.
     window_pixels: (u32, u32),
     _settings: Task<()>,
@@ -640,11 +720,17 @@ impl Settings {
             input
         });
         let hidden_name = cx.new(|cx| TextInput::new("Network name", &look, 1, cx));
+        let environment_search = cx.new(|cx| TextInput::new("Search applications", &look, 1, cx));
+        let environment_name =
+            cx.new(|cx| TextInput::new("e.g. MOZ_ENABLE_WAYLAND", &look, 1, cx));
+        let environment_value = cx.new(|cx| TextInput::new("e.g. 1", &look, 1, cx));
         let code_field = cx.new(|cx| TextInput::new("Code", &look, 1, cx));
         let name_field = cx.new(|cx| TextInput::new("Phone name", &look, 1, cx));
         let finger_field = cx.new(|cx| TextInput::new("Fingerprint name", &look, 1, cx));
+        let output_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
         let clock_field = cx.new(|cx| TextInput::new("", &look, 1, cx));
         let wallhaven_field = cx.new(|cx| TextInput::new("Search Wallhaven", &look, 1, cx));
+        let input = input::Input::new(&look, cx);
         let country_field = cx.new(|cx| TextInput::new("Search countries", &look, 1, cx));
         let secret = |hint: &str, cx: &mut Context<Self>| {
             cx.new(|cx| {
@@ -658,9 +744,24 @@ impl Settings {
         let new_pin = secret("New PIN", cx);
         let pin_again = secret("New PIN again", cx);
         let mut subscriptions = vec![
+            cx.observe(&input.layouts, |_, _, cx| cx.notify()),
+            cx.observe(&input.options, |_, _, cx| cx.notify()),
             cx.observe(&search, |_, _, cx| cx.notify()),
             cx.observe(&password, |_, _, cx| cx.notify()),
             cx.observe(&hidden_name, |_, _, cx| cx.notify()),
+            cx.observe(&environment_search, |_, _, cx| cx.notify()),
+            cx.observe(&environment_name, |this, _, cx| this.typed_environment(cx)),
+            cx.observe(&environment_value, |this, _, cx| this.typed_environment(cx)),
+            cx.subscribe_in(
+                &environment_name,
+                window,
+                |this, _, _: &Submitted, window, cx| this.submit_environment_name(window, cx),
+            ),
+            cx.subscribe_in(
+                &environment_value,
+                window,
+                |this, _, _: &Submitted, window, cx| this.save_environment_variable(window, cx),
+            ),
             cx.observe(&pin, |_, _, cx| cx.notify()),
             cx.observe(&current_pin, |_, _, cx| cx.notify()),
             cx.observe(&new_pin, |_, _, cx| cx.notify()),
@@ -668,6 +769,7 @@ impl Settings {
             cx.observe(&code_field, |_, _, cx| cx.notify()),
             cx.observe(&name_field, |_, _, cx| cx.notify()),
             cx.observe(&finger_field, |_, _, cx| cx.notify()),
+            cx.observe(&output_field, |_, _, cx| cx.notify()),
             cx.observe(&clock_field, |_, _, cx| cx.notify()),
             cx.observe(&wallhaven_field, |this, _, cx| this.typed_wallhaven(cx)),
             cx.observe(&country_field, |_, _, cx| cx.notify()),
@@ -676,6 +778,9 @@ impl Settings {
                 window,
                 |this, _, _: &Submitted, window, cx| this.submit_wallhaven(window, cx),
             ),
+            cx.subscribe_in(&output_field, window, |this, _, _: &Submitted, window, cx| {
+                this.submit_dialog(window, cx)
+            }),
             cx.subscribe_in(
                 &clock_field,
                 window,
@@ -722,6 +827,9 @@ impl Settings {
                 this.keyboard_moved(window.keyboard_inset(), window, cx)
             }));
         }
+        // Before the first screen is picked: `settings developer` opens its
+        // page only where Denial has something for a developer.
+        let developer = developer::Developer::at_start();
         let screen = page
             .as_deref()
             .and_then(catalog::page)
@@ -740,11 +848,24 @@ impl Settings {
         };
         let mut settings = Self {
             look,
+            input,
             font,
             focus_handle: cx.focus_handle(),
             values: Values::load(),
             search,
             searching: false,
+            permissions: permissions::Permissions::default(),
+            plugins: plugins::Plugins::default(),
+            developer,
+            profile: profile::Profile::default(),
+            environment_scope: None,
+            environment_editor: environment::Editor::default(),
+            environment_search,
+            environment_name,
+            environment_value,
+            shortcuts: shortcuts::Shortcuts::default(),
+            expanded_sections: HashSet::new(),
+            nested: std::cell::Cell::new(false),
             top_away: ScrollAway::default(),
             scrolls: HashMap::new(),
             dialog: None,
@@ -759,6 +880,7 @@ impl Settings {
             name_field,
             finger_field,
             clock_field,
+            output_field,
             wallhaven_field,
             country_field,
             sliding: None,
@@ -786,7 +908,12 @@ impl Settings {
                 volume_wanted: None,
                 volume_sending: false,
                 volume_serial: 0,
+                audio_streams: None,
+                audio_stream_revision: 0,
+                audio_stream_writes: 0,
             },
+            display_controls: display_controls::DisplayControls::default(),
+            output_modes: output_modes::OutputModes::default(),
             lock: Lock::default(),
             fingers: Fingers::default(),
             // The home screen names the model under About.
@@ -816,6 +943,7 @@ impl Settings {
                 Self::follow_monitor(this, cx).await
             }),
             scale: 1.0,
+            wide: false,
             window_pixels: (0, 0),
             _bluetooth: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_bluetooth(this, cx).await
@@ -853,13 +981,19 @@ impl Settings {
             &self.search,
             &self.password,
             &self.hidden_name,
+            &self.environment_search,
+            &self.environment_name,
+            &self.environment_value,
             &self.pin,
             &self.code_field,
             &self.name_field,
             &self.finger_field,
             &self.clock_field,
+            &self.output_field,
             &self.wallhaven_field,
             &self.country_field,
+            &self.input.layouts,
+            &self.input.options,
         ] {
             input.update(cx, |input, cx| input.restyle(&look, cx));
         }
@@ -876,6 +1010,7 @@ impl Settings {
                 match update {
                     wifi::Update::Link(link) => view.wifi.link = link,
                     wifi::Update::State(state) => {
+                        catalog::set_wifi(state.device.is_some());
                         view.wifi.state = state;
                         view.wifi.read = true;
                     }
@@ -900,6 +1035,7 @@ impl Settings {
                 mobile.traffic = mobile::traffic(&mobile.state.interface);
                 mobile.link = link;
                 mobile.read = true;
+                catalog::set_mobile(mobile.link.is_some());
                 cx.notify();
             });
             if taken.is_err() {
@@ -918,6 +1054,9 @@ impl Settings {
             let taken = this.update(cx, |view, cx| {
                 view.denial.document = document;
                 view.denial.read = true;
+                if view.screen == Screen::Wallpapers && view.wallpapers.lock_screen {
+                    view.read_lock_wallpaper(cx);
+                }
                 cx.notify();
             });
             if taken.is_err() {
@@ -931,7 +1070,8 @@ impl Settings {
         let _follow = cx.background_spawn(battery::follow(updates));
         while let Ok(state) = received.recv().await {
             let taken = this.update(cx, |view, cx| {
-                view.power = Power { state, read: true };
+                view.power.state = state;
+                view.power.read = true;
                 cx.notify();
             });
             if taken.is_err() {
@@ -1014,14 +1154,22 @@ impl Settings {
         self.follow_scanning(cx);
         self.follow_looking(cx);
         self.follow_panel(cx);
+        self.follow_display_controls(cx);
+        self.follow_output_modes(cx);
+        self.follow_permissions(cx);
+        self.follow_plugins(cx);
+        self.follow_developer(cx);
+        self.follow_profile(cx);
+        self.follow_shortcuts(cx);
         self.follow_volume(cx);
+        self.follow_input(cx);
         self.follow_clock(cx);
         self.follow_traffic(cx);
         self.follow_android(cx);
         if self.screen.is_page("storage") {
             self.read_storage(cx);
         }
-        if self.screen.is_page("apps") {
+        if self.screen.is_page("apps") || self.screen.is_page("permissions") || self.screen.is_page("environment") || self.screen.is_page("shortcuts") {
             self.read_apps(cx);
         }
         if self.screen.is_page("time") || self.screen == Screen::Countries {
@@ -1043,6 +1191,7 @@ impl Settings {
         if self.screen.is_page("android") {
             self.read_densities();
         }
+        self.follow_wallpaper_status(cx);
         match self.screen {
             Screen::Wallpapers => self.read_wallpapers(None, cx),
             Screen::MonitorWallpapers => {
@@ -1185,7 +1334,10 @@ impl Settings {
     fn back(&mut self, _: &Back, window: &mut Window, cx: &mut Context<Self>) {
         if self.dialog.is_some() {
             self.dismiss(window, cx);
-        } else if self.screen == Screen::Home && self.searching {
+        } else if (self.searching || (self.wide && !self.search.read(cx).text().is_empty()))
+            && (self.screen == Screen::Home
+                || self.search.read(cx).focus_handle(cx).is_focused(window))
+        {
             self.end_search(window, cx);
         } else if self.screen == Screen::Home {
             window.remove_window();
@@ -1329,28 +1481,54 @@ impl Settings {
         content_bottom(self.keyboard.height(now), 0.0, 0.0)
     }
 
-    /// One screen: its islands, scrolling from the top group's upper edge to
-    /// the window's lower one, under the group, the gesture zone and the
-    /// keyboard, and its bottom zone; `width` wide, moved as a push has it.
-    fn layer(
-        &mut self,
+    fn screen_parts(
+        &self,
         screen: &Screen,
         layer: Layer,
         width: f32,
-        now: Instant,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let scroll = self.scroll(screen);
-        let parts = match screen {
-            Screen::Home => self.home(layer, cx),
+    ) -> Vec<Div> {
+        match screen {
+            Screen::Home => self.home(None, layer, cx),
             Screen::Page(page) => match page.content {
+                Content::Settings(sections) if page.id == "sound" => {
+                    let mut parts = self.page(sections, layer, cx);
+                    parts.push(
+                        self.heading_row("Application audio", self.audio_actions(layer, cx)),
+                    );
+                    parts.push(self.application_audio(layer, cx));
+                    parts
+                }
+                Content::Settings(sections) if page.id == "layout" => {
+                    let mut parts = self.system_bar_displays(layer, cx);
+                    parts.extend(self.page(sections, layer, cx));
+                    parts
+                }
+                Content::Settings(sections) if page.id == "power" => {
+                    let mut parts = self.charge_limit_parts(layer, cx);
+                    parts.extend(self.page(sections, layer, cx));
+                    parts
+                }
                 Content::Settings(sections) => self.page(sections, layer, cx),
                 Content::Wifi => self.wifi_page(layer, cx),
                 Content::Mobile => self.mobile_page(layer, cx),
                 Content::Bluetooth => self.bluetooth_page(layer, cx),
                 Content::Battery => self.battery_page(layer, cx),
                 Content::Display => self.display_page(layer, cx),
+                Content::OutputConfiguration => {
+                    let mut parts = self.output_modes_page(width, layer, cx);
+                    parts.extend(self.input_deck_page(layer, cx));
+                    parts
+                }
+                Content::Input => self.input_page(layer, cx),
+                Content::Permissions => self.permissions_page(layer, cx),
+                Content::Plugins => self.plugins_page(layer, cx),
+                Content::Developer => self.developer_page(layer, cx),
+                Content::Profile => self.profile_page(layer, cx),
+                Content::Environment => self.environment_page(width, layer, cx),
+                Content::Shortcuts => self.shortcuts_page(layer, cx),
                 Content::About => self.about_page(layer, cx),
+                Content::AboutDenial => self.about_denial_page(width, layer, cx),
                 Content::Storage => self.storage_page(),
                 Content::Apps(sections) => self.apps_page(sections, layer, cx),
                 Content::Android(sections) => self.android_page(sections, layer, cx),
@@ -1367,7 +1545,22 @@ impl Settings {
             Screen::Zones => self.zones_screen(layer, cx),
             Screen::Countries => self.countries_screen(layer, cx),
             Screen::AndroidApp { package } => self.android_app_screen(package, layer, cx),
-        };
+        }
+    }
+
+    /// One screen: its islands, scrolling from the top group's upper edge to
+    /// the window's lower one, under the group, the gesture zone and the
+    /// keyboard, and its bottom zone; `width` wide, moved as a push has it.
+    fn layer(
+        &mut self,
+        screen: &Screen,
+        layer: Layer,
+        width: f32,
+        now: Instant,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let scroll = self.scroll(screen);
+        let parts = self.screen_parts(screen, layer, width, cx);
         let content = div()
             .id(screen.key())
             .size_full()
@@ -1410,7 +1603,7 @@ impl Settings {
             );
         if layer.live() {
             layer_div = layer_div
-                .child(self.bottom_zone(now, cx))
+                .child(self.bottom_zone(bottom_inset(self.keyboard.height(now)), now, cx))
                 .on_click(cx.listener(|this, _, window, cx| this.dismiss(window, cx)));
         }
         layer_div.into_any_element()
@@ -1418,7 +1611,7 @@ impl Settings {
 
     /// What sits on the gesture zone, or rides on the keyboard while it is
     /// up: a dialog, and a notice chip above it.
-    fn bottom_zone(&self, now: Instant, cx: &mut Context<Self>) -> Div {
+    fn bottom_zone(&self, inset: f32, now: Instant, cx: &mut Context<Self>) -> Div {
         let notice = self.notice.as_ref().map(|(note, fade, _)| {
             div()
                 .absolute()
@@ -1431,6 +1624,7 @@ impl Settings {
                 .opacity(fade.progress(now))
                 .child(chip(&self.look).child(note.clone()))
         });
+        let apply = self.apply_button(cx);
         let dialog = self
             .dialog
             .as_ref()
@@ -1441,9 +1635,67 @@ impl Settings {
             .right_0()
             .bottom_0()
             .px(px(INSET))
-            .pb(px(bottom_inset(self.keyboard.height(now))))
+            .pb(px(inset))
             .children(notice)
+            .children(apply)
             .children(dialog)
+    }
+
+    /// The button in the window's bottom corner while the shown page holds
+    /// changes that are not carried out yet: it is there only then, so it
+    /// is seen arriving. Faint while they cannot be carried out; away
+    /// under a dialog.
+    fn apply_button(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if self.dialog.is_some() {
+            return None;
+        }
+        let (live, displays) = if self.screen.is_page("displays") {
+            (self.output_changes()?, true)
+        } else if self.screen.is_page("input") {
+            (self.keyboard_changes(cx)?, false)
+        } else {
+            return None;
+        };
+        let button = div()
+            .id("apply-changes")
+            .flex_none()
+            .h(px(denial_look::mobile::TOUCH))
+            .pl(px(16.))
+            .pr(px(20.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .rounded(control_radius(&self.look))
+            .bg(solid(self.look.accent))
+            .shadow(shadow(&self.look))
+            .text_color(solid(self.look.on_accent))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .child(icon(
+                Icon::Read,
+                px(parts::ICON),
+                solid(self.look.on_accent),
+            ))
+            .child(say("Apply"));
+        let button = if live {
+            self.tappable(button, cx, move |this, window, cx| {
+                if displays {
+                    this.apply_output_modes(cx);
+                } else {
+                    window.focus(&this.focus_handle, cx);
+                    this.apply_keyboard(false, cx);
+                }
+            })
+        } else {
+            button.opacity(0.5)
+        };
+        Some(
+            div()
+                .absolute()
+                .right(px(INSET + 10.))
+                .bottom(gpui::relative(1.))
+                .pb(px(10.))
+                .child(self.appearing("apply-changes-shown", div().child(button))),
+        )
     }
 
     /// The top group: the shown screen's contents, and the leaving one's
@@ -1462,7 +1714,7 @@ impl Settings {
                 .left(px(shift * width))
                 .w_full()
                 .opacity(opacity * self.arrival.group(now))
-                .child(self.top_contents(screen, layer, cx))
+                .child(self.top_contents(screen, layer, true, cx))
         };
         let leaving = self
             .arrival
@@ -1488,7 +1740,13 @@ impl Settings {
     }
 
     /// What the top group holds on `screen`.
-    fn top_contents(&self, screen: &Screen, layer: Layer, cx: &mut Context<Self>) -> Div {
+    fn top_contents(
+        &self,
+        screen: &Screen,
+        layer: Layer,
+        show_back: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let title: SharedString = match screen {
             Screen::Home => return self.home_top(layer, cx),
             Screen::Page(page) => page.title.into(),
@@ -1516,8 +1774,190 @@ impl Settings {
                 .unwrap_or_default(),
         };
         self.top_row()
-            .child(self.back_button(layer, cx))
+            .when(show_back, |row| row.child(self.back_button(layer, cx)))
             .child(self.title(title))
+    }
+
+    /// The sidebar selection stays on the parent page while a subpage is open.
+    fn selected_page(&self) -> Option<&'static str> {
+        let mut screen = self.screen.clone();
+        loop {
+            match screen {
+                Screen::Home => return None,
+                Screen::Page(page) => return Some(page.id),
+                _ => screen = Self::parent(&screen),
+            }
+        }
+    }
+
+    fn wide_scroll(
+        id: &'static str,
+        scroll: &ScrollHandle,
+        bottom: f32,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .track_scroll(scroll)
+            .flex()
+            .flex_col()
+            .gap(px(INSET))
+            .px(px(INSET))
+            .pt(px(INSET))
+            .pb(px(bottom))
+    }
+
+    /// `pane`, a column that scrolls, and at its right a thin bar that says
+    /// how far, shown while the pointer is over the pane. No bar when all
+    /// of the column fits.
+    fn marked(&self, group: &'static str, scroll: &ScrollHandle, pane: Stateful<Div>) -> Div {
+        const WIDTH: f32 = 3.0;
+        const EDGE: f32 = 2.0;
+        const SHORTEST: f32 = 32.0;
+        // As the pane was last laid out: a frame behind at most.
+        let view = f32::from(scroll.bounds().size.height) - 2.0 * EDGE;
+        let over = f32::from(scroll.max_offset().y);
+        let mark = (view > SHORTEST && over > 0.0).then(|| {
+            let length = (view * view / (view + over)).max(SHORTEST);
+            let through = (-f32::from(scroll.offset().y) / over).clamp(0.0, 1.0);
+            let shade = color(self.look.palette.foreground, 0.35);
+            div()
+                .absolute()
+                .right(px(EDGE))
+                .top(px(EDGE + through * (view - length)))
+                .w(px(WIDTH))
+                .h(px(length))
+                .rounded_full()
+                .group_hover(group, move |mark| mark.bg(shade))
+        });
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .group(group)
+            .child(pane)
+            .children(mark)
+    }
+
+    fn wide_layout(&mut self, width: f32, now: Instant, cx: &mut Context<Self>) -> Div {
+        // The page that leaves shows a moment longer, fading; then the one
+        // that arrives rises in.
+        let (screen, layer, fade) = match (self.arrival.fading(now), &self.arrival.leaving) {
+            (Some(fade), Some(leaving)) => (leaving.clone(), Layer::Leaving, fade),
+            _ => (self.screen.clone(), Layer::Shown, 1.0),
+        };
+        let home_scroll = self.scroll(&Screen::Home);
+        let detail_scroll = self.scroll(&screen);
+        let selected = self.selected_page();
+        let bottom = INSET + self.keyboard.height(now);
+        let dim = denial_look::lerp(1.0, motion::DIM_ALPHA, self.dim(now));
+        let page_width = (width - SIDEBAR_WIDTH).min(DETAIL_MAX_WIDTH);
+
+        let sidebar = div()
+            .w(px(SIDEBAR_WIDTH))
+            .flex_none()
+            .h_full()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .opacity(dim)
+            .child(
+                div()
+                    .flex_none()
+                    .h(px(GROUP_HEIGHT))
+                    .px(px(INSET))
+                    .child(self.home_top(Layer::Shown, cx)),
+            )
+            .child(self.marked(
+                "list-pane",
+                &home_scroll,
+                Self::wide_scroll("sidebar-pages", &home_scroll, bottom).children(
+                    self.home(selected, Layer::Shown, cx)
+                        .into_iter()
+                        .enumerate()
+                        // Only launch moves the list's islands.
+                        .map(|(ix, part)| parts::place(part, self.arrival.item(ix, now))),
+                ),
+            ));
+
+        let detail = div()
+            .id("settings-detail")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .relative()
+            .overflow_hidden();
+        let detail = if screen == Screen::Home {
+            detail.child(div().p(px(INSET)).child(self.notice_row("Select a setting")))
+        } else {
+            // A page is named by its row of the list, so it starts at the
+            // top. What a page opens has no row: it keeps its name, and
+            // the way back.
+            let opened = !matches!(screen, Screen::Page(_));
+            let parts = self.screen_parts(&screen, layer, page_width, cx);
+            let header = opened.then(|| {
+                div()
+                    .flex_none()
+                    .h(px(GROUP_HEIGHT))
+                    .child(self.top_contents(&screen, layer, true, cx))
+            });
+            let arriving = layer.live();
+            let motion = |index| {
+                if arriving {
+                    self.arrival.rising(index, now)
+                } else {
+                    Motion {
+                        opacity: 1.0,
+                        offset: 0.0,
+                    }
+                }
+            };
+            detail.child(
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .opacity(dim * fade)
+                    .child(self.marked(
+                        "page-pane",
+                        &detail_scroll,
+                        Self::wide_scroll(screen.key(), &detail_scroll, bottom)
+                            .when(opened, |pane| pane.pt_0())
+                            .child(
+                                div()
+                                    .w_full()
+                                    .max_w(px(page_width))
+                                    // In a pane wider than the page, the
+                                    // page sits in its middle.
+                                    .mx_auto()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(INSET))
+                                    .children(
+                                        header.map(|header| parts::place(header, motion(0))),
+                                    )
+                                    .children(
+                                        parts.into_iter().enumerate().map(|(ix, part)| {
+                                            parts::place(part, motion(ix + 1))
+                                        }),
+                                    ),
+                            ),
+                    )),
+            )
+        };
+        div()
+            .size_full()
+            .flex()
+            .child(sidebar)
+            .child(
+                detail
+                    .child(self.bottom_zone(bottom, now, cx))
+                    .on_click(cx.listener(|this, _, window, cx| this.dismiss(window, cx))),
+            )
     }
 }
 
@@ -1534,8 +1974,23 @@ impl Render for Settings {
         if self.animating(now) {
             window.request_animation_frame();
         }
+        let width = f32::from(viewport.width);
+        self.wide = width >= SIDEBAR_WIDTH + DETAIL_MIN_WIDTH;
+        let root = div()
+            .size_full()
+            .relative()
+            .key_context("Settings")
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::back))
+            .bg(backing(&self.look))
+            .font(self.font.clone())
+            .text_color(solid(self.look.palette.foreground));
+        if self.wide {
+            return root
+                .child(self.wide_layout(width, now, cx))
+                .children(self.sensor_ring(viewport));
+        }
         self.follow_scroll();
-        let width = f32::from(window.viewport_size().width);
         let leaving = self
             .arrival
             .leaving
@@ -1544,18 +1999,10 @@ impl Render for Settings {
             .map(|screen| self.layer(&screen, Layer::Leaving, width, now, cx));
         let screen = self.screen.clone();
         let shown = self.layer(&screen, Layer::Shown, width, now, cx);
-        div()
-            .size_full()
-            .relative()
-            .key_context("Settings")
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::back))
-            .bg(backing(&self.look))
-            .font(self.font.clone())
-            .text_color(solid(self.look.palette.foreground))
+        root
             .children(leaving)
             .child(shown)
             .child(self.top_group(width, now, cx))
-            .children(self.sensor_ring(window.viewport_size()))
+            .children(self.sensor_ring(viewport))
     }
 }

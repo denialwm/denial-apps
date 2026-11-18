@@ -16,7 +16,7 @@ use denial_look::{INSET, MIN_RADIUS, Look, Tween, decelerate, floating, lerp, mo
 use denial_look_gpui::{Icon, color, icon, island, shadow, solid};
 use gpui::{
     ClickEvent, Context, DispatchPhase, Div, FontWeight, HitboxBehavior, IntoElement, ObjectFit, Pixels, Point,
-    ScrollWheelEvent, Stateful, Task, TouchDragEvent, TouchPhase, Window, canvas, div, img, prelude::*, px,
+    ScrollEvent, Stateful, Task, TouchDragEvent, TouchPhase, Window, canvas, div, img, prelude::*, px,
 };
 
 use super::{Camera, Screen};
@@ -388,7 +388,7 @@ impl Camera {
     }
 
 
-    fn swipe(&mut self, event: &ScrollWheelEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn swipe(&mut self, event: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.viewer.confirm || self.viewer.view.zoomed() {
             return;
         }
@@ -603,7 +603,7 @@ impl Camera {
             .overflow_hidden()
             .children(pages)
             .child(pan)
-            .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| this.swipe(event, window, cx)))
+            .on_scroll(cx.listener(|this, event: &ScrollEvent, window, cx| this.swipe(event, window, cx)))
             .on_click(cx.listener(|this, event: &ClickEvent, window, cx| this.photo_tap(event, window, cx)));
 
         let shown = viewer.bars_shown(now);

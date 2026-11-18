@@ -11,9 +11,52 @@ through the pages and the settings on them; a hit opens its page. A page
 holds its settings in section islands, a chip over each titled one. A
 setting is a toggle, a slider, a segmented choice, a choice picked in a
 dialog on the gesture zone, a value to read, or an action that says what it
-did on a chip. A slider claims the touch, so the page does not scroll under
-the finger. Back and Escape run one Back action: the dialog closes, then
+did on a chip. A set of sections the catalog puts under a disclosure is one card:
+its row opens it, and its sections show as panels inside the card, each
+under its name. What is done to a whole section (reading it again, dropping its changes,
+going back to Denial's own settings) is a small icon button at the end of
+the section's heading; under the pointer it says what it does, and it is
+faint while there is nothing for it to do. Where a page's changes wait to
+be carried out (the displays, the physical keyboard) an Apply button shows
+in the window's bottom right corner, and only then, so it is seen
+arriving. A slider is a bar filled in the accent up to
+its handle; it
+claims the touch, so the page does not scroll under the finger. A segmented
+choice slides its fill to the picked option on the switch's spring. The
+list leaves out what the machine has nothing of: Wi-Fi and Hotspot without
+Wi-Fi hardware, Mobile network without the modem service. Back and Escape run one Back action: the dialog closes, then
 search ends, then a page goes back home, and at home the window closes.
+
+Application environment is laid out as it was in Denial's own Settings: a
+note on what the overrides reach, then, in a page at least 640 wide, the
+applications at the left with a field that narrows them and the picked
+one's cards beside them: its name with Clear, the card that adds or hides
+a variable, and its configured overrides, each with an edit and a remove
+button. A narrower page picks the application in a dialog and stacks the
+same cards.
+
+In a window at least 800 wide the list stays at the left, 320 wide, and the
+page shows beside it, no wider than 960 so a row's value stays near its
+name, in the middle of what the window leaves it. The search field is
+always over the list there. A row of the list is a smaller tile and the
+page's name, with a second line only for what Settings found (the connected
+device, the battery's level); the shown page's row is filled and marked in
+the accent, and a row under the pointer takes a faint fill. A section's
+name there is a heading over its island, small capitals in the accent
+text, on the page and on the list alike; where the list is the whole
+window a page's sections are named on chips and the list's groups inside
+their islands. A chip still says how things stand: nothing found, still
+waiting. A page has no title there, since its row of the list is marked;
+what a page opens, such as a saved network, keeps its name and its back
+button. Each pane shows a thin
+bar at its right, while the pointer is over it, that says how far it is
+scrolled.
+A page does not slide there: the one that leaves fades out, then the
+islands of the one that arrives rise in, the nearest first
+(`motion::OUT`, `IN`, `IN_STEP`). In both layouts a switch's knob slides
+and the selection's fill fades on a spring that settles in about 200 ms,
+and what a row opens fades in. All of it runs on Denial's animation
+duration scale; at zero nothing moves.
 
 Wi-Fi is real (`src/wifi.rs`, `src/settings/networks.rs`). It talks to
 NetworkManager when its name is on the system bus, since NetworkManager may
@@ -227,6 +270,37 @@ where its value lives (`src/settings/bound.rs`):
   rewrites the shell's `$XDG_STATE_HOME/denial/wallpaper`, which the shell
   follows, and when `wallpaper-depth` is installed starts the lock screen's
   depth mask of the new picture, as the shell's picker does.
+- The plugins (`src/plugins.rs`, `src/settings/plugins.rs`), listed where
+  `denial-plugins` is installed (`$DENIAL_PLUGINS_BINARY`, else in `PATH`).
+  The manager decides what runs, why, what failed and what can be done now;
+  the page shows what `denial-plugins status --json` and `list --json` say
+  and works nothing out (Denial's docs/PLUGIN_MANAGER.md, section 23). It
+  has what the desktop runs and why, the request that runs with its step
+  and time, the last failure with its message and log, and Apply, Switch
+  now, Undo and Standard desktop as the manager allows each. A plugin's
+  switch saves the selection at once; the desktop changes with Apply. A
+  plugin is added from a folder or a Git link, and Update plugins applies
+  with their newest revisions. Plugins of the community list that were
+  never added have a section of their own, and Refresh community plugins
+  reads that list again. Use Denial defaults makes the selection the
+  plugins Denial comes with, and only them. What a build took in because a
+  selected plugin needs it is listed as included automatically. Recent
+  activity shows the last ten requests (`denial-plugins history --json`)
+  and why one failed; it is read only while it shows. Every sentence comes
+  with a code: Settings
+  words the codes it knows and shows the manager's English for the rest.
+  The page reads again every 600 ms while a request runs, else every 5 s,
+  and only while it shows. Plugin support is prepared once, when the page
+  first opens and it is missing.
+- Developer (`src/developer.rs`, `src/settings/developer.rs`), listed when
+  the running Denial answers `ui.get` on its control socket: the mode the
+  shell runs in with its status, progress and error, the switch to live UI
+  development, the source workspace (`ui.workspace.set`, or `denialctl
+  --json ui setup` to create one), reloading when files change, hot reload
+  and hot restart, building and activating an optimized shell, reverting to
+  the last one that worked, restoring the official one, the generation, the
+  Dart VM service address (a tap copies it) and the diagnostics. It reads
+  the state every second while it shows.
 - In Settings' own code (`src/settings/system.rs`): date and time, the
   language, Android starting.
 - Not on the phone yet: the keyboard, default apps, the ringtone, vibrating for calls, touch sounds,

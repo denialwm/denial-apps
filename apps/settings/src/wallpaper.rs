@@ -188,7 +188,7 @@ pub fn choices() -> Vec<Choice> {
 
 /// Denial's own wallpaper in the shell's bundle, beside the compositor that
 /// started Settings, or where packages put it.
-fn denial_file() -> Option<PathBuf> {
+pub fn denial_file() -> Option<PathBuf> {
     let asset = DENIAL.strip_prefix("asset:")?;
     let beside = std::env::var_os("DENIAL_COMPOSITOR_BINARY")
         .map(PathBuf::from)

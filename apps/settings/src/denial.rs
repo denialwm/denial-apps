@@ -18,6 +18,183 @@ const RETRY: Duration = Duration::from_secs(2);
 /// How long a new refresh rate waits to be kept before Denial undoes it.
 pub const KEEP: Duration = Duration::from_secs(15);
 
+#[derive(serde::Deserialize)]
+pub struct AudioStream {
+    pub id: u32,
+    pub name: String,
+    pub level: f32,
+    pub muted: bool,
+}
+
+#[derive(PartialEq, Eq, serde::Deserialize)]
+pub struct InputDeckStatus {
+    pub touch_output: Option<String>,
+    #[serde(default)]
+    pub touch_outputs: Vec<String>,
+    pub available: bool,
+    pub active_output: Option<String>,
+}
+
+impl InputDeckStatus {
+    pub fn selected_output<'a>(&'a self, preferred: &'a str) -> Option<&'a str> {
+        self.touch_outputs.iter().find(|name| *name == preferred).map(String::as_str)
+            .or(self.touch_output.as_deref())
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct KeyboardLayout {
+    pub layout: String,
+    pub variant: String,
+    #[serde(default, skip_serializing)]
+    pub display_name: String,
+}
+
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct KeyboardSettings {
+    pub layouts: Vec<KeyboardLayout>,
+    pub options: Vec<String>,
+    #[serde(rename(serialize = "repeatDelayMs"))]
+    pub repeat_delay_ms: u32,
+    #[serde(rename(serialize = "repeatRateHz"))]
+    pub repeat_rate_hz: u32,
+}
+
+impl Default for KeyboardSettings {
+    fn default() -> Self {
+        Self {
+            layouts: vec![KeyboardLayout {
+                layout: "us".into(),
+                variant: String::new(),
+                display_name: String::new(),
+            }],
+            options: Vec::new(),
+            repeat_delay_ms: 600,
+            repeat_rate_hz: 25,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct KeyboardSnapshot {
+    pub revision: u64,
+    pub active_layout: usize,
+    #[serde(flatten)]
+    pub settings: KeyboardSettings,
+}
+
+#[derive(Clone, serde::Deserialize)]
+pub struct PointerSettings {
+    pub revision: u64,
+    pub has_mouse: bool,
+    pub has_touchpad: bool,
+    pub mouse_speed: f64,
+    pub mouse_acceleration_enabled: bool,
+    pub tap_to_click_enabled: bool,
+    pub natural_scroll_enabled: bool,
+    pub scroll_speed_factor: f64,
+    pub scrolling_layout_swipe_speed_factor: f64,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct DisplayTarget {
+    pub id: i64,
+    pub name: String,
+    pub label: String,
+}
+
+pub struct DisplayTargets {
+    pub outputs: Vec<DisplayTarget>,
+    pub primary: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct OutputMode {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_millihz: u32,
+    #[serde(default, skip_serializing)]
+    pub preferred: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct ConfiguredOutput {
+    pub name: String,
+    pub description: String,
+    pub connected: bool,
+    pub enabled: bool,
+    pub powered: bool,
+    pub x: i32,
+    pub y: i32,
+    pub scale: f64,
+    pub transform: String,
+    pub scrolling_layout_axis: Option<String>,
+    #[serde(default)]
+    pub adaptive_sync_supported: bool,
+    pub adaptive_sync: bool,
+    pub current_mode: Option<OutputMode>,
+    pub modes: Vec<OutputMode>,
+}
+
+impl ConfiguredOutput {
+    pub fn mode(&self) -> Option<OutputMode> {
+        self.current_mode.or_else(|| self.modes.iter().copied().find(|mode| mode.preferred))
+            .or_else(|| self.modes.first().copied())
+    }
+
+    pub fn label(&self) -> String {
+        if self.description.is_empty() || self.description == self.name {
+            self.name.clone()
+        } else {
+            format!("{} ({})", self.description, self.name)
+        }
+    }
+
+    fn apply_payload(&self) -> Result<Value, Refusal> {
+        let mode = self.mode().ok_or_else(|| Refusal(format!("{} has no display mode", self.name)))?;
+        Ok(json!({
+            "name": self.name,
+            "enabled": self.enabled,
+            "powered": self.enabled && self.powered,
+            "x": self.x,
+            "y": self.y,
+            "mode": mode,
+            "scale": self.scale,
+            "transform": self.transform,
+            "scrolling_layout_axis": self.scrolling_layout_axis,
+            "adaptive_sync": self.adaptive_sync,
+        }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize)]
+#[serde(default)]
+pub struct OutputCapabilities {
+    pub apply: bool,
+    pub persistent: bool,
+    pub enable: bool,
+    pub position: bool,
+    pub mode: bool,
+    pub scale: bool,
+    pub transform: bool,
+    pub scrolling_layout_axis: bool,
+    pub adaptive_sync: bool,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+pub struct OutputConfirmation {
+    pub token: u64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct OutputConfiguration {
+    pub serial: u64,
+    pub capabilities: OutputCapabilities,
+    pub primary_output: Option<String>,
+    pub outputs: Vec<ConfiguredOutput>,
+    pub pending_confirmation: Option<OutputConfirmation>,
+}
+
 /// The phone's panel.
 #[derive(Clone, Debug)]
 pub struct Output {
@@ -88,7 +265,7 @@ pub fn internal(name: &str) -> bool {
 /// What Denial's settings document says about the display.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Prefs {
-    pub dark: bool,
+    pub appearance: Appearance,
     /// Seconds until the idle screen turns off; None for never.
     pub screen_off: Option<u32>,
 }
@@ -97,7 +274,11 @@ impl Prefs {
     pub fn of(document: &Value) -> Self {
         let power = &document["power"];
         Prefs {
-            dark: document["appearance"]["colorSchemePreference"] != "preferLight",
+            appearance: match document["appearance"]["colorSchemePreference"].as_str() {
+                Some("preferLight") => Appearance::Light,
+                Some("noPreference") => Appearance::NoPreference,
+                _ => Appearance::Dark,
+            },
             screen_off: (power["idleDpmsEnabled"] != false).then(|| {
                 power["idleDpmsTimeoutSeconds"]
                     .as_u64()
@@ -164,6 +345,15 @@ impl Link {
         method: &str,
         params: Option<Value>,
     ) -> Result<(Value, BufReader<Async<UnixStream>>), Refusal> {
+        self.ask_with_error(method, params, false).await
+    }
+
+    async fn ask_with_error(
+        &self,
+        method: &str,
+        params: Option<Value>,
+        detailed: bool,
+    ) -> Result<(Value, BufReader<Async<UnixStream>>), Refusal> {
         let mut connection = Async::<UnixStream>::connect(&self.socket).await?;
         let mut request = json!({"version": 1, "id": 1, "method": method});
         if let Some(params) = params {
@@ -173,12 +363,152 @@ impl Link {
         line.push(b'\n');
         connection.write_all(&line).await?;
         let mut answers = BufReader::new(connection);
-        let answer = answer(&mut answers).await?;
+        let answer = answer(&mut answers, detailed).await?;
         Ok((answer, answers))
     }
 
     async fn call(&self, method: &str, params: Option<Value>) -> Result<Value, Refusal> {
         Ok(self.ask(method, params).await?.0)
+    }
+
+    /// One of Denial's Flutter UI methods (`ui.get`, `ui.reload`, …): the UI
+    /// state after it, or why Denial refused, in its words.
+    pub async fn ui(&self, method: &str, params: Option<Value>) -> Result<Value, Refusal> {
+        Ok(self.ask_with_error(method, params, true).await?.0)
+    }
+
+    pub async fn keyboard(&self) -> Result<KeyboardSnapshot, Refusal> {
+        Ok(serde_json::from_value(self.call("settings.keyboard.get", None).await?)?)
+    }
+
+    pub async fn set_keyboard(
+        &self,
+        revision: u64,
+        keyboard: &KeyboardSettings,
+    ) -> Result<KeyboardSnapshot, Refusal> {
+        let (applied, _) = self.ask_with_error("settings.keyboard.apply", Some(json!({
+            "expected_revision": revision,
+            "keyboard": keyboard,
+        })), true).await?;
+        Ok(serde_json::from_value(applied)?)
+    }
+
+    pub async fn pointer(&self) -> Result<PointerSettings, Refusal> {
+        Ok(serde_json::from_value(self.call("settings.input.get", None).await?)?)
+    }
+
+    pub async fn set_pointer(&self, settings: &PointerSettings, mouse: bool) -> Result<PointerSettings, Refusal> {
+        let (method, params) = if mouse {
+            ("settings.mouse.apply", json!({
+                "expected_revision": settings.revision,
+                "mouse": {
+                    "speed": settings.mouse_speed,
+                    "accelerationEnabled": settings.mouse_acceleration_enabled,
+                },
+            }))
+        } else {
+            ("settings.touchpad.apply", json!({
+                "expected_revision": settings.revision,
+                "touchpad": {
+                    "tapToClickEnabled": settings.tap_to_click_enabled,
+                    "naturalScrollEnabled": settings.natural_scroll_enabled,
+                    "scrollSpeedFactor": settings.scroll_speed_factor,
+                    "scrollingLayoutSwipeSpeedFactor": settings.scrolling_layout_swipe_speed_factor,
+                },
+            }))
+        };
+        Ok(serde_json::from_value(self.call(method, Some(params)).await?)?)
+    }
+
+    pub async fn display_targets(&self) -> Result<DisplayTargets, Refusal> {
+        let result = self.call("outputs.get", None).await?;
+        let outputs = result["outputs"].as_array().into_iter().flatten()
+            .filter(|output| output["enabled"] == true && output["connected"] == true)
+            .filter_map(|output| {
+                let id = output["monitor_id"].as_i64().filter(|&id| id > 0)?;
+                let name = output["name"].as_str()?;
+                let description = output["description"].as_str().filter(|description| !description.is_empty());
+                let label = match description {
+                    Some(description) if description != name => format!("{description} ({name})"),
+                    _ => name.to_owned(),
+                };
+                Some(DisplayTarget { id, name: name.to_owned(), label })
+            }).collect();
+        Ok(DisplayTargets {
+            outputs,
+            primary: result["primary_output"].as_str().map(str::to_owned),
+        })
+    }
+
+    pub async fn input_deck_output(&self) -> Option<String> {
+        self.input_deck_status().await.ok()?.active_output
+    }
+
+    pub async fn input_deck_status(&self) -> Result<InputDeckStatus, Refusal> {
+        let mut input = self.call("settings.input.get", None).await?;
+        Ok(serde_json::from_value(input["input_deck"].take())?)
+    }
+
+    pub async fn hardware_brightness(&self, output: &DisplayTarget) -> Result<f32, Refusal> {
+        let result = self.call("brightness.get", Some(json!({
+            "monitor_id": output.id,
+            "connector": output.name,
+        }))).await?;
+        result["level"].as_f64().map(|level| level.clamp(0.0, 1.0) as f32)
+            .ok_or_else(|| Refusal("Brightness unavailable".to_owned()))
+    }
+
+    pub async fn set_hardware_brightness(&self, output: &DisplayTarget, percent: u8) -> Result<(), Refusal> {
+        self.call("brightness.set", Some(json!({
+            "monitor_id": output.id,
+            "connector": output.name,
+            "percent": percent,
+        }))).await.map(drop)
+    }
+
+    pub async fn software_dimming(&self, output: &DisplayTarget) -> Option<f32> {
+        let result = self.call("software_dimming.get", Some(json!({"monitor_id": output.id}))).await.ok()?;
+        if result["supported"] != true {
+            return None;
+        }
+        result["level"].as_f64().map(|level| level.clamp(0.0, 1.0) as f32)
+    }
+
+    pub async fn set_software_dimming(&self, output: &DisplayTarget, percent: u8) -> Result<(), Refusal> {
+        self.call("software_dimming.set", Some(json!({
+            "monitor_id": output.id,
+            "percent": percent,
+        }))).await.map(drop)
+    }
+
+    /// App-managed wallpaper surfaces on the selected or primary output.
+    /// None means the compositor could not report the scene.
+    pub async fn wallpaper_status(&self, output: Option<&str>) -> Option<Vec<String>> {
+        let outputs = self.call("outputs.get", None).await.ok()?;
+        let active = outputs["outputs"].as_array()?.iter().filter(|output| {
+            output["enabled"] == true && output["connected"] == true
+        });
+        let name = output.or_else(|| outputs["primary_output"].as_str());
+        let selected = match name {
+            Some(name) => active.clone().find(|output| output["name"] == name),
+            None => active.clone().find(|output| {
+                internal(output["name"].as_str().unwrap_or_default())
+            }),
+        };
+        let monitor_id = selected.or_else(|| active.into_iter().next())?["monitor_id"].as_i64()?;
+        let status = self.call("wallpaper.status", None).await.ok()?;
+        if status["available"] != true {
+            return None;
+        }
+        let mut apps: Vec<_> = status["surfaces"]
+            .as_array()?
+            .iter()
+            .filter(|surface| surface["monitor_id"].as_i64() == Some(monitor_id))
+            .map(|surface| surface["app_id"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        apps.sort();
+        apps.dedup();
+        Some(apps)
     }
 
     /// The phone's panel, with its refresh rates: the enabled internal
@@ -253,6 +583,10 @@ impl Link {
     }
 
     /// Asks the shell to edit the tablet lock screen's layout in place.
+    pub async fn shortcut_request(&self, method: &str, params: Option<Value>) -> Result<Value, Refusal> {
+        self.ask_with_error(method, params, true).await.map(|(answer, _)| answer)
+    }
+
     pub async fn edit_lock_screen(&self) -> Result<(), Refusal> {
         self.call("shell.lockScreen.edit", None).await.map(drop)
     }
@@ -274,6 +608,18 @@ impl Link {
             .as_f64()
             .map(|level| (level as f32).clamp(0.0, 1.0))
             .ok_or_else(|| Refusal("Denial has no volume".to_owned()))
+    }
+
+    pub async fn audio_streams(&self) -> Result<Vec<AudioStream>, Refusal> {
+        let result = self.call("audio.streams.get", None).await?;
+        Ok(serde_json::from_value(result["streams"].clone())?)
+    }
+
+    pub async fn set_audio_stream(&self, id: u32, percent: u8) -> Result<(), Refusal> {
+        self.call(
+            "audio.stream.set",
+            Some(json!({"stream_id": id, "percent": percent})),
+        ).await.map(drop)
     }
 
     /// Sets the media volume; `serial` tells this request's answer apart.
@@ -312,71 +658,62 @@ impl Link {
         }
     }
 
-    /// Moves the screen named `name` to `rate` until it is kept: Denial goes back by itself
-    /// after `KEEP`. Answers the change's token.
+    pub async fn output_configuration(&self) -> Result<OutputConfiguration, Refusal> {
+        let mut configuration: OutputConfiguration =
+            serde_json::from_value(self.call("outputs.get", None).await?)?;
+        configuration.outputs.retain(|output| output.connected);
+        Ok(configuration)
+    }
+
+    pub async fn apply_output_configuration(
+        &self,
+        configuration: &OutputConfiguration,
+    ) -> Result<OutputConfiguration, Refusal> {
+        let outputs: Vec<Value> = configuration.outputs.iter()
+            .filter(|output| output.connected)
+            .map(ConfiguredOutput::apply_payload)
+            .collect::<Result<_, _>>()?;
+        let (applied, _) = self.ask_with_error("outputs.apply", Some(json!({
+            "serial": configuration.serial,
+            "primary_output": configuration.primary_output,
+            "persistent": configuration.capabilities.persistent,
+            "confirmation_timeout_milliseconds": KEEP.as_millis() as u64,
+            "outputs": outputs,
+        })), true).await?;
+        let mut applied: OutputConfiguration = serde_json::from_value(applied)?;
+        applied.outputs.retain(|output| output.connected);
+        Ok(applied)
+    }
+
+    /// Changes the refresh rate, keeping all other connected output settings.
     pub async fn try_rate(&self, name: &str, rate: u32) -> Result<u64, Refusal> {
-        self.try_outputs(name, |mode, _| mode["refresh_millihz"] = json!(rate))
-            .await
+        self.try_output(name, |output| {
+            let mut mode = output.mode().ok_or_else(|| Refusal("Display mode unavailable".into()))?;
+            mode.refresh_millihz = rate;
+            output.current_mode = Some(mode);
+            Ok(())
+        }).await
     }
 
-    /// Scales the screen named `name` to `scale` until it is kept, as
-    /// `try_rate` does.
     pub async fn try_scale(&self, name: &str, scale: f64) -> Result<u64, Refusal> {
-        self.try_outputs(name, |_, scaled| *scaled = json!(scale))
-            .await
+        self.try_output(name, |output| {
+            output.scale = scale;
+            Ok(())
+        }).await
     }
 
-    /// Applies every connected screen as it is, but for the one named
-    /// `name`, whose mode and scale `change` edits; Denial goes back by
-    /// itself unless the change is kept within `KEEP`.
-    async fn try_outputs(
+    async fn try_output(
         &self,
         name: &str,
-        change: impl Fn(&mut Value, &mut Value),
+        change: impl FnOnce(&mut ConfiguredOutput) -> Result<(), Refusal>,
     ) -> Result<u64, Refusal> {
-        let snapshot = self.call("outputs.get", None).await?;
-        let outputs: Vec<Value> = snapshot["outputs"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|each| each["connected"] == true)
-            .map(|each| {
-                let mut mode = each["current_mode"].clone();
-                let mut scale = each["scale"].clone();
-                if each["name"] == name {
-                    change(&mut mode, &mut scale);
-                }
-                json!({
-                    "name": each["name"],
-                    "enabled": each["enabled"],
-                    "powered": each["powered"],
-                    "x": each["x"],
-                    "y": each["y"],
-                    "mode": {
-                        "width": mode["width"],
-                        "height": mode["height"],
-                        "refresh_millihz": mode["refresh_millihz"],
-                    },
-                    "scale": scale,
-                    "transform": each["transform"],
-                    "adaptive_sync": each["adaptive_sync"],
-                })
-            })
-            .collect();
-        let applied = self
-            .call(
-                "outputs.apply",
-                Some(json!({
-                    "serial": snapshot["serial"],
-                    "persistent": snapshot["capabilities"]["persistent"],
-                    "confirmation_timeout_milliseconds": KEEP.as_millis() as u64,
-                    "outputs": outputs,
-                })),
-            )
-            .await?;
-        applied["pending_confirmation"]["token"]
-            .as_u64()
-            .ok_or_else(|| Refusal("Denial kept no way back".to_owned()))
+        let mut configuration = self.output_configuration().await?;
+        let output = configuration.outputs.iter_mut().find(|output| output.name == name)
+            .ok_or_else(|| Refusal("Display disconnected".into()))?;
+        change(output)?;
+        self.apply_output_configuration(&configuration).await?.pending_confirmation
+            .map(|confirmation| confirmation.token)
+            .ok_or_else(|| Refusal("Denial kept no way back".into()))
     }
 
     pub async fn keep(&self, token: u64) -> Result<(), Refusal> {
@@ -419,7 +756,7 @@ pub fn backlight() -> Option<f32> {
 
 /// One answer's result, or what went wrong: an error answer is refused
 /// with its code, so callers can tell a conflict.
-async fn answer(answers: &mut BufReader<Async<UnixStream>>) -> Result<Value, Refusal> {
+async fn answer(answers: &mut BufReader<Async<UnixStream>>, detailed: bool) -> Result<Value, Refusal> {
     let mut line = String::new();
     if answers.read_line(&mut line).await? == 0 {
         return Err(Refusal("deniald closed the connection".to_owned()));
@@ -433,23 +770,82 @@ async fn answer(answers: &mut BufReader<Async<UnixStream>>) -> Result<Value, Ref
             "settings: deniald said {code}: {}",
             answer["error"]["message"]
         );
-        Err(Refusal(code.to_owned()))
+        let reason = if detailed {
+            answer["error"]["message"].as_str().unwrap_or(code)
+        } else {
+            code
+        };
+        Err(Refusal(reason.to_owned()))
     }
 }
 
 /// Denial's own timeout when its settings name none: 15 minutes.
 const SCREEN_OFF: u64 = 15 * 60;
 
-/// The dark or light appearance. The shell takes it from the glass
-/// appearance while it draws glass, apps from the colour scheme: both move.
-pub fn set_dark(document: &mut Value, dark: bool) {
-    let (scheme, glass) = if dark {
-        ("preferDark", "dark")
-    } else {
-        ("preferLight", "light")
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Appearance {
+    Dark,
+    Light,
+    NoPreference,
+}
+
+pub fn set_appearance(document: &mut Value, appearance: Appearance) {
+    let scheme = match appearance {
+        Appearance::Dark => "preferDark",
+        Appearance::Light => "preferLight",
+        Appearance::NoPreference => "noPreference",
     };
     put(document, "appearance.colorSchemePreference", json!(scheme));
-    put(document, "appearance.glass.appearance", json!(glass));
+    // Dark and light also set the glass appearance, as the mobile picker
+    // has always done. No preference leaves the shell glass tint alone.
+    match appearance {
+        Appearance::Dark => put(document, "appearance.glass.appearance", json!("dark")),
+        Appearance::Light => put(document, "appearance.glass.appearance", json!("light")),
+        Appearance::NoPreference => {}
+    }
+}
+
+/// Restores the desktop layout defaults without discarding native or future
+/// settings in the same section.
+pub fn reset_desktop_layout(document: &mut Value) {
+    let defaults = json!({
+        "windowLayout": "stacking",
+        "scrollingLayoutPreserveSwapSizes": true,
+        "scrollingLayoutWheelSpeed": 1.0,
+        "scrollingLayoutWheelUpDirection": "left",
+        "workspacesEnabled": true,
+        "workspaceCount": 4,
+        "workspaceSwitchingOrientation": "horizontal",
+        "systemBarSide": "top",
+        "systemBarOutputs": [],
+        "systemBarThickness": 33,
+        "maximizePadding": 8,
+        "minimizedWindowPlacement": "offscreen",
+        "clipboardTrayEdge": "bottom",
+        "clipboardTrayExtent": 160,
+    });
+    for (key, value) in defaults.as_object().into_iter().flatten() {
+        put(document, &format!("layout.{key}"), value.clone());
+    }
+}
+
+pub fn reset_overlays(document: &mut Value) {
+    for (surface, anchor, width, height, margin) in [
+        ("launcher", "center", 730, 200, 8),
+        ("dashboard", "bottomLeft", 420, 740, 8),
+        ("notifications", "bottomRight", 410, 640, 10),
+        ("systemHud", "bottomCenter", 350, 74, 10),
+    ] {
+        for (key, value) in [
+            ("anchor", json!(anchor)),
+            ("width", json!(width)),
+            ("height", json!(height)),
+            ("margin", json!(margin)),
+            ("hoverTriggerEnabled", json!(true)),
+        ] {
+            put(document, &format!("overlays.{surface}.{key}"), value);
+        }
+    }
 }
 
 pub fn set_screen_off(document: &mut Value, seconds: Option<u32>) {
@@ -477,7 +873,7 @@ pub async fn follow(link: Link, updates: Sender<Option<Value>>) {
                 return Ok(());
             }
             loop {
-                let next = document(&answer(&mut answers).await?)?;
+                let next = document(&answer(&mut answers, false).await?)?;
                 if next != said {
                     said = next;
                     if updates.send(Some(said.clone())).await.is_err() {
@@ -542,7 +938,7 @@ fn writes_denial() {
         );
         let written = link
             .edit(|document| {
-                set_dark(document, before.dark);
+                set_appearance(document, before.appearance);
                 set_screen_off(document, before.screen_off);
             })
             .await;
@@ -567,9 +963,12 @@ fn paths_reach_into_the_document() {
     assert_eq!(at(&document, "power.idleDpmsEnabled"), &json!(true));
     assert_eq!(at(&document, "power.screenOffLockDelaySeconds"), &json!(5));
     assert!(at(&document, "sound.keyboardVibration").is_null());
-    set_dark(&mut document, false);
+    set_appearance(&mut document, Appearance::Light);
     assert_eq!(at(&document, "appearance.glass.appearance"), "light");
-    assert!(!Prefs::of(&document).dark);
+    assert_eq!(Prefs::of(&document).appearance, Appearance::Light);
+    set_appearance(&mut document, Appearance::NoPreference);
+    assert_eq!(Prefs::of(&document).appearance, Appearance::NoPreference);
+    assert_eq!(at(&document, "appearance.glass.appearance"), "light");
 }
 
 #[cfg(test)]

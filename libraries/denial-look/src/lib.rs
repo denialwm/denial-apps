@@ -288,7 +288,15 @@ pub const INSET: f32 = 6.0;
 pub const CONTROL_FILL: f32 = 0.08;
 /// Foreground at this alpha fills a control while it is pressed.
 pub const PRESSED_FILL: f32 = 0.16;
+/// Foreground at this alpha fills a row under the pointer.
+pub const HOVER_FILL: f32 = 0.05;
 pub const MIN_RADIUS: f32 = 3.0;
+/// An island or group keeps at least this share of the window radius, and
+/// what is nested in a container this share of the container's: at low
+/// roundness the gutter would otherwise take the whole radius and leave
+/// squares.
+const GROUP_SHARE: f32 = 0.7;
+const NESTED_SHARE: f32 = 0.55;
 const WINDOW_RADIUS: f32 = 20.0;
 /// Below this the compositor would leave soft shadows as isolated frost.
 const MIN_WINDOW_ALPHA: f32 = 3.0 / 255.0;
@@ -299,9 +307,13 @@ const DEFAULT_ACCENT: u32 = 0xD0BCFF;
 /// contrast against canvas.
 const ACCENT_TEXT_CONTRAST: f32 = 4.5;
 
-/// `R_child = max(R_min, R_container - d)`.
+/// `R_child = max(R_min, R_container - d, 0.55 R_container)`: the corner
+/// follows its container's, and stays round where the gutter would take
+/// the whole radius.
 pub fn nested_radius(container: f32, inset: f32) -> f32 {
-    (container - inset).max(MIN_RADIUS)
+    (container - inset)
+        .max(container * NESTED_SHARE)
+        .max(MIN_RADIUS)
 }
 
 pub struct Look {
@@ -436,7 +448,7 @@ impl Look {
     /// Radius of a floating group or island placed `INSET` from the window
     /// edge.
     pub fn group_radius(&self) -> f32 {
-        nested_radius(self.window_radius, INSET)
+        nested_radius(self.window_radius, INSET).max(self.window_radius * GROUP_SHARE)
     }
 
     /// Radius of message bubbles and of the conversation islands shaped like
@@ -818,5 +830,28 @@ mod tests {
         let moving = Look::from_settings(&Value::Null).tween_at(start, 100, 200);
         assert_eq!(moving.progress(start), 0.0);
         assert_eq!(moving.progress(start + Duration::from_millis(200)), 0.5);
+    }
+
+    #[test]
+    fn low_roundness_still_reads_as_round() {
+        let radii = |scale: f64| {
+            let look = Look::from_settings(&serde_json::json!({
+                "appearance": { "cornerRadiusScale": scale }
+            }));
+            let group = look.group_radius();
+            (look.window_radius, group, nested_radius(group, INSET))
+        };
+        let close = |(window, group, control): (f32, f32, f32), wanted: (f32, f32, f32)| {
+            (window - wanted.0).abs() < 1e-3
+                && (group - wanted.1).abs() < 1e-3
+                && (control - wanted.2).abs() < 1e-3
+        };
+        // From 1.0 up the corners are concentric, as before.
+        assert!(close(radii(1.0), (20.0, 14.0, 8.0)));
+        assert!(close(radii(2.0), (40.0, 34.0, 28.0)));
+        // Below, an island keeps 0.7 of the window's radius and a control
+        // 0.55 of its island's.
+        assert!(close(radii(0.5), (10.0, 7.0, 3.85)));
+        assert!(close(radii(0.0), (0.0, MIN_RADIUS, MIN_RADIUS)));
     }
 }
