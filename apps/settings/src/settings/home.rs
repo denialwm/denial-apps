@@ -46,6 +46,7 @@ impl Settings {
                     let summary = match page.content {
                         Content::Wifi => self.wifi_summary(),
                         Content::Mobile => self.mobile_summary(),
+                        Content::Location => self.location_summary(),
                         Content::Bluetooth => self.bluetooth_summary(),
                         Content::Battery => self.battery_summary(),
                         Content::About => self.about_summary(),

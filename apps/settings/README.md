@@ -92,6 +92,21 @@ restart the radio (`Modem1.RestartRadio`) and start the modem over
 The bus is open to root and the `dmail` group only. dmail has no roaming,
 network type, APN or airplane mode settings yet, so the page has none.
 
+Location is real (`src/location.rs`, `src/settings/position.rs`). Its GPS
+part reads dmail's `org.dmail.Location1` and follows its changes: where the
+GPS is (off, looking for satellites and how many it hears, located and how
+closely), a "Locate this device" switch, and the position found (latitude,
+longitude, accuracy, speed and direction when moving, satellites used and
+heard, the position's time). dmail runs the engine only while a client
+asks: the switch calls `Location1.Start`, and Settings calls `Stop` when it
+goes off or the page closes; dmail also lets go when Settings leaves the
+bus, and Settings asks again when dmail restarts. Without dmail, or with a
+modem that has no location engine, the page says there is no GPS. Below,
+each app's answer to Denial's location question (Ask, Allow, Deny), from
+the portal permission store, table `denial`, entry `location`: the entry
+denial-portal's GeoClue agent reads and writes, edited like those on the
+Permissions page.
+
 Bluetooth is real as well (`src/bluetooth.rs`, `src/settings/devices.rs`),
 through BlueZ (`org.bluez`). The page has the switch, the phone's name
 (renamed in a dialog), the paired devices (a tap connects or disconnects
@@ -379,6 +394,8 @@ test binary over and run it as root:
 
 - `reads_the_system` prints what the manager reports.
 - `reads_dmail` prints what dmail reports.
+- `reads_location` asks dmail for location for 40 s and prints what it
+  reports; run it as a user in the `dmail` group.
 - `reads_bluez` prints what BlueZ reports; it runs on any machine with
   BlueZ and changes nothing.
 - `reads_upower` prints the battery as UPower reports it.

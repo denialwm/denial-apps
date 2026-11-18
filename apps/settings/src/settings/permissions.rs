@@ -1,4 +1,6 @@
-//! Answers to Denial's keyboard-shortcut inhibition permission.
+//! Apps' answers to Denial's permissions in the portal permission store:
+//! keyboard-shortcut inhibition on the Permissions page, location on the
+//! Location page.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
@@ -15,8 +17,24 @@ use super::{Dialog, Layer, Settings};
 const SERVICE: &str = "org.freedesktop.impl.portal.PermissionStore";
 const PATH: &str = "/org/freedesktop/impl/portal/PermissionStore";
 const TABLE: &str = "denial";
-const ID: &str = "shortcuts-inhibit";
 const TIMEOUT: Duration = Duration::from_secs(3);
+
+/// A permission: its entry in the store and what the user calls it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct Entry {
+    id: &'static str,
+    title: &'static str,
+}
+
+const SHORTCUTS: Entry = Entry {
+    id: "shortcuts-inhibit",
+    title: "Keyboard shortcut access",
+};
+/// Written by denial-portal's GeoClue agent.
+const LOCATION: Entry = Entry {
+    id: "location",
+    title: "Location access",
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Answer {
@@ -55,15 +73,17 @@ impl Answer {
 
 #[derive(Default)]
 pub(super) struct Permissions {
+    /// The permission the page shows, while it shows one.
+    entry: Option<Entry>,
     answers: Option<BTreeMap<String, Answer>>,
     unavailable: bool,
     following: Option<Task<()>>,
     saving: HashSet<String>,
 }
 
-async fn lookup(bus: &Connection) -> zbus::Result<BTreeMap<String, Answer>> {
+async fn lookup(bus: &Connection, id: &str) -> zbus::Result<BTreeMap<String, Answer>> {
     let reply = bus
-        .call_method(Some(SERVICE), PATH, Some(SERVICE), "Lookup", &(TABLE, ID))
+        .call_method(Some(SERVICE), PATH, Some(SERVICE), "Lookup", &(TABLE, id))
         .await;
     match reply {
         Ok(reply) => {
@@ -92,7 +112,7 @@ async fn with_timeout<T>(operation: impl Future<Output = zbus::Result<T>>) -> zb
         .await
 }
 
-async fn store_updates() -> zbus::Result<(Connection, MessageStream)> {
+async fn store_updates(id: &str) -> zbus::Result<(Connection, MessageStream)> {
     let bus = Connection::session().await?;
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
@@ -101,7 +121,7 @@ async fn store_updates() -> zbus::Result<(Connection, MessageStream)> {
         .path(PATH)?
         .member("Changed")?
         .arg(0, TABLE)?
-        .arg(1, ID)?
+        .arg(1, id)?
         .build();
     let changes = MessageStream::for_match_rule(rule, &bus, Some(32)).await?;
     Ok((bus, changes))
@@ -109,17 +129,29 @@ async fn store_updates() -> zbus::Result<(Connection, MessageStream)> {
 
 impl Settings {
     pub(super) fn follow_permissions(&mut self, cx: &mut Context<Self>) {
-        if !self.screen.is_page("permissions") {
-            self.permissions.following = None;
-            return;
+        let entry = if self.screen.is_page("permissions") {
+            Some(SHORTCUTS)
+        } else if self.screen.is_page("location") {
+            Some(LOCATION)
+        } else {
+            None
+        };
+        if entry != self.permissions.entry {
+            self.permissions = Permissions {
+                entry,
+                ..Permissions::default()
+            };
         }
+        let Some(Entry { id, .. }) = entry else {
+            return;
+        };
         if self.permissions.following.is_some() {
             return;
         }
         self.permissions.following = Some(cx.spawn(async move |this, cx| {
             loop {
-                if let Ok((bus, mut changes)) = with_timeout(store_updates()).await {
-                    while let Ok(answers) = with_timeout(lookup(&bus)).await {
+                if let Ok((bus, mut changes)) = with_timeout(store_updates(id)).await {
+                    while let Ok(answers) = with_timeout(lookup(&bus, id)).await {
                         if this
                             .update(cx, |view, cx| {
                                 view.permissions.answers = Some(answers);
@@ -152,13 +184,7 @@ impl Settings {
     pub(super) fn permissions_page(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
         let mut parts = vec![self.chip_row("Keyboard shortcut access")];
         let description = "Allowed apps can receive keys Denial uses for its shortcuts, such as Super, while focused.";
-        let state = &self.permissions;
-        let label = match &state.answers {
-            _ if state.unavailable => "Permission store unavailable",
-            None => "Loading permissions…",
-            Some(answers) if answers.is_empty() => "No app has asked yet",
-            Some(_) => "Keyboard shortcuts",
-        };
+        let label = self.permission_status().unwrap_or("Keyboard shortcuts");
         parts.push(island(&self.look).child(self.row(
             "permissions-status",
             Some(Icon::Shield),
@@ -166,9 +192,28 @@ impl Settings {
             Some(say(description)),
             (true, true),
         )));
-        let Some(answers) = state.answers.as_ref().filter(|answers| !answers.is_empty()) else {
-            return parts;
-        };
+        parts.extend(self.permission_answers(layer, cx));
+        parts
+    }
+
+    /// What there is instead of answers to list: none yet, or no store.
+    pub(super) fn permission_status(&self) -> Option<&'static str> {
+        let state = &self.permissions;
+        match &state.answers {
+            _ if state.unavailable => Some("Permission store unavailable"),
+            None => Some("Loading permissions…"),
+            Some(answers) if answers.is_empty() => Some("No app has asked yet"),
+            Some(_) => None,
+        }
+    }
+
+    /// The apps that have an answer, each opening a choice of answers.
+    pub(super) fn permission_answers(&self, layer: Layer, cx: &mut Context<Self>) -> Option<Div> {
+        let state = &self.permissions;
+        let answers = state
+            .answers
+            .as_ref()
+            .filter(|answers| !answers.is_empty())?;
         let mut apps: Vec<_> = answers
             .iter()
             .map(|(id, answer)| {
@@ -190,7 +235,7 @@ impl Settings {
             })
             .collect();
         apps.sort_by_cached_key(|(id, _, name)| (name.to_lowercase(), *id));
-        parts.push(
+        Some(
             self.rows_island(apps.into_iter(), 0., |(id, answer, name), ends| {
                 let row = self
                     .row(
@@ -208,14 +253,16 @@ impl Settings {
                     this.choose_permission(id.clone(), answer, cx)
                 })
             }),
-        );
-        parts
+        )
     }
 
     fn choose_permission(&mut self, app: String, answer: Answer, cx: &mut Context<Self>) {
+        let Some(entry) = self.permissions.entry else {
+            return;
+        };
         self.show(
             Dialog::Pick {
-                title: "Keyboard shortcut access".into(),
+                title: entry.title.into(),
                 options: Answer::ALL.map(|choice| choice.label().into()).into(),
                 picked: Answer::ALL
                     .iter()
@@ -225,7 +272,7 @@ impl Settings {
                     if let Some(&choice) = Answer::ALL.get(choice)
                         && choice != answer
                     {
-                        this.save_permission(app.clone(), choice, cx);
+                        this.save_permission(entry, app.clone(), choice, cx);
                     }
                 }),
             },
@@ -233,8 +280,17 @@ impl Settings {
         );
     }
 
-    fn save_permission(&mut self, app: String, answer: Answer, cx: &mut Context<Self>) {
-        if self.permissions.unavailable || !self.permissions.saving.insert(app.clone()) {
+    fn save_permission(
+        &mut self,
+        entry: Entry,
+        app: String,
+        answer: Answer,
+        cx: &mut Context<Self>,
+    ) {
+        if self.permissions.entry != Some(entry)
+            || self.permissions.unavailable
+            || !self.permissions.saving.insert(app.clone())
+        {
             return;
         }
         cx.notify();
@@ -246,7 +302,13 @@ impl Settings {
                     PATH,
                     Some(SERVICE),
                     "SetPermission",
-                    &(TABLE, true, ID, app.as_str(), [answer.stored()].as_slice()),
+                    &(
+                        TABLE,
+                        true,
+                        entry.id,
+                        app.as_str(),
+                        [answer.stored()].as_slice(),
+                    ),
                 )
                 .await
                 .map(drop)

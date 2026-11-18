@@ -343,7 +343,7 @@ impl Settings {
 
     /// Rows of what dmail reports: a value at the end, or a longer line
     /// under the title.
-    fn info_island(&self, rows: Vec<Info>) -> Div {
+    pub(super) fn info_island(&self, rows: Vec<Info>) -> Div {
         self.rows_island(rows.into_iter(), 0., |info, ends| match info {
             Info::Value(title, value) => self
                 .row(title, None, title, None, ends)
@@ -353,7 +353,7 @@ impl Settings {
     }
 
     /// When something happened: the time today, the date and time before.
-    fn when(&self, unix: i64) -> String {
+    pub(super) fn when(&self, unix: i64) -> String {
         let twenty_four = catalog::find("time.24").is_some_and(|item| self.on(item));
         let then = clock::local(unix as libc::time_t);
         let time = clock::time_text(&then, twenty_four);
@@ -485,7 +485,7 @@ impl Settings {
 }
 
 /// One row of what dmail reports.
-enum Info {
+pub(super) enum Info {
     Value(&'static str, String),
     Detail(&'static str, String),
 }

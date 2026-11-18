@@ -25,6 +25,7 @@ mod page;
 mod panel;
 mod parts;
 mod permissions;
+mod position;
 mod phone;
 mod plugins;
 mod profile;
@@ -61,6 +62,7 @@ use crate::clock;
 use crate::country;
 use crate::denial;
 use crate::fingerprint;
+use crate::location;
 use crate::mobile;
 use crate::values::Values;
 use crate::wallpaper;
@@ -562,6 +564,21 @@ struct Mobile {
     traffic: Option<(u64, u64)>,
 }
 
+/// The GPS as Settings knows it.
+#[derive(Default)]
+struct Location {
+    state: location::State,
+    /// None while dmail does not run, or has no location.
+    link: Option<location::Link>,
+    /// Heard from dmail once at least; until then the page shows no GPS.
+    read: bool,
+    /// The user has the page locate the phone: Settings asks dmail for
+    /// location until the switch goes off or the page closes.
+    locating: bool,
+    /// A Start or Stop on its way to dmail.
+    asking: bool,
+}
+
 /// Bluetooth as Settings knows it.
 #[derive(Default)]
 struct Bluetooth {
@@ -648,6 +665,7 @@ pub struct Settings {
     keyboard: Keyboard,
     wifi: Wifi,
     mobile: Mobile,
+    location: Location,
     power: Power,
     denial: Denial,
     display_controls: display_controls::DisplayControls,
@@ -682,6 +700,7 @@ pub struct Settings {
     /// Joining a network, until it is joined or fails.
     _joining: Task<()>,
     _mobile: Task<()>,
+    _location: Task<()>,
     _power: Task<()>,
     _display: Task<()>,
     /// Reading the panel again every second, while the Display page shows.
@@ -903,6 +922,8 @@ impl Settings {
             _joining: Task::ready(()),
             mobile: Mobile::default(),
             _mobile: cx.spawn(async move |this, cx| Self::follow_mobile(this, cx).await),
+            location: Location::default(),
+            _location: cx.spawn(async move |this, cx| Self::follow_location(this, cx).await),
             power: Power::default(),
             _power: cx.spawn(async move |this, cx| Self::follow_power(this, cx).await),
             denial: Denial {
@@ -1166,6 +1187,7 @@ impl Settings {
         self.follow_display_controls(cx);
         self.follow_output_modes(cx);
         self.follow_permissions(cx);
+        self.follow_locating(cx);
         self.follow_plugins(cx);
         self.follow_developer(cx);
         self.follow_profile(cx);
@@ -1178,7 +1200,7 @@ impl Settings {
         if self.screen.is_page("storage") {
             self.read_storage(cx);
         }
-        if self.screen.is_page("apps") || self.screen.is_page("permissions") || self.screen.is_page("environment") || self.screen.is_page("shortcuts") {
+        if self.screen.is_page("apps") || self.screen.is_page("permissions") || self.screen.is_page("location") || self.screen.is_page("environment") || self.screen.is_page("shortcuts") {
             self.read_apps(cx);
         }
         if self.screen.is_page("time") || self.screen == Screen::Countries {
@@ -1523,6 +1545,7 @@ impl Settings {
                 Content::Settings(sections) => self.page(sections, layer, cx),
                 Content::Wifi => self.wifi_page(layer, cx),
                 Content::Mobile => self.mobile_page(layer, cx),
+                Content::Location => self.location_page(layer, cx),
                 Content::Bluetooth => self.bluetooth_page(layer, cx),
                 Content::Battery => self.battery_page(layer, cx),
                 Content::Display => self.display_page(layer, cx),

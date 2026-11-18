@@ -32,6 +32,9 @@ pub enum Content {
     Wifi,
     /// The modem, through dmail.
     Mobile,
+    /// The GPS through dmail, and the apps' answers to Denial's location
+    /// question.
+    Location,
     /// Bluetooth, through BlueZ.
     Bluetooth,
     /// The battery, through UPower.
@@ -962,7 +965,7 @@ pub static GROUPS: &[Group] = &[
                 id: "privacy",
                 title: "Privacy",
                 icon: Icon::Shield,
-                summary: "Camera, microphone, location",
+                summary: "Camera, microphone",
                 content: Content::Settings(&[
                     section(
                         "Access",
@@ -972,9 +975,6 @@ pub static GROUPS: &[Group] = &[
                                 .fixed(),
                             item("privacy.microphone", "Microphone", Kind::Toggle(true))
                                 .detail("For all apps")
-                                .fixed(),
-                            item("privacy.location", "Location", Kind::Toggle(true))
-                                .icon(Icon::Location)
                                 .fixed(),
                         ],
                     ),
@@ -988,6 +988,13 @@ pub static GROUPS: &[Group] = &[
                         .fixed()],
                     ),
                 ]),
+            },
+            Page {
+                id: "location",
+                title: "Location",
+                icon: Icon::Location,
+                summary: "GPS, apps that may use it",
+                content: Content::Location,
             },
         ],
     },
@@ -1286,6 +1293,7 @@ pub fn items() -> impl Iterator<Item = (&'static Page, &'static Section, &'stati
             Content::OutputConfiguration => INPUT_DECK_CONTROLS,
             Content::Wifi
             | Content::Mobile
+            | Content::Location
             | Content::Bluetooth
             | Content::Battery
             | Content::Display

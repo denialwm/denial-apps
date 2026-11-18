@@ -284,13 +284,11 @@ async fn follow_dmail(updates: &Sender<Option<(Link, State)>>) -> zbus::Result<(
         owners.next().await;
         return Ok(());
     }
-    let rule = MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender(NAME)?
-        .path(PATH)?
-        .interface("org.freedesktop.DBus.Properties")?
-        .build();
-    let mut signals = MessageStream::for_match_rule(rule, &bus, Some(64)).await?;
+    // Changes of the modem and data only: dmail's location moves every
+    // second while it runs.
+    let mut signals = changes(&bus, MODEM)
+        .await?
+        .or(changes(&bus, DATA).await?);
     let link = Link { bus };
     loop {
         send(Some((link.clone(), link.read().await?))).await?;
@@ -302,11 +300,21 @@ async fn follow_dmail(updates: &Sender<Option<(Link, State)>>) -> zbus::Result<(
             return Ok(());
         }
         async_io::Timer::after(SETTLE).await;
-        while futures_lite::future::poll_once(signals.next())
-            .await
-            .is_some()
-        {}
+        while let Some(Some(_)) = futures_lite::future::poll_once(signals.next()).await {}
     }
+}
+
+/// Property changes of one of dmail's interfaces.
+async fn changes(bus: &Connection, interface: &str) -> zbus::Result<MessageStream> {
+    let rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender(NAME)?
+        .path(PATH)?
+        .interface("org.freedesktop.DBus.Properties")?
+        .member("PropertiesChanged")?
+        .arg(0, interface)?
+        .build();
+    MessageStream::for_match_rule(rule, bus, Some(64)).await
 }
 
 /// Reads dmail on a phone and prints it: `cargo test -- --ignored
