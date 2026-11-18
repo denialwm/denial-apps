@@ -19,11 +19,11 @@ const WORDMARK_LETTERS: &[u8] = include_bytes!("../../assets/denial-wordmark-let
 const WORDMARK_ACCENT: &[u8] = include_bytes!("../../assets/denial-wordmark-accent.svg");
 
 /// Where Denial is supported, as its website's support page has them.
-const SPONSOR_PAGE: &str = "https://sponsor.denialwm.org/en";
-const SPONSOR_PAGE_CHINESE: &str = "https://sponsor.denialwm.org/cn";
-const GITHUB_SPONSORS: &str = "https://github.com/sponsors/doctorlogix";
+pub(super) const SPONSOR_PAGE: &str = "https://sponsor.denialwm.org/en";
+pub(super) const SPONSOR_PAGE_CHINESE: &str = "https://sponsor.denialwm.org/cn";
+pub(super) const GITHUB_SPONSORS: &str = "https://github.com/sponsors/doctorlogix";
 const KO_FI: &str = "https://ko-fi.com/E5P523D5FN";
-const REPOSITORY: &str = "https://github.com/denialwm/denial";
+pub(super) const REPOSITORY: &str = "https://github.com/denialwm/denial";
 const ISSUES: &str = "https://github.com/denialwm/denial/issues";
 
 /// A row that opens a web page: its icon, what it is, what it does, and
@@ -90,36 +90,13 @@ impl Settings {
     ) -> Vec<Div> {
         let live = layer.live();
         let wordmark_width = (width - 2.0 * (INSET + ROW_PAD)).clamp(1.0, 420.0);
-        let wordmark_height = wordmark_width * 150.0 / 490.0;
-        let foreground = solid(self.look.palette.foreground);
         let secondary = solid(self.look.palette.secondary);
-        let wordmark = div()
-            .id("denial-wordmark")
-            .role(gpui::Role::Image)
-            .aria_label("Denial")
-            .relative()
-            .w(px(wordmark_width))
-            .h(px(wordmark_height))
-            .child(
-                svg()
-                    .data(WORDMARK_LETTERS)
-                    .absolute()
-                    .inset_0()
-                    .text_color(foreground),
-            )
-            .child(
-                svg()
-                    .data(WORDMARK_ACCENT)
-                    .absolute()
-                    .inset_0()
-                    .text_color(solid(0x7150B8)),
-            );
         let hero = island(&self.look)
             .px(px(ROW_PAD))
             .py(px(40.))
             .flex()
             .justify_center()
-            .child(wordmark);
+            .child(self.wordmark(wordmark_width));
 
         let free = div()
             .p(px(ROW_PAD))
@@ -192,6 +169,33 @@ impl Settings {
             self.chip_row("Built on"),
             built_on,
         ]
+    }
+
+    /// Denial's wordmark, `width` wide: its letters in the foreground, its
+    /// mark in Denial's own purple.
+    pub(super) fn wordmark(&self, width: f32) -> gpui::Stateful<Div> {
+        div()
+            .id("denial-wordmark")
+            .role(gpui::Role::Image)
+            .aria_label("Denial")
+            .relative()
+            .flex_none()
+            .w(px(width))
+            .h(px(width * 150.0 / 490.0))
+            .child(
+                svg()
+                    .data(WORDMARK_LETTERS)
+                    .absolute()
+                    .inset_0()
+                    .text_color(solid(self.look.palette.foreground)),
+            )
+            .child(
+                svg()
+                    .data(WORDMARK_ACCENT)
+                    .absolute()
+                    .inset_0()
+                    .text_color(solid(0x7150B8)),
+            )
     }
 
     /// A row that opens `link`'s page in the browser.

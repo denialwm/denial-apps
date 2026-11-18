@@ -311,10 +311,32 @@ where its value lives (`src/settings/bound.rs`):
   are kept in `$XDG_STATE_HOME/denial/settings/values.json`
   (`src/values.rs`), so they stay across restarts.
 
-`settings <page>` opens on a page by its id (`wifi`, `display`, ...). One
-Settings runs at a time: it owns `org.denialwm.Settings` on the session bus,
-and a second `settings <page>` hands the page and its activation token to it
-through `Open` and exits.
+`settings <page>` or `settings --page=<page>` opens on a page by its id
+(`wifi`, `display`, ...). One Settings runs at a time: it owns
+`org.denialwm.Settings` on the session bus, and a second `settings <page>`
+hands the page and its activation token to it through `Open` and exits.
+
+## Welcome
+
+`settings --welcome` is Welcome, the tour a desktop opens on its first start:
+the same program as an app of its own, `org.denialwm.Welcome`, with its own
+window and launcher entry (`src/settings/welcome.rs`). Five steps: a greeting,
+the shortcuts as they are bound now, the window layout, the look, and how to
+support Denial. The layout and the look change the desktop as they are
+picked, through the settings their pages use.
+
+Finishing the tour, or leaving it at its first step, writes
+`$XDG_CONFIG_HOME/denial/welcome` and closes it (`src/welcome.rs`). Denial
+starts `settings --welcome --autostart` with every desktop session; with
+`--autostart` it opens only while that file is missing. Remove the file to
+see the tour on the next start again. The launcher's entry always opens it.
+
+## Older glibc
+
+Denial packages Settings for systems whose glibc is older than the one it is
+built on, down to 2.39. `src/glibc.rs` holds the math functions newer glibc
+versions gave new symbol versions, so the program never asks glibc for them.
+Denial's packaging checks the baseline; a function it names goes there.
 
 ## Dependencies
 

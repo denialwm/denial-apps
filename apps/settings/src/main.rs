@@ -12,6 +12,7 @@ mod developer;
 mod diagnostics;
 mod droidloom;
 mod fingerprint;
+mod glibc;
 mod instance;
 mod language;
 mod lock;
@@ -23,6 +24,7 @@ mod settings;
 mod values;
 mod wallhaven;
 mod wallpaper;
+mod welcome;
 mod wifi;
 mod words;
 
@@ -41,13 +43,23 @@ fn main() {
     diagnostics::init();
     log::info!("starting Settings");
     denial_look::words::register_chinese(words::CHINESE);
-    // `settings <page>` opens on that page.
-    let page = std::env::args().nth(1);
+    let Start {
+        page,
+        welcome,
+        autostart,
+    } = Start::read(std::env::args().skip(1));
+    // Denial starts Welcome with every desktop session; its tour shows once.
+    if welcome && autostart && welcome::completed() {
+        return;
+    }
+    // Welcome is an app of its own beside Settings: its own name, window
+    // and launcher entry.
+    let name = if welcome { welcome::NAME } else { instance::NAME };
     let (opener, opens) = async_channel::unbounded();
     // The bus name is held for as long as this connection lives.
-    let bus = match future::block_on(claim(opener)) {
+    let bus = match future::block_on(claim(name, opener)) {
         Ok(bus) => Some(bus),
-        Err(zbus::Error::NameTaken) => return forward(page.unwrap_or_default()),
+        Err(zbus::Error::NameTaken) => return forward(name, page.unwrap_or_default()),
         Err(error) => {
             eprintln!("settings: session bus: {error}");
             None
@@ -63,20 +75,28 @@ fn main() {
                 KeyBinding::new("escape", Back, None),
             ]);
 
-            let bounds = Bounds::centered(None, size(px(540.), px(1100.)), cx);
+            // A phone gives the window its screen whatever it asks for;
+            // this is its size on a desk.
+            let bounds = Bounds::centered(None, size(px(1000.), px(720.)), cx);
             let window = cx
                 .open_window(
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
                         window_background: WindowBackgroundAppearance::Transparent,
                         titlebar: Some(TitlebarOptions {
-                            title: Some("Settings".into()),
+                            title: Some(
+                                if welcome {
+                                    denial_look_gpui::say("Welcome to Denial")
+                                } else {
+                                    "Settings".into()
+                                },
+                            ),
                             ..Default::default()
                         }),
-                        app_id: Some(instance::NAME.into()),
+                        app_id: Some(name.into()),
                         ..Default::default()
                     },
-                    |window, cx| cx.new(|cx| Settings::new(page, window, cx)),
+                    |window, cx| cx.new(|cx| Settings::new(page, welcome, window, cx)),
                 )
                 .unwrap();
             log::info!("Settings window opened");
@@ -109,27 +129,88 @@ fn main() {
         });
 }
 
-/// Serves `Opener` and takes Settings' bus name, or fails with NameTaken
-/// while another Settings runs.
-async fn claim(opener: async_channel::Sender<Open>) -> zbus::Result<zbus::Connection> {
+/// How this start was asked for.
+#[derive(Debug, Default, Eq, PartialEq)]
+struct Start {
+    /// `settings <page>` or `--page=<page>` opens on that page.
+    page: Option<String>,
+    /// `--welcome`: the first-start tour, not Settings.
+    welcome: bool,
+    /// `--autostart`: Denial started it, nobody asked for it.
+    autostart: bool,
+}
+
+impl Start {
+    fn read(arguments: impl Iterator<Item = String>) -> Self {
+        let mut start = Self::default();
+        for argument in arguments {
+            match argument.as_str() {
+                "--welcome" => start.welcome = true,
+                "--autostart" => start.autostart = true,
+                _ => match argument.strip_prefix("--page=") {
+                    Some(page) => start.page = Some(page.to_owned()),
+                    None if !argument.starts_with('-') => start.page = Some(argument),
+                    None => eprintln!("settings: unknown option {argument}"),
+                },
+            }
+        }
+        start
+    }
+}
+
+/// Serves `Opener` and takes the bus name `name`, or fails with NameTaken
+/// while another one runs.
+async fn claim(
+    name: &'static str,
+    opener: async_channel::Sender<Open>,
+) -> zbus::Result<zbus::Connection> {
     let bus = zbus::connection::Builder::session()?
         .serve_at(instance::PATH, Opener(opener))?
         .build()
         .await?;
     // Not queued behind the running Settings: refused at once.
-    bus.request_name_with_flags(instance::NAME, RequestNameFlags::DoNotQueue.into())
+    bus.request_name_with_flags(name, RequestNameFlags::DoNotQueue.into())
         .await?;
     Ok(bus)
 }
 
-/// Hands `page` and this start's activation token to the running Settings.
-fn forward(page: String) {
+/// Hands `page` and this start's activation token to the one that runs
+/// under `name`.
+fn forward(name: &'static str, page: String) {
     let token = std::env::var("XDG_ACTIVATION_TOKEN").unwrap_or_default();
     let opened = future::block_on(async {
         let bus = zbus::Connection::session().await?;
-        InstanceProxy::new(&bus).await?.open(&page, &token).await
+        InstanceProxy::builder(&bus)
+            .destination(name)?
+            .build()
+            .await?
+            .open(&page, &token)
+            .await
     });
     if let Err(error) = opened {
         eprintln!("settings: opening in the running Settings: {error}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Start;
+
+    fn read(arguments: &[&str]) -> Start {
+        Start::read(arguments.iter().map(|argument| argument.to_string()))
+    }
+
+    #[test]
+    fn a_page_is_named_bare_or_as_an_option() {
+        assert_eq!(read(&["wifi"]).page.as_deref(), Some("wifi"));
+        assert_eq!(read(&["--page=power"]).page.as_deref(), Some("power"));
+        assert_eq!(read(&[]), Start::default());
+    }
+
+    #[test]
+    fn welcome_and_autostart_are_options() {
+        let start = read(&["--welcome", "--autostart"]);
+        assert!(start.welcome && start.autostart && start.page.is_none());
+        assert!(!read(&["--welcome"]).autostart);
     }
 }

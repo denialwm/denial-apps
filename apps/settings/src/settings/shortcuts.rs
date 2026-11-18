@@ -12,16 +12,16 @@ use crate::denial::Refusal;
 
 #[derive(Default)]
 pub(super) struct Shortcuts {
-    snapshot: Option<Value>,
+    pub(super) snapshot: Option<Value>,
     watcher: Option<Task<()>>,
     saving: bool,
 }
 
-fn list<'a>(snapshot: &'a Value, key: &str) -> &'a [Value] {
+pub(super) fn list<'a>(snapshot: &'a Value, key: &str) -> &'a [Value] {
     snapshot[key].as_array().map_or(&[], Vec::as_slice)
 }
 
-fn action_label(action: &str) -> String {
+pub(super) fn action_label(action: &str) -> String {
     let mut label = String::new();
     for ch in action.chars() {
         if label.is_empty() {
@@ -60,7 +60,8 @@ fn target_label(snapshot: &Value, target: &Value) -> String {
 
 impl Settings {
     pub(super) fn follow_shortcuts(&mut self, cx: &mut Context<Self>) {
-        if !self.screen.is_page("shortcuts") {
+        // Welcome shows the bindings too.
+        if !self.screen.is_page("shortcuts") && self.welcome.is_none() {
             self.shortcuts.watcher = None;
             return;
         }

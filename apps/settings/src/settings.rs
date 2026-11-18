@@ -32,6 +32,7 @@ mod power;
 mod shortcuts;
 mod system;
 mod wallpapers;
+mod welcome;
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -598,6 +599,8 @@ pub struct Settings {
     environment_name: Entity<TextInput>,
     environment_value: Entity<TextInput>,
     shortcuts: shortcuts::Shortcuts,
+    /// The first-start tour, when this is Welcome and not Settings.
+    welcome: Option<welcome::Welcome>,
     expanded_sections: HashSet<&'static str>,
     /// Rows are being made for the panel inside an opened card: their
     /// corners follow the panel's, not an island's.
@@ -711,7 +714,12 @@ impl Focusable for Settings {
 
 impl Settings {
     /// Opens on the home screen, or on the page with id `page`.
-    pub fn new(page: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        page: Option<String>,
+        welcome: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let look = Look::load();
         let search = cx.new(|cx| TextInput::new("Search settings", &look, 1, cx));
         let password = cx.new(|cx| {
@@ -864,6 +872,7 @@ impl Settings {
             environment_name,
             environment_value,
             shortcuts: shortcuts::Shortcuts::default(),
+            welcome: welcome.then(welcome::Welcome::default),
             expanded_sections: HashSet::new(),
             nested: std::cell::Cell::new(false),
             top_away: ScrollAway::default(),
@@ -1332,7 +1341,9 @@ impl Settings {
     /// clears; then a screen goes back to the one it came from; at home, the
     /// window closes.
     fn back(&mut self, _: &Back, window: &mut Window, cx: &mut Context<Self>) {
-        if self.dialog.is_some() {
+        if self.welcome.is_some() {
+            self.welcome_back(cx);
+        } else if self.dialog.is_some() {
             self.dismiss(window, cx);
         } else if (self.searching || (self.wide && !self.search.read(cx).text().is_empty()))
             && (self.screen == Screen::Home
@@ -1985,6 +1996,9 @@ impl Render for Settings {
             .bg(backing(&self.look))
             .font(self.font.clone())
             .text_color(solid(self.look.palette.foreground));
+        if self.welcome.is_some() {
+            return root.child(self.welcome_layout(width, cx));
+        }
         if self.wide {
             return root
                 .child(self.wide_layout(width, now, cx))
