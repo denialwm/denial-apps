@@ -362,12 +362,8 @@ impl Settings {
             ));
         }
         let mut parts = Vec::new();
-        let arranged = configuration
-            .outputs
-            .iter()
-            .filter(|output| output.enabled)
-            .count()
-            > 1;
+        // Every connected display has a place, so an off one can be chosen.
+        let arranged = configuration.outputs.len() > 1;
         if !arranged {
             parts.push(self.heading_row("Displays", actions));
         } else {

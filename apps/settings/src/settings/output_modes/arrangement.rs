@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use denial_look::words::tr;
 use denial_look::{Appearance, INSET, PRESSED_FILL};
 use denial_look_gpui::{Icon, color, control_fill, control_radius, icon, island, solid};
 use gpui::{
@@ -41,6 +42,8 @@ struct Tile {
     label: String,
     origin: Pair,
     size: Pair,
+    /// An off display shows where it would be, to be chosen and turned on.
+    enabled: bool,
 }
 
 impl Tile {
@@ -66,6 +69,7 @@ impl Tile {
                 (f64::from(width) / output.scale).round().max(1.0),
                 (f64::from(height) / output.scale).round().max(1.0),
             ],
+            enabled: output.enabled,
         })
     }
 
@@ -197,17 +201,13 @@ impl Settings {
         edit: bool,
         cx: &mut Context<Self>,
     ) -> Div {
-        let mut tiles: Vec<_> = configuration
-            .outputs
-            .iter()
-            .filter(|output| output.enabled)
-            .filter_map(Tile::of)
-            .collect();
+        let mut tiles: Vec<_> = configuration.outputs.iter().filter_map(Tile::of).collect();
         if tiles.is_empty() {
             return island(&self.look);
         }
-        // The selected monitor draws last, as if raised above any overlapping tile.
-        tiles.sort_by_key(|tile| tile.name == selected);
+        // Off displays draw under the lit ones, and the selected monitor of
+        // each draws last, as if raised above any overlapping tile.
+        tiles.sort_by_key(|tile| (tile.enabled, tile.name == selected));
         let width = (width - 2.0 * INSET - 2.0 * PAD).max(64.0);
         let height: f32 = if width >= 550.0 { 280.0 } else { 220.0 };
         let viewport = [f64::from(width), f64::from(height)];
@@ -274,8 +274,14 @@ impl Settings {
                     .items_center()
                     .justify_center()
                     .overflow_hidden()
+                    .when(!tile.enabled, |tile_box| tile_box.opacity(0.55))
                     .when(width >= 38.0 && height >= 15.0, |tile_box| {
-                        tile_box.child(div().truncate().px(px(4.)).child(tile.label.clone()))
+                        let label = if tile.enabled {
+                            tile.label.clone()
+                        } else {
+                            format!("{} · {}", tile.label, tr("Off"))
+                        };
+                        tile_box.child(div().truncate().px(px(4.)).child(label))
                     })
             })
             .collect::<Vec<_>>();
@@ -596,7 +602,8 @@ impl Settings {
         }
         if let Some(tile) = tile {
             self.output_modes.selected = Some(tile.name.clone());
-            if !edit {
+            // An off display is chosen, not moved: it has no place yet.
+            if !edit || !tile.enabled {
                 cx.notify();
                 return;
             }
@@ -619,6 +626,13 @@ impl Settings {
         tiles: &[Tile],
         cx: &mut Context<Self>,
     ) {
+        // A lit display snaps to and stops at lit displays only.
+        let lit = tiles
+            .iter()
+            .filter(|tile| tile.enabled)
+            .cloned()
+            .collect::<Vec<_>>();
+        let tiles = lit.as_slice();
         let arrangement = &mut self.output_modes.arrangement;
         let Some(drag) = arrangement
             .drag
@@ -719,12 +733,14 @@ mod tests {
             label: "Display 1".into(),
             origin: [0.0, 0.0],
             size: [100.0, 100.0],
+            enabled: true,
         };
         let fixed = Tile {
             name: "DP-2".into(),
             label: "Display 2".into(),
             origin: [100.0, 0.0],
             size: [100.0, 100.0],
+            enabled: true,
         };
         let tiles = [fixed];
         let edge = constrain_drag(&moving, moving.origin, [300.0, 0.0], &tiles);
@@ -746,6 +762,7 @@ mod tests {
             label: "Display".into(),
             origin: [-1000.0, 500.0],
             size: [3000.0, 1000.0],
+            enabled: true,
         };
         let view = fit(&[tile], [348.0, 148.0], MAX_SCALE);
         assert_eq!(view.centre, [500.0, 750.0]);
