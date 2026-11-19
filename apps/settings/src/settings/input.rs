@@ -171,9 +171,19 @@ impl Settings {
                     None,
                     "Mouse acceleration",
                     None,
-                    (false, true),
+                    (false, pointer.mouse_natural_scroll_enabled.is_none()),
                 )
                 .child(self.toggle(pointer.mouse_acceleration_enabled));
+            let wheel = pointer.mouse_natural_scroll_enabled.map(|enabled| {
+                self.row(
+                    "mouse-natural",
+                    None,
+                    "Natural scrolling",
+                    None,
+                    (false, true),
+                )
+                .child(self.toggle(enabled))
+            });
             parts.push(self.chip_row("Mouse"));
             parts.push(
                 island(&self.look)
@@ -196,7 +206,25 @@ impl Settings {
                             },
                             cx,
                         );
-                    })),
+                    }))
+                    .when_some(wheel, |island, wheel| {
+                        island.child(self.separator(0.)).child(self.live(
+                            wheel,
+                            live,
+                            cx,
+                            |this, _, cx| {
+                                this.edit_pointer(
+                                    true,
+                                    |state| {
+                                        state.mouse_natural_scroll_enabled = state
+                                            .mouse_natural_scroll_enabled
+                                            .map(|enabled| !enabled)
+                                    },
+                                    cx,
+                                );
+                            },
+                        ))
+                    }),
             );
         }
         if pointer.has_touchpad {

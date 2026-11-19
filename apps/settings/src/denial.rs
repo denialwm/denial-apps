@@ -90,6 +90,10 @@ pub struct PointerSettings {
     pub has_touchpad: bool,
     pub mouse_speed: f64,
     pub mouse_acceleration_enabled: bool,
+    /// The wheel's own natural scrolling; None from a Denial that predates it,
+    /// which would refuse the field.
+    #[serde(default)]
+    pub mouse_natural_scroll_enabled: Option<bool>,
     pub tap_to_click_enabled: bool,
     pub natural_scroll_enabled: bool,
     pub scroll_speed_factor: f64,
@@ -399,12 +403,16 @@ impl Link {
 
     pub async fn set_pointer(&self, settings: &PointerSettings, mouse: bool) -> Result<PointerSettings, Refusal> {
         let (method, params) = if mouse {
+            let mut fields = json!({
+                "speed": settings.mouse_speed,
+                "accelerationEnabled": settings.mouse_acceleration_enabled,
+            });
+            if let Some(natural) = settings.mouse_natural_scroll_enabled {
+                fields["naturalScrollEnabled"] = natural.into();
+            }
             ("settings.mouse.apply", json!({
                 "expected_revision": settings.revision,
-                "mouse": {
-                    "speed": settings.mouse_speed,
-                    "accelerationEnabled": settings.mouse_acceleration_enabled,
-                },
+                "mouse": fields,
             }))
         } else {
             ("settings.touchpad.apply", json!({
