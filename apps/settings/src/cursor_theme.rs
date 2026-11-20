@@ -10,24 +10,26 @@ use serde_json::{Value, json};
 
 pub const DEFAULT: &str = "bibata_modern_ice";
 const MIB: usize = 1024 * 1024;
-const ROLE_KEYS: &[(&str, &str)] = &[
-    ("normal", "pointer"),
-    ("help", "help"),
-    ("working", "working"),
-    ("busy", "busy"),
-    ("precision", "precision"),
-    ("text", "text"),
-    ("handwriting", "hand"),
-    ("unavailable", "unavailable"),
-    ("verticalResize", "vert"),
-    ("horizontalResize", "horz"),
-    ("diagonalNwSeResize", "dgn1"),
-    ("diagonalNeSwResize", "dgn2"),
-    ("move", "move"),
-    ("alternate", "alternate"),
-    ("link", "link"),
-    ("person", "person"),
-    ("pin", "pin"),
+/// Each role with the value name Windows stores it under in the registry, and the
+/// [Strings] keys install.inf files commonly give it.
+const ROLES: &[(&str, &str, &[&str])] = &[
+    ("normal", "arrow", &["pointer"]),
+    ("help", "help", &["help"]),
+    ("working", "appstarting", &["working", "work"]),
+    ("busy", "wait", &["busy"]),
+    ("precision", "crosshair", &["precision", "cross"]),
+    ("text", "ibeam", &["text"]),
+    ("handwriting", "nwpen", &["hand", "handwriting"]),
+    ("unavailable", "no", &["unavailable"]),
+    ("verticalResize", "sizens", &["vert"]),
+    ("horizontalResize", "sizewe", &["horz"]),
+    ("diagonalNwSeResize", "sizenwse", &["dgn1"]),
+    ("diagonalNeSwResize", "sizenesw", &["dgn2"]),
+    ("move", "sizeall", &["move"]),
+    ("alternate", "uparrow", &["alternate"]),
+    ("link", "hand", &["link"]),
+    ("person", "person", &["person"]),
+    ("pin", "pin", &["pin"]),
 ];
 
 #[derive(Clone)]
@@ -185,27 +187,73 @@ struct Scheme {
     roles: BTreeMap<&'static str, String>,
 }
 
+/// Splits an INF line at commas outside quotes, trimming each field and its quotes.
+fn inf_fields(line: &str) -> Vec<&str> {
+    let mut fields = Vec::new();
+    let mut quoted = false;
+    let mut start = 0;
+    for (at, ch) in line.char_indices() {
+        match ch {
+            '"' => quoted = !quoted,
+            ',' if !quoted => {
+                fields.push(&line[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    fields.push(&line[start..]);
+    fields
+        .into_iter()
+        .map(|field| field.trim().trim_matches('"'))
+        .collect()
+}
+
 fn parse_inf(bytes: &[u8], fallback_label: &str) -> io::Result<Scheme> {
     let not_scheme = || invalid("install.inf does not describe a Windows cursor scheme");
     let text = inf_text(bytes);
     let mut strings = HashMap::new();
+    // Registry value name → data, from the AddReg lines that set the user's cursors.
+    let mut registry = HashMap::new();
     let mut section = "";
     for line in text.lines().map(str::trim) {
+        if line.starts_with(';') {
+            continue;
+        }
         if line.starts_with('[') && line.ends_with(']') {
             section = &line[1..line.len() - 1];
-        } else if section.trim().eq_ignore_ascii_case("strings")
-            && !line.starts_with(';')
-            && let Some((key, value)) = line.split_once('=')
-            && strings
-                .insert(
-                    key.trim().to_ascii_lowercase(),
-                    value.trim().trim_matches('"').trim(),
-                )
-                .is_some()
+        } else if section.trim().eq_ignore_ascii_case("strings") {
+            if let Some((key, value)) = line.split_once('=')
+                && strings
+                    .insert(
+                        key.trim().to_ascii_lowercase(),
+                        value.trim().trim_matches('"').trim(),
+                    )
+                    .is_some()
+            {
+                return Err(invalid("install.inf names a cursor role twice"));
+            }
+        } else if let [root, key, name, _, data, ..] = inf_fields(line)[..]
+            && root.eq_ignore_ascii_case("hkcu")
+            && key.eq_ignore_ascii_case("control panel\\cursors")
         {
-            return Err(invalid("install.inf names a cursor role twice"));
+            registry.entry(name.to_ascii_lowercase()).or_insert(data);
         }
     }
+    // %key% refers to [Strings]; unknown ones such as %10% (the Windows folder) drop out.
+    let expand = |value: &str| -> String {
+        value
+            .split('%')
+            .enumerate()
+            .map(|(index, part)| match index % 2 {
+                0 => part,
+                _ => strings
+                    .get(&part.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(""),
+            })
+            .collect()
+    };
     let label = strings
         .get("scheme_name")
         .copied()
@@ -214,21 +262,33 @@ fn parse_inf(bytes: &[u8], fallback_label: &str) -> io::Result<Scheme> {
     if label.is_empty() || label.chars().any(char::is_control) {
         return Err(not_scheme());
     }
+    // Windows reads the registry lines; [Strings] keys are only a convention, so they are
+    // the fallback for files without those lines.
+    let by_registry = registry.contains_key("arrow");
     let mut roles = BTreeMap::new();
-    for &(role, key) in ROLE_KEYS {
-        if let Some(value) = strings.get(key).filter(|value| !value.is_empty()) {
-            let file = value
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            if !(file.ends_with(".cur") || file.ends_with(".ani")) {
-                return Err(invalid_owned(format!(
-                    "install.inf role {key} points at {value}, which is not a .cur or .ani file"
-                )));
-            }
-            roles.insert(role, file);
+    for &(role, name, keys) in ROLES {
+        let value = if by_registry {
+            registry.get(name).map(|data| expand(data))
+        } else {
+            keys.iter()
+                .find_map(|key| strings.get(*key))
+                .map(|value| value.to_string())
+        };
+        let Some(value) = value.filter(|value| !value.trim().is_empty()) else {
+            continue;
+        };
+        let file = value
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if !(file.ends_with(".cur") || file.ends_with(".ani")) {
+            return Err(invalid_owned(format!(
+                "install.inf gives the {role} cursor {value}, which is not a .cur or .ani file"
+            )));
         }
+        roles.insert(role, file);
     }
     if !roles.contains_key("normal") {
         return Err(not_scheme());
@@ -824,5 +884,29 @@ mod tests {
         };
         let error = manifest.unwrap_err().to_string();
         assert!(error.contains("pointer.png"), "{error}");
+    }
+
+    #[test]
+    fn roles_come_from_the_registry_lines() {
+        let inf = concat!(
+            "[Wreg]\r\n",
+            "HKCU,\"Control Panel\\Cursors\",Arrow,0x00020000,\"%10%\\%CUR_DIR%\\%pointer%\"\r\n",
+            "HKCU,\"Control Panel\\Cursors\",AppStarting,0x00020000,\"%10%\\%CUR_DIR%\\%work%\"\r\n",
+            "HKCU,\"Control Panel\\Cursors\",crosshair,0x00020000,\"%10%\\%CUR_DIR%\\%cross%\"\r\n",
+            "HKCU,\"Control Panel\\Cursors\",NWPen,0x00020000,\"%10%\\%CUR_DIR%\\%handwriting%\"\r\n",
+            "[Strings]\r\n",
+            "CUR_DIR = \"Cursors\\Demo\"\r\n",
+            "SCHEME_NAME = \"Demo\"\r\n",
+            "pointer = \"Pointer.cur\"\r\n",
+            "work = \"Work.ani\"\r\n",
+            "cross = \"Cross.cur\"\r\n",
+            "handwriting = \"Handwriting.cur\"\r\n",
+        );
+        let scheme = parse_inf(inf.as_bytes(), "").unwrap();
+        assert_eq!(scheme.label, "Demo");
+        assert_eq!(scheme.roles["normal"], "pointer.cur");
+        assert_eq!(scheme.roles["working"], "work.ani");
+        assert_eq!(scheme.roles["precision"], "cross.cur");
+        assert_eq!(scheme.roles["handwriting"], "handwriting.cur");
     }
 }
