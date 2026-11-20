@@ -619,6 +619,7 @@ pub struct Settings {
     /// The first-start tour, when this is Welcome and not Settings.
     welcome: Option<welcome::Welcome>,
     expanded_sections: HashSet<&'static str>,
+    cursors: cursor::Cursors,
     /// Rows are being made for the panel inside an opened card: their
     /// corners follow the panel's, not an island's.
     nested: std::cell::Cell<bool>,
@@ -893,6 +894,7 @@ impl Settings {
             shortcuts: shortcuts::Shortcuts::default(),
             welcome: welcome.then(welcome::Welcome::default),
             expanded_sections: HashSet::new(),
+            cursors: cursor::Cursors::default(),
             nested: std::cell::Cell::new(false),
             top_away: ScrollAway::default(),
             scrolls: HashMap::new(),
@@ -1214,6 +1216,7 @@ impl Settings {
         }
         if self.screen.is_page("style") {
             self.wallpapers.current = wallpaper::current(None);
+            self.read_cursors(cx);
         }
         if self.screen.is_page("monitor") {
             self.read_monitor_wallpaper();

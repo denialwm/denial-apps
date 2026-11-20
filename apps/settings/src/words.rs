@@ -1022,7 +1022,6 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Cursor theme", "光标主题"),
     ("Import cursor theme ZIP", "导入光标主题 ZIP"),
     ("Remove imported cursor theme", "移除已导入的光标主题"),
-    ("No imported cursor themes", "没有已导入的光标主题"),
     ("Application environment", "应用环境"),
     ("Variables for all apps or individual apps", "全局或单个应用的变量"),
     ("All applications", "所有应用"),

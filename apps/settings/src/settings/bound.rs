@@ -147,10 +147,6 @@ impl Settings {
 
     /// What a choice, or a row that opens a screen, shows under its title.
     pub(super) fn shown(&self, item: &Item) -> SharedString {
-        if item.key == "style.cursorTheme" {
-            let selected = self.current_cursor();
-            return if selected == crate::cursor_theme::DEFAULT { "Bibata Modern Ice".into() } else { "Imported theme".into() };
-        }
         if item.key == "style.customAccent" {
             let argb = self.kept("appearance.customAccentColor").and_then(Value::as_u64).unwrap_or(0xFF6B3F73);
             return format!("#{:06X}", argb & 0xFFFFFF).into();
@@ -437,8 +433,6 @@ impl Settings {
                 window.focus(&self.output_field.focus_handle(cx), cx);
             }
             Kind::Action(_) if item.key == "style.cursorImport" => self.import_cursor(cx),
-            Kind::Opens if item.key == "style.cursorTheme" => self.choose_cursor(false, cx),
-            Kind::Opens if item.key == "style.cursorRemove" => self.choose_cursor(true, cx),
             Kind::Action(said) => self.note(said, cx),
             Kind::Opens if item.key.starts_with("power.") => self.choose_idle_power(item, cx),
             Kind::Opens if item.key == "style.font" => self.choose_font(cx),

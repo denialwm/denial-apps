@@ -851,7 +851,6 @@ pub static GROUPS: &[Group] = &[
                         &[
                             item("style.cursorTheme", "Cursor theme", Kind::Opens).from(Source::Own),
                             item("style.cursorImport", "Import cursor theme ZIP", Kind::Action("")).from(Source::Own),
-                            item("style.cursorRemove", "Remove imported cursor theme", Kind::Opens).from(Source::Own),
                             measured(
                                 "style.cursorSize", "Cursor size", "appearance.cursorSize",
                                 32.0, 16.0, 64.0, SliderUnit::Pixels,

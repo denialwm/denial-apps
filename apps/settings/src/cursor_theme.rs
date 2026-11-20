@@ -32,10 +32,57 @@ const ROLES: &[(&str, &str, &[&str])] = &[
     ("pin", "pin", &["pin"]),
 ];
 
+/// The roles a theme's card shows, as the shell names them.
+pub const PREVIEW_ROLES: [&str; 5] = ["normal", "link", "text", "working", "busy"];
+/// Bundled Bibata's frames in the shell's bundle: a 32 px image per role,
+/// and larger renderings beside it.
+const BUNDLED_FRAMES: &str = "packages/denial_flutter_sdk/assets/cursors/bibata_modern_ice";
+
+/// One image of a cursor and how long it shows, in microseconds.
+#[derive(Clone)]
+pub struct PreviewFrame {
+    pub path: PathBuf,
+    pub duration: u64,
+}
+
 #[derive(Clone)]
 pub struct Theme {
     pub id: String,
     pub label: String,
+    /// The frames of each of `PREVIEW_ROLES`; a role the theme lacks shows
+    /// its normal cursor, as the shell draws it. Empty when none were found.
+    pub previews: Vec<Vec<PreviewFrame>>,
+}
+
+impl Theme {
+    pub fn imported(&self) -> bool {
+        self.id != DEFAULT
+    }
+}
+
+fn bundled() -> Theme {
+    let still = |role: &str| {
+        ["96/00.png", "00.png"]
+            .iter()
+            .find_map(|file| {
+                crate::wallpaper::shell_asset(&format!("{BUNDLED_FRAMES}/{role}/{file}"))
+            })
+            .map(|path| {
+                vec![PreviewFrame {
+                    path,
+                    duration: STATIC_FRAME_MICROSECONDS,
+                }]
+            })
+    };
+    Theme {
+        id: DEFAULT.to_owned(),
+        label: "Bibata Modern Ice".to_owned(),
+        previews: PREVIEW_ROLES
+            .iter()
+            .map(|role| still(role).or_else(|| still("normal")))
+            .collect::<Option<_>>()
+            .unwrap_or_default(),
+    }
 }
 
 fn invalid(message: &'static str) -> io::Error {
@@ -83,9 +130,32 @@ fn manifest(directory: &Path, digest: &str) -> Option<Theme> {
     {
         return None;
     }
+    let frames = |role: &str| -> Option<Vec<PreviewFrame>> {
+        value["roles"][role]["frames"]
+            .as_array()?
+            .iter()
+            .map(|frame| {
+                let path = frame["path"].as_str()?;
+                let safe = Path::new(path)
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_)));
+                Some(PreviewFrame {
+                    path: safe.then(|| directory.join(path))?,
+                    duration: frame["durationMicroseconds"]
+                        .as_u64()
+                        .filter(|&us| us > 0)?,
+                })
+            })
+            .collect()
+    };
     Some(Theme {
         id,
         label: label.to_owned(),
+        previews: PREVIEW_ROLES
+            .iter()
+            .map(|role| frames(role).or_else(|| frames("normal")))
+            .collect::<Option<_>>()
+            .unwrap_or_default(),
     })
 }
 
@@ -99,13 +169,7 @@ pub fn discovered() -> Vec<Theme> {
         .filter_map(|entry| manifest(&entry.path(), entry.file_name().to_str()?))
         .collect();
     imported.sort_by_cached_key(|theme| (theme.label.to_lowercase(), theme.id.clone()));
-    imported.insert(
-        0,
-        Theme {
-            id: DEFAULT.to_owned(),
-            label: "Bibata Modern Ice".to_owned(),
-        },
-    );
+    imported.insert(0, bundled());
     imported
 }
 
@@ -639,7 +703,9 @@ fn convert(folder: &Path, archive: &Path, root: &Path) -> io::Result<Theme> {
     )?;
     std::fs::remove_file(archive)?;
     match std::fs::rename(folder, &destination) {
-        Ok(()) => Ok(Theme { id, label }),
+        Ok(()) => {
+            manifest(&destination, digest).ok_or_else(|| invalid("Imported theme unreadable"))
+        }
         Err(error) => manifest(&destination, digest).ok_or(error),
     }
 }

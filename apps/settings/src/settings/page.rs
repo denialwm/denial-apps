@@ -70,6 +70,7 @@ impl Settings {
                     if !this.expanded_sections.remove(title) {
                         this.expanded_sections.insert(title);
                     }
+                    this.follow_cursors(cx);
                     cx.notify();
                 });
                 let card = island(&self.look).child(header);
@@ -273,6 +274,9 @@ impl Settings {
     ) -> Stateful<Div> {
         let changes = item.source.changes();
         let live = layer.live() && changes;
+        if item.key == "style.cursorTheme" {
+            return self.cursor_cards(item.key, (first, last), live, cx);
+        }
         let palette = &self.look.palette;
         let detail = self.detail(item);
         let row = self
