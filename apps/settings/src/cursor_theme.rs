@@ -156,11 +156,41 @@ fn extract_entry(archive: &Path, name: &str, maximum: usize) -> io::Result<Vec<u
     )
 }
 
-fn parse_inf(bytes: &[u8]) -> Option<(String, BTreeMap<&'static str, String>)> {
-    let text = String::from_utf8_lossy(bytes);
+fn invalid_owned(message: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+/// Windows writes install.inf as UTF-8, ANSI or UTF-16; older tools favour UTF-16 LE.
+fn inf_text(bytes: &[u8]) -> String {
+    let utf16 = |body: &[u8], from: fn([u8; 2]) -> u16| {
+        let units: Vec<u16> = body
+            .chunks_exact(2)
+            .map(|pair| from([pair[0], pair[1]]))
+            .collect();
+        String::from_utf16_lossy(&units)
+    };
+    match bytes {
+        [0xff, 0xfe, body @ ..] => utf16(body, u16::from_le_bytes),
+        [0xfe, 0xff, body @ ..] => utf16(body, u16::from_be_bytes),
+        [first, 0, ..] if *first != 0 => utf16(bytes, u16::from_le_bytes),
+        _ => String::from_utf8_lossy(bytes)
+            .trim_start_matches('\u{feff}')
+            .to_owned(),
+    }
+}
+
+/// A cursor scheme an install.inf describes: its name and each role's file name, lowercase.
+struct Scheme {
+    label: String,
+    roles: BTreeMap<&'static str, String>,
+}
+
+fn parse_inf(bytes: &[u8], fallback_label: &str) -> io::Result<Scheme> {
+    let not_scheme = || invalid("install.inf does not describe a Windows cursor scheme");
+    let text = inf_text(bytes);
     let mut strings = HashMap::new();
     let mut section = "";
-    for line in text.trim_start_matches('\u{feff}').lines().map(str::trim) {
+    for line in text.lines().map(str::trim) {
         if line.starts_with('[') && line.ends_with(']') {
             section = &line[1..line.len() - 1];
         } else if section.trim().eq_ignore_ascii_case("strings")
@@ -173,25 +203,40 @@ fn parse_inf(bytes: &[u8]) -> Option<(String, BTreeMap<&'static str, String>)> {
                 )
                 .is_some()
         {
-            return None;
+            return Err(invalid("install.inf names a cursor role twice"));
         }
     }
     let label = strings
         .get("scheme_name")
-        .filter(|label| !label.is_empty() && !label.chars().any(char::is_control))?;
+        .copied()
+        .filter(|label| !label.is_empty())
+        .unwrap_or(fallback_label);
+    if label.is_empty() || label.chars().any(char::is_control) {
+        return Err(not_scheme());
+    }
     let mut roles = BTreeMap::new();
     for &(role, key) in ROLE_KEYS {
         if let Some(value) = strings.get(key).filter(|value| !value.is_empty()) {
-            let file = value.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
-            if !file.ends_with(".ani") {
-                return None;
+            let file = value
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if !(file.ends_with(".cur") || file.ends_with(".ani")) {
+                return Err(invalid_owned(format!(
+                    "install.inf role {key} points at {value}, which is not a .cur or .ani file"
+                )));
             }
             roles.insert(role, file);
         }
     }
-    roles
-        .contains_key("normal")
-        .then(|| (label.to_string(), roles))
+    if !roles.contains_key("normal") {
+        return Err(not_scheme());
+    }
+    Ok(Scheme {
+        label: label.to_owned(),
+        roles,
+    })
 }
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
@@ -338,18 +383,62 @@ fn animation(bytes: &[u8]) -> Option<Animation<'_>> {
     Some(Animation { images, steps })
 }
 
-fn write_role(folder: &Path, role: &str, data: &[u8], remaining: &mut usize) -> io::Result<Value> {
-    let animation = animation(data).ok_or_else(|| invalid("Invalid animated cursor"))?;
+/// A static cursor never advances, so its one frame's duration only has to be valid.
+const STATIC_FRAME_MICROSECONDS: u64 = 1_000_000;
+
+fn is_static_cursor(bytes: &[u8]) -> bool {
+    u16_at(bytes, 0) == Some(0) && u16_at(bytes, 2) == Some(2)
+}
+
+/// A file's frames, told apart by content: install.inf extensions are not always right.
+fn frames_of(bytes: &[u8]) -> Option<Animation<'_>> {
+    if bytes.starts_with(b"RIFF") {
+        animation(bytes)
+    } else if is_static_cursor(bytes) {
+        Some(Animation {
+            images: vec![bytes],
+            steps: vec![(0, STATIC_FRAME_MICROSECONDS)],
+        })
+    } else {
+        None
+    }
+}
+
+/// The longest edge of the largest image in a cursor's first frame, read from its directory.
+fn extent(bytes: &[u8]) -> Option<u32> {
+    let first = *frames_of(bytes)?.images.first()?;
+    let count = usize::from(u16_at(first, 4)?);
+    let dimension = |byte: u8| if byte == 0 { 256 } else { u32::from(byte) };
+    first
+        .get(6..6 + 16 * count)?
+        .chunks_exact(16)
+        .map(|entry| dimension(entry[0]).max(dimension(entry[1])))
+        .max()
+}
+
+fn write_role(
+    folder: &Path,
+    role: &str,
+    file: &str,
+    data: &[u8],
+    remaining: &mut usize,
+) -> io::Result<Value> {
+    let animation = frames_of(data)
+        .ok_or_else(|| invalid_owned(format!("{file} ({role}) is not a valid .cur or .ani")))?;
     std::fs::create_dir(folder.join(role))?;
     let mut frames = Vec::new();
     let mut size = None;
     for (index, bytes) in animation.images.into_iter().enumerate() {
-        let frame = cursor_frame(bytes).ok_or_else(|| invalid("Invalid animated cursor frame"))?;
+        let frame = cursor_frame(bytes).ok_or_else(|| {
+            invalid_owned(format!("{file} ({role}) has an image that cannot be read"))
+        })?;
         if size
             .replace(frame.size)
             .is_some_and(|previous| previous != frame.size)
         {
-            return Err(invalid("Cursor frames have different sizes"));
+            return Err(invalid_owned(format!(
+                "{file} ({role}) has frames of different sizes"
+            )));
         }
         let path = format!("{role}/{index:03}.png");
         let mut encoded = Cursor::new(Vec::new());
@@ -390,7 +479,9 @@ fn convert(folder: &Path, archive: &Path, root: &Path) -> io::Result<Theme> {
     // Only read entries by name into bounded buffers. Archive paths are never extracted to disk.
     let listing = limited_output(Command::new("bsdtar").arg("-tf").arg(archive), MIB)?;
     let names = std::str::from_utf8(&listing).map_err(io::Error::other)?;
-    let mut paths = HashMap::new();
+    let mut seen = std::collections::HashSet::new();
+    // (folder, lowercase file name, archive path) of every .inf, .cur and .ani.
+    let mut entries = Vec::new();
     for (index, path) in names.lines().enumerate() {
         if index >= 512
             || path.starts_with('/')
@@ -401,35 +492,88 @@ fn convert(folder: &Path, archive: &Path, root: &Path) -> io::Result<Theme> {
         {
             return Err(invalid("Invalid cursor ZIP paths"));
         }
-        let file = path.rsplit('/').next().unwrap_or("").to_ascii_lowercase();
-        if (file == "install.inf" || file.ends_with(".ani")) && paths.insert(file, path).is_some() {
+        if !seen.insert(path.to_lowercase()) {
             return Err(invalid("Duplicate cursor ZIP entry"));
         }
+        let (parent, file) = path.rsplit_once('/').unwrap_or(("", path));
+        let file = file.to_ascii_lowercase();
+        if [".inf", ".cur", ".ani"]
+            .iter()
+            .any(|ext| file.ends_with(ext))
+        {
+            entries.push((parent, file, path));
+        }
     }
-    let inf = paths
-        .get("install.inf")
-        .ok_or_else(|| invalid("Cursor ZIP must contain install.inf"))?;
-    let (label, roles) = parse_inf(&extract_entry(archive, inf, MIB)?)
-        .ok_or_else(|| invalid("Invalid cursor scheme"))?;
+    // A file is looked up beside its install.inf first, then anywhere when its name is unique.
+    let find = |folder: &str, file: &str| {
+        entries
+            .iter()
+            .find(|(parent, name, _)| *parent == folder && name == file)
+            .or_else(|| {
+                let mut named = entries.iter().filter(|(_, name, _)| name == file);
+                named.next().filter(|_| named.next().is_none())
+            })
+            .map(|(_, _, path)| *path)
+    };
     let mut remaining_input = 128 * MIB;
-    let mut remaining_output = 128 * MIB;
-    let mut role_values = BTreeMap::new();
-    for (role, file) in roles {
-        let path = paths
-            .get(&file)
-            .ok_or_else(|| invalid("Cursor referenced in install.inf is missing"))?;
+    let mut read = |path: &str| -> io::Result<Vec<u8>> {
         let data = extract_entry(archive, path, remaining_input.min(32 * MIB))?;
         remaining_input -= data.len();
+        Ok(data)
+    };
+    // Packs ship one install.inf per size or variant. Denial resamples a cursor to the size it
+    // is drawn at, so the scheme with the largest normal cursor gives the sharpest result.
+    let mut chosen: Option<(u32, &str, Scheme)> = None;
+    let mut first_error = None;
+    for &(folder, ref file, path) in &entries {
+        if !file.ends_with(".inf") {
+            continue;
+        }
+        let fallback = folder.rsplit('/').next().unwrap_or("");
+        let scheme = read(path).and_then(|bytes| parse_inf(&bytes, fallback));
+        let measured = scheme.and_then(|scheme| {
+            let normal = &scheme.roles["normal"];
+            let source = find(folder, normal).ok_or_else(|| {
+                invalid_owned(format!("{normal}, the normal cursor in {path}, is missing"))
+            })?;
+            let size = extent(&read(source)?).ok_or_else(|| {
+                invalid_owned(format!("{normal} (normal) is not a valid .cur or .ani"))
+            })?;
+            Ok((size, scheme))
+        });
+        match measured {
+            Ok((size, scheme)) if chosen.as_ref().is_none_or(|(best, ..)| size > *best) => {
+                chosen = Some((size, folder, scheme));
+            }
+            Ok(_) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    let Some((_, folder_of_inf, scheme)) = chosen else {
+        return Err(first_error.unwrap_or_else(|| invalid("Cursor ZIP must contain install.inf")));
+    };
+    let mut remaining_output = 128 * MIB;
+    let mut role_values = BTreeMap::new();
+    for (role, file) in &scheme.roles {
+        let path = find(folder_of_inf, file).ok_or_else(|| {
+            invalid_owned(format!(
+                "{file}, the {role} cursor in install.inf, is missing"
+            ))
+        })?;
+        let data = read(path)?;
         role_values.insert(
-            role,
-            write_role(folder, role, &data, &mut remaining_output)?,
+            *role,
+            write_role(folder, role, file, &data, &mut remaining_output)?,
         );
     }
     let id = format!("imported:{digest}");
+    let label = scheme.label;
     std::fs::write(
         folder.join("theme.json"),
         serde_json::to_vec(&json!({
-            "version": 1, "id": id, "label": label, "author": "", "sourceFormat": "windows-ani",
+            "version": 1, "id": id, "label": label, "author": "", "sourceFormat": "windows",
             "sourceArchiveSha256": digest, "roles": role_values
         }))?,
     )?;
@@ -496,78 +640,189 @@ mod tests {
         chunk
     }
 
-    #[test]
-    fn cursor_zip_converts_to_denial_manifest() {
-        let folder =
-            std::env::temp_dir().join(format!("denial-cursor-test-{}", std::process::id()));
-        std::fs::create_dir(&folder).unwrap();
-        struct Cleanup(PathBuf);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
-        let _cleanup = Cleanup(folder.clone());
-        let fixture = folder.join("fixture");
-        let staging = folder.join("staging");
-        std::fs::create_dir(&fixture).unwrap();
-        std::fs::create_dir(&staging).unwrap();
+    /// A one-image .cur of `side` pixels with its hotspot at (1, 1).
+    fn cur(side: u8) -> Vec<u8> {
         let mut png = Cursor::new(Vec::new());
-        let image = image::DynamicImage::new_rgba8(2, 2);
+        let image = image::DynamicImage::new_rgba8(side.into(), side.into());
         image.write_to(&mut png, image::ImageFormat::Png).unwrap();
         let png = png.into_inner();
-        let mut cur = vec![0, 0, 2, 0, 1, 0, 2, 2, 0, 0, 1, 0, 1, 0];
+        let mut cur = vec![0, 0, 2, 0, 1, 0, side, side, 0, 0, 1, 0, 1, 0];
         cur.extend((png.len() as u32).to_le_bytes());
         cur.extend(22_u32.to_le_bytes());
         cur.extend(png);
+        cur
+    }
+
+    fn ani(side: u8) -> Vec<u8> {
         let header: Vec<_> = [36_u32, 1, 1, 0, 0, 0, 0, 6, 1]
             .into_iter()
             .flat_map(u32::to_le_bytes)
             .collect();
-        let ani = chunk(
+        chunk(
             b"RIFF",
             &[
                 b"ACON".as_slice(),
                 &chunk(b"anih", &header),
                 &chunk(
                     b"LIST",
-                    &[b"fram".as_slice(), &chunk(b"icon", &cur)].concat(),
+                    &[b"fram".as_slice(), &chunk(b"icon", &cur(side))].concat(),
                 ),
             ]
             .concat(),
-        );
-        std::fs::write(fixture.join("pointer.ani"), ani).unwrap();
-        std::fs::write(
-            fixture.join("install.inf"),
-            "[Strings]\nscheme_name=Demo\npointer=pointer.ani\n",
         )
-        .unwrap();
+    }
+
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Zips `files` and imports the archive into a fresh catalog; None without bsdtar.
+    fn import_files(name: &str, files: &[(&str, Vec<u8>)]) -> Option<(io::Result<Value>, Cleanup)> {
+        let folder =
+            std::env::temp_dir().join(format!("denial-cursor-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir(&folder).unwrap();
+        let cleanup = Cleanup(folder.clone());
+        let fixture = folder.join("fixture");
+        let staging = folder.join("staging");
+        std::fs::create_dir(&staging).unwrap();
+        for (path, bytes) in files {
+            let path = fixture.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
         let archive = staging.join("source.zip");
         let status = Command::new("bsdtar")
             .args(["--format", "zip", "-cf"])
             .arg(&archive)
             .arg("-C")
             .arg(&fixture)
-            .args(["install.inf", "pointer.ani"])
+            .args(files.iter().map(|(path, _)| path))
             .status();
         if status
             .as_ref()
             .is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
         {
-            return;
+            return None;
         }
         assert!(status.unwrap().success());
-        let imported = convert(&staging, &archive, &folder).unwrap();
-        assert_eq!(imported.label, "Demo");
-        let destination = folder.join(imported.id.strip_prefix("imported:").unwrap());
-        let manifest: Value =
-            serde_json::from_slice(&std::fs::read(destination.join("theme.json")).unwrap())
-                .unwrap();
+        let result = convert(&staging, &archive, &folder).map(|imported| {
+            let destination = folder.join(imported.id.strip_prefix("imported:").unwrap());
+            let mut manifest: Value =
+                serde_json::from_slice(&std::fs::read(destination.join("theme.json")).unwrap())
+                    .unwrap();
+            for (role, value) in manifest["roles"].as_object().unwrap() {
+                for frame in value["frames"].as_array().unwrap() {
+                    let path = frame["path"].as_str().unwrap();
+                    assert!(destination.join(path).is_file(), "{role}: {path}");
+                }
+            }
+            manifest["importedLabel"] = json!(imported.label);
+            manifest
+        });
+        Some((result, cleanup))
+    }
+
+    #[test]
+    fn animated_scheme_converts_to_denial_manifest() {
+        let Some((manifest, _cleanup)) = import_files(
+            "animated",
+            &[
+                (
+                    "install.inf",
+                    b"[Strings]\nscheme_name=Demo\npointer=pointer.ani\n".to_vec(),
+                ),
+                ("pointer.ani", ani(2)),
+            ],
+        ) else {
+            return;
+        };
+        let manifest = manifest.unwrap();
+        assert_eq!(manifest["importedLabel"], "Demo");
+        let frame = &manifest["roles"]["normal"]["frames"][0];
+        assert_eq!(frame["durationMicroseconds"], 100_000);
+        assert_eq!(frame["hotspot"]["x"], 1);
+    }
+
+    #[test]
+    fn static_roles_and_utf16_inf_are_read() {
+        let inf = "[Strings]\r\nSCHEME_NAME = \"Still\"\r\npointer = \"Pointer.cur\"\r\nbusy = \"Busy.ani\"\r\n";
+        let mut utf16 = vec![0xff, 0xfe];
+        utf16.extend(inf.encode_utf16().flat_map(u16::to_le_bytes));
+        let Some((manifest, _cleanup)) = import_files(
+            "static",
+            &[
+                ("Still/install.inf", utf16),
+                ("Still/Pointer.cur", cur(4)),
+                ("Still/Busy.ani", ani(4)),
+            ],
+        ) else {
+            return;
+        };
+        let manifest = manifest.unwrap();
+        assert_eq!(manifest["importedLabel"], "Still");
+        let normal = &manifest["roles"]["normal"];
+        assert_eq!(normal["size"]["width"], 4);
+        assert_eq!(normal["frames"].as_array().unwrap().len(), 1);
         assert_eq!(
-            manifest["roles"]["normal"]["frames"][0]["durationMicroseconds"],
-            100_000
+            normal["frames"][0]["durationMicroseconds"],
+            STATIC_FRAME_MICROSECONDS
         );
-        assert_eq!(manifest["roles"]["normal"]["frames"][0]["hotspot"]["x"], 1);
-        assert!(destination.join("normal/000.png").is_file());
+        assert_eq!(
+            manifest["roles"]["busy"]["frames"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn largest_variant_of_a_multi_scheme_pack_is_imported() {
+        let inf = |name: &str| {
+            format!("[Strings]\nscheme_name={name}\npointer=Pointer.cur\ntext=Text.cur\n")
+                .into_bytes()
+        };
+        let Some((manifest, _cleanup)) = import_files(
+            "variants",
+            &[
+                ("Pack-Regular/install.inf", inf("Pack Regular")),
+                ("Pack-Regular/Pointer.cur", cur(8)),
+                ("Pack-Regular/Text.cur", cur(8)),
+                ("Pack-Extra-Large/install.inf", inf("Pack Extra Large")),
+                ("Pack-Extra-Large/Pointer.cur", cur(24)),
+                ("Pack-Extra-Large/Text.cur", cur(24)),
+                ("Pack-Large/install.inf", inf("Pack Large")),
+                ("Pack-Large/Pointer.cur", cur(16)),
+                ("Pack-Large/Text.cur", cur(16)),
+            ],
+        ) else {
+            return;
+        };
+        let manifest = manifest.unwrap();
+        assert_eq!(manifest["importedLabel"], "Pack Extra Large");
+        assert_eq!(manifest["roles"]["normal"]["size"]["width"], 24);
+        assert_eq!(manifest["roles"]["text"]["size"]["width"], 24);
+    }
+
+    #[test]
+    fn a_role_that_is_not_a_cursor_is_named() {
+        let Some((manifest, _cleanup)) = import_files(
+            "named",
+            &[
+                (
+                    "install.inf",
+                    b"[Strings]\nscheme_name=Bad\npointer=pointer.png\n".to_vec(),
+                ),
+                ("pointer.cur", cur(2)),
+            ],
+        ) else {
+            return;
+        };
+        let error = manifest.unwrap_err().to_string();
+        assert!(error.contains("pointer.png"), "{error}");
     }
 }
