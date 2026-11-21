@@ -818,6 +818,7 @@ pub fn set_appearance(document: &mut Value, appearance: Appearance) {
 pub fn reset_desktop_layout(document: &mut Value) {
     let defaults = json!({
         "windowLayout": "stacking",
+        "windowFrames": false,
         "scrollingLayoutPreserveSwapSizes": true,
         "scrollingLayoutWheelSpeed": 1.0,
         "scrollingLayoutWheelUpDirection": "left",

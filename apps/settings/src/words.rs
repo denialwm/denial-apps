@@ -785,6 +785,7 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Desktop", "桌面"),
     ("Windows", "窗口"),
     ("Stacking", "层叠"),
+    ("Show window frames", "显示窗口边框"),
     ("Tiling", "平铺"),
     ("Scrolling", "滚动"),
     ("Scale", "缩放"),

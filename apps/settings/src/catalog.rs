@@ -360,6 +360,9 @@ pub static GROUPS: &[Group] = &[
                     section("Windows", &[
                         item("layout.windows", "Window layout", Kind::Segmented(&["Stacking", "Dwindle", "Scrolling"], 0))
                             .from(Source::Words("layout.windowLayout", &["stacking", "dwindle", "scrolling"])),
+                        item("layout.frames", "Show window frames", Kind::Toggle(false))
+                            .denial("layout.windowFrames")
+                            .only("layout.windows", &[0]),
                         item("layout.minimized", "Minimized windows", Kind::Segmented(&["On desktop", "Off-screen"], 1))
                             .from(Source::Words("layout.minimizedWindowPlacement", &["desktop", "offscreen"])),
                         measured(
