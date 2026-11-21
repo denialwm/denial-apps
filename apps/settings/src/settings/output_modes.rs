@@ -24,10 +24,11 @@ const SHELL_SIZES: [f64; 8] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0];
 
 /// The shell's own scale on `output` until one is set, as the shell takes
 /// it: larger on a built-in panel whose scale came from its density, where
-/// the desktop's sizes would come out about half as large as on a monitor.
+/// the desktop's sizes come out small. Keep it equal to Denial's
+/// `ShellScale.handheldPanel`.
 fn automatic_shell_size(output: &ConfiguredOutput) -> f64 {
     if output.name.starts_with("DSI-") && output.scale > 1.0 {
-        1.75
+        1.25
     } else {
         1.0
     }
