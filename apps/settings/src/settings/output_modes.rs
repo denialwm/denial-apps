@@ -16,6 +16,23 @@ use super::panel::hertz;
 use super::{Dialog, Layer, Settings};
 use crate::denial::{ConfiguredOutput, InputDeckStatus, OutputConfiguration, OutputMode, Refusal};
 
+/// Where Denial keeps the shell's own scale on each display, by output name.
+const SHELL_SCALES: &str = "appearance.shellScales";
+
+/// The shell sizes offered beside the default.
+const SHELL_SIZES: [f64; 8] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0];
+
+/// The shell's own scale on `output` until one is set, as the shell takes
+/// it: larger on a built-in panel whose scale came from its density, where
+/// the desktop's sizes would come out about half as large as on a monitor.
+fn automatic_shell_size(output: &ConfiguredOutput) -> f64 {
+    if output.name.starts_with("DSI-") && output.scale > 1.0 {
+        1.75
+    } else {
+        1.0
+    }
+}
+
 #[derive(Default)]
 pub(super) struct OutputModes {
     snapshot: Option<OutputConfiguration>,
@@ -280,6 +297,16 @@ impl Settings {
                         |this, _, cx| this.choose_output_scale(cx),
                     ));
             }
+            individual = individual
+                .child(self.separator(0.))
+                .child(self.output_option(
+                    "output-shell-size",
+                    "Shell size",
+                    self.shell_size_label(output),
+                    edit,
+                    cx,
+                    |this, _, cx| this.choose_shell_size(cx),
+                ));
             if capabilities.transform {
                 individual = individual
                     .child(self.separator(0.))
@@ -599,6 +626,75 @@ impl Settings {
                             output.scrolling_layout_axis = Some(value.clone());
                         } else {
                             output.transform = value.clone();
+                        }
+                    },
+                    cx,
+                );
+            },
+        );
+    }
+
+    /// The shell's own scale on `output`, as Denial keeps it: None until one
+    /// is set, and the shell then takes its own default.
+    fn shell_size(&self, output: &ConfiguredOutput) -> Option<f64> {
+        self.kept(&format!("{SHELL_SCALES}.{}", output.name))
+            .and_then(serde_json::Value::as_f64)
+    }
+
+    fn shell_size_label(&self, output: &ConfiguredOutput) -> SharedString {
+        match self.shell_size(output) {
+            Some(scale) => percent(scale),
+            None => fill(
+                "Default, {size}",
+                &[("size", &percent(automatic_shell_size(output)))],
+            )
+            .into(),
+        }
+    }
+
+    /// How large the shell's bar, panels, menus and window frames are on the
+    /// selected display, beside its scale: Denial's
+    /// `appearance.shellScales`, by output name. It takes effect at once and
+    /// is not part of the configuration Apply submits.
+    fn choose_shell_size(&mut self, cx: &mut Context<Self>) {
+        let Some(output) = self.output_modes.selected() else {
+            return;
+        };
+        let name = output.name.clone();
+        let current = self.shell_size(output);
+        let automatic = automatic_shell_size(output);
+        let choices = std::iter::once((
+            None,
+            fill("Default, {size}", &[("size", &percent(automatic))]).into(),
+        ))
+        .chain(
+            SHELL_SIZES
+                .into_iter()
+                .map(|scale| (Some(scale), percent(scale))),
+        )
+        .collect();
+        self.output_picker(
+            "Shell size",
+            choices,
+            current,
+            cx,
+            move |this, value, _, cx| {
+                let (name, value) = (name.clone(), *value);
+                this.change(
+                    "Shell size",
+                    move |document| match value {
+                        Some(scale) => crate::denial::put(
+                            document,
+                            &format!("{SHELL_SCALES}.{name}"),
+                            serde_json::json!(scale),
+                        ),
+                        None => {
+                            if let Some(scales) = document
+                                .pointer_mut("/appearance/shellScales")
+                                .and_then(serde_json::Value::as_object_mut)
+                            {
+                                scales.remove(&name);
+                            }
                         }
                     },
                     cx,

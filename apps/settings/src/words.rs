@@ -774,6 +774,8 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("When nothing touches it", "无操作时"),
     ("Refresh rate", "刷新率"),
     ("App size", "应用大小"),
+    ("Shell size", "界面大小"),
+    ("Default, {size}", "默认，{size}"),
     ("Apps opened after a change", "更改后打开的应用"),
     (
         "Could not change the refresh rate: {why}",
