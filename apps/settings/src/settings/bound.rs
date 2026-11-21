@@ -397,7 +397,7 @@ impl Settings {
                     "colorSchemePreference": "preferDark",
                     "accentSource": "custom", "customAccentColor": 0xFF6B3F73_u32,
                     "fontFamily": "",
-                    "desktopCornerRadiusScale": 0.5, "mobileCornerRadiusScale": 1.0,
+                    "windowCornerRadiusScale": 0.5, "interfaceCornerRadiusScale": 1.2,
                     "panelOpacity": 0.5, "cardOpacity": 0.4421052631578947,
                     "transparencyMode": "glass", "backdropBlurLevel": "good",
                     "backdropBlurOpacityThreshold": 0.19, "glass": {},

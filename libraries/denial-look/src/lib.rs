@@ -304,15 +304,8 @@ pub const MIN_RADIUS: f32 = 3.0;
 const GROUP_SHARE: f32 = 0.7;
 const NESTED_SHARE: f32 = 0.55;
 const WINDOW_RADIUS: f32 = 20.0;
-/// The roundness each shell has until it is set, as the shell keeps it.
-const DESKTOP_ROUNDNESS: f32 = 0.5;
-const MOBILE_ROUNDNESS: f32 = 1.0;
-
-/// Whether Denial runs the mobile shell: apps then take its roundness, else
-/// the desktop's.
-pub fn mobile_shell() -> bool {
-    std::env::var("DENIAL_SHELL_PROFILE").as_deref() == Ok("mobile")
-}
+/// The window roundness until it is set, as the shell keeps it.
+const WINDOW_ROUNDNESS: f32 = 0.5;
 /// Below this the compositor would leave soft shadows as isolated frost.
 const MIN_WINDOW_ALPHA: f32 = 3.0 / 255.0;
 /// The shell's glass opacity when the settings hold none.
@@ -404,11 +397,6 @@ impl Look {
     /// The look `settings` give, with the accent Denial took from the
     /// wallpaper when they ask for that one.
     pub fn from_settings_and_wallpaper(settings: &Value, wallpaper: Option<u32>) -> Self {
-        Self::in_shell(settings, wallpaper, mobile_shell())
-    }
-
-    /// The look under the mobile shell when `mobile`, else the desktop one.
-    pub fn in_shell(settings: &Value, wallpaper: Option<u32>, mobile: bool) -> Self {
         let appearance = &settings["appearance"];
         let number = |value: &Value, default: f32| {
             value
@@ -447,11 +435,7 @@ impl Look {
             ),
             _ => (1.0, 1.0),
         };
-        let roundness = if mobile {
-            number(&appearance["mobileCornerRadiusScale"], MOBILE_ROUNDNESS)
-        } else {
-            number(&appearance["desktopCornerRadiusScale"], DESKTOP_ROUNDNESS)
-        };
+        let roundness = number(&appearance["windowCornerRadiusScale"], WINDOW_ROUNDNESS);
         let font = appearance["fontFamily"]
             .as_str()
             .filter(|family| !family.is_empty())
@@ -860,11 +844,9 @@ mod tests {
     #[test]
     fn low_roundness_still_reads_as_round() {
         let radii = |scale: f64| {
-            let look = Look::in_shell(
-                &serde_json::json!({ "appearance": { "desktopCornerRadiusScale": scale } }),
-                None,
-                false,
-            );
+            let look = Look::from_settings(&serde_json::json!({
+                "appearance": { "windowCornerRadiusScale": scale }
+            }));
             let group = look.group_radius();
             (look.window_radius, group, nested_radius(group, INSET))
         };
@@ -883,17 +865,18 @@ mod tests {
     }
 
     #[test]
-    fn each_shell_has_its_own_roundness() {
-        let radius =
-            |settings: Value, mobile: bool| Look::in_shell(&settings, None, mobile).window_radius;
+    fn windows_take_the_window_roundness() {
+        let radius = |settings: Value| Look::from_settings(&settings).window_radius;
         let set = serde_json::json!({
-            "appearance": { "desktopCornerRadiusScale": 0.25, "mobileCornerRadiusScale": 1.5 }
+            "appearance": { "windowCornerRadiusScale": 1.5, "interfaceCornerRadiusScale": 0.25 }
         });
-        assert_eq!(radius(set.clone(), false), 5.0);
-        assert_eq!(radius(set, true), 30.0);
-        // Unset, and the single roundness kept before is not read.
-        let old = serde_json::json!({ "appearance": { "cornerRadiusScale": 2.0 } });
-        assert_eq!(radius(old.clone(), false), 10.0);
-        assert_eq!(radius(old, true), 20.0);
+        assert_eq!(radius(set), 30.0);
+        // Unset, and the roundness kept before is not read.
+        let old = serde_json::json!({ "appearance": {
+            "cornerRadiusScale": 2.0,
+            "desktopCornerRadiusScale": 2.0,
+            "mobileCornerRadiusScale": 2.0,
+        } });
+        assert_eq!(radius(old), 10.0);
     }
 }

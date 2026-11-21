@@ -221,10 +221,9 @@ and rate through `outputs.apply` and ask to keep them, as the panel's refresh
 rate does; rates of its current resolution that round to the same hertz show
 once. Android apps
 sets the monitor's own size in Droidloom's density file (`outputs`, by
-connector); without one it takes every screen's. Windows, Roundness and Wallpaper
-are Denial's `layout.windowLayout` and `appearance.desktopCornerRadiusScale`
-and the monitor's entries in the shell's wallpaper file (`outputs`,
-`outputAlignments`, `outputZooms`).
+connector); without one it takes every screen's. Windows and Wallpaper
+are Denial's `layout.windowLayout` and the monitor's entries in the shell's
+wallpaper file (`outputs`, `outputAlignments`, `outputZooms`).
 
 Accessibility and Updates are kept in the catalog but not listed.
 
