@@ -297,15 +297,18 @@ pub const PRESSED_FILL: f32 = 0.16;
 /// Foreground at this alpha fills a row under the pointer.
 pub const HOVER_FILL: f32 = 0.05;
 pub const MIN_RADIUS: f32 = 3.0;
-/// An island or group keeps at least this share of the window radius, and
+/// An island or group keeps at least this share of the interface radius, and
 /// what is nested in a container this share of the container's: at low
 /// roundness the gutter would otherwise take the whole radius and leave
 /// squares.
 const GROUP_SHARE: f32 = 0.7;
 const NESTED_SHARE: f32 = 0.55;
-const WINDOW_RADIUS: f32 = 20.0;
-/// The window roundness until it is set, as the shell keeps it.
+/// The radius at roundness 1, for windows and for the interface alike.
+const BASE_RADIUS: f32 = 20.0;
+/// The roundness of windows and of the interface until they are set, as the
+/// shell keeps them.
 const WINDOW_ROUNDNESS: f32 = 0.5;
+const INTERFACE_ROUNDNESS: f32 = 1.2;
 /// Below this the compositor would leave soft shadows as isolated frost.
 const MIN_WINDOW_ALPHA: f32 = 3.0 / 255.0;
 /// The shell's glass opacity when the settings hold none.
@@ -337,7 +340,11 @@ pub struct Look {
     pub window_alpha: f32,
     /// The user's app-panel opacity, before the group and chip floors.
     pub panel_alpha: f32,
+    /// The corners of windows: the window roundness.
     pub window_radius: f32,
+    /// What everything inside a window is rounded from: the interface
+    /// roundness.
+    pub interface_radius: f32,
     /// Denial's animation duration scale; zero means reduced motion.
     pub duration_scale: f32,
     /// The user's font family, if they chose one.
@@ -435,7 +442,11 @@ impl Look {
             ),
             _ => (1.0, 1.0),
         };
-        let roundness = number(&appearance["windowCornerRadiusScale"], WINDOW_ROUNDNESS);
+        let window_roundness = number(&appearance["windowCornerRadiusScale"], WINDOW_ROUNDNESS);
+        let interface_roundness = number(
+            &appearance["interfaceCornerRadiusScale"],
+            INTERFACE_ROUNDNESS,
+        );
         let font = appearance["fontFamily"]
             .as_str()
             .filter(|family| !family.is_empty())
@@ -448,7 +459,8 @@ impl Look {
             accent_text: readable_toward(accent, palette.foreground, palette.canvas),
             window_alpha: window_alpha.clamp(MIN_WINDOW_ALPHA, 1.0),
             panel_alpha: panel_alpha.clamp(0.0, 1.0),
-            window_radius: WINDOW_RADIUS * roundness.max(0.0),
+            window_radius: BASE_RADIUS * window_roundness.max(0.0),
+            interface_radius: BASE_RADIUS * interface_roundness.max(0.0),
             duration_scale: number(&settings["animations"]["durationScale"], 1.0).clamp(0.0, 4.0),
             font,
         }
@@ -457,14 +469,14 @@ impl Look {
     /// Radius of a floating group or island placed `INSET` from the window
     /// edge.
     pub fn group_radius(&self) -> f32 {
-        nested_radius(self.window_radius, INSET).max(self.window_radius * GROUP_SHARE)
+        nested_radius(self.interface_radius, INSET).max(self.interface_radius * GROUP_SHARE)
     }
 
     /// Radius of message bubbles and of the conversation islands shaped like
     /// them. The last bubble of a run turns its corner toward the sender down
     /// to `MIN_RADIUS`.
     pub fn bubble_radius(&self) -> f32 {
-        self.window_radius.max(MIN_RADIUS)
+        self.interface_radius.max(MIN_RADIUS)
     }
 
     /// The window backing: the glass tint at window opacity, or opaque canvas
@@ -845,10 +857,10 @@ mod tests {
     fn low_roundness_still_reads_as_round() {
         let radii = |scale: f64| {
             let look = Look::from_settings(&serde_json::json!({
-                "appearance": { "windowCornerRadiusScale": scale }
+                "appearance": { "interfaceCornerRadiusScale": scale }
             }));
             let group = look.group_radius();
-            (look.window_radius, group, nested_radius(group, INSET))
+            (look.interface_radius, group, nested_radius(group, INSET))
         };
         let close = |(window, group, control): (f32, f32, f32), wanted: (f32, f32, f32)| {
             (window - wanted.0).abs() < 1e-3
@@ -858,25 +870,34 @@ mod tests {
         // From 1.0 up the corners are concentric, as before.
         assert!(close(radii(1.0), (20.0, 14.0, 8.0)));
         assert!(close(radii(2.0), (40.0, 34.0, 28.0)));
-        // Below, an island keeps 0.7 of the window's radius and a control
+        // Below, an island keeps 0.7 of the interface radius and a control
         // 0.55 of its island's.
         assert!(close(radii(0.5), (10.0, 7.0, 3.85)));
         assert!(close(radii(0.0), (0.0, MIN_RADIUS, MIN_RADIUS)));
     }
 
     #[test]
-    fn windows_take_the_window_roundness() {
-        let radius = |settings: Value| Look::from_settings(&settings).window_radius;
+    fn windows_and_the_interface_have_roundness_of_their_own() {
+        let radii = |settings: Value| {
+            let look = Look::from_settings(&settings);
+            (
+                look.window_radius,
+                look.interface_radius,
+                look.group_radius(),
+            )
+        };
         let set = serde_json::json!({
             "appearance": { "windowCornerRadiusScale": 1.5, "interfaceCornerRadiusScale": 0.25 }
         });
-        assert_eq!(radius(set), 30.0);
-        // Unset, and the roundness kept before is not read.
+        // Islands follow the interface, not the window.
+        assert_eq!(radii(set), (30.0, 5.0, 3.5));
+        // Unset, and the roundness kept before is not read: 25% and 60%.
         let old = serde_json::json!({ "appearance": {
             "cornerRadiusScale": 2.0,
             "desktopCornerRadiusScale": 2.0,
             "mobileCornerRadiusScale": 2.0,
         } });
-        assert_eq!(radius(old), 10.0);
+        let (window, interface, _) = radii(old);
+        assert_eq!((window, interface), (10.0, 24.0));
     }
 }
