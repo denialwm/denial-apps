@@ -179,18 +179,24 @@ pub mod motion {
     pub const NOTICE: u64 = 1800;
 }
 
-/// Layout of a phone screen, in logical pixels: deniald draws apps on a
-/// handheld at 160 of them per inch, as Android's dp.
+/// How many of the screen's logical pixels one of an app's own is: Denial's
+/// apps are laid out a tenth smaller than the screen's scale, and the App
+/// size setting multiplies that again. They still draw at the screen's full
+/// resolution. `denial_look_gpui::zoom_app` applies it.
+pub const APP_ZOOM: f32 = 0.9;
+
+/// Layout of a phone screen, in the app's own units ([`APP_ZOOM`]). What
+/// the shell draws over the window keeps the shell's size on the screen.
 pub mod mobile {
     /// Denial's status strip, above the window: the app is configured below
     /// it, and the strip is painted with the window's pixel at (5, 5).
-    pub const STATUS_STRIP: f32 = 34.0;
+    pub const STATUS_STRIP: f32 = 34.0 / super::APP_ZOOM;
     /// The shell's gesture zone at the bottom of the window: its pill and
     /// home gesture. No controls there.
-    pub const GESTURE_INSET: f32 = 37.0;
+    pub const GESTURE_INSET: f32 = 37.0 / super::APP_ZOOM;
     /// The shell lifts the whole scene by this much at most while the
     /// on-screen keyboard is up.
-    pub const KEYBOARD_LIFT: f32 = 262.0;
+    pub const KEYBOARD_LIFT: f32 = 262.0 / super::APP_ZOOM;
     /// Space between the on-screen keyboard and what rides on it: the
     /// gutter, as between any two islands.
     pub const KEYBOARD_GAP: f32 = super::INSET;

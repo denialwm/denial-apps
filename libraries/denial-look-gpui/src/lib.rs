@@ -11,6 +11,12 @@ use gpui::{BoxShadow, Div, Hsla, Pixels, Styled, div, point, prelude::*, px, rel
 
 pub use icons::{Assets, Icon, icon};
 
+/// Lays the app's windows out at [`denial_look::APP_ZOOM`]. Call it before
+/// the app opens its first window.
+pub fn zoom_app() {
+    gpui::set_app_zoom(denial_look::APP_ZOOM);
+}
+
 /// `text` in the app's language, when the app translates it
 /// (`denial_look::words`); other text, as a network's name, as it is.
 pub fn say(text: impl Into<gpui::SharedString>) -> gpui::SharedString {

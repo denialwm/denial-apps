@@ -69,6 +69,7 @@ fn main() {
     application()
         .with_assets(denial_look_gpui::Assets)
         .run(move |cx: &mut App| {
+            denial_look_gpui::zoom_app();
             denial_look_gpui::input::bind_keys(cx);
             // Denial's Back gesture arrives as KEY_BACK, which GPUI names `back`.
             cx.bind_keys([
