@@ -371,6 +371,8 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Card opacity", "卡片不透明度"),
     ("Notifications and tiles", "通知和磁贴"),
     ("Roundness", "圆角"),
+    ("Desktop roundness", "桌面圆角"),
+    ("Mobile roundness", "移动端圆角"),
     ("Clock size", "时钟大小"),
     ("Show system status", "显示系统状态"),
     ("Animate lock screen", "启用锁屏动画"),

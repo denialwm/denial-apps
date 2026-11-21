@@ -474,8 +474,9 @@ pub static GROUPS: &[Group] = &[
                             "layout.windowLayout",
                             &["stacking", "dwindle", "scrolling"],
                         )),
+                        // The monitor beside a phone is a desktop.
                         item("monitor.corners", "Roundness", Kind::Slider(0.25)).from(
-                            Source::Range("appearance.monitorCornerRadiusScale", 0.0, 2.0),
+                            Source::Range("appearance.desktopCornerRadiusScale", 0.0, 2.0),
                         ),
                         item("monitor.wallpaper", "Wallpaper", Kind::Opens)
                             .icon(Icon::Photos)
@@ -687,8 +688,12 @@ pub static GROUPS: &[Group] = &[
                                 "appearance.transparencyMode",
                                 &["glass", "blur", "off"],
                             )),
-                            item("style.corners", "Roundness", Kind::Slider(0.5))
-                                .from(Source::Range("appearance.cornerRadiusScale", 0.0, 2.0)),
+                            item("style.corners", "Desktop roundness", Kind::Slider(0.25)).from(
+                                Source::Range("appearance.desktopCornerRadiusScale", 0.0, 2.0),
+                            ),
+                            item("style.mobileCorners", "Mobile roundness", Kind::Slider(0.5)).from(
+                                Source::Range("appearance.mobileCornerRadiusScale", 0.0, 2.0),
+                            ),
                         ],
                     ),
                     section(
