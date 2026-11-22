@@ -305,6 +305,10 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("Charge cycles", "Циклы зарядки"),
     ("Temperature", "Температура"),
     ("Charging at", "Мощность зарядки"),
+    ("Power now", "Мощность сейчас"),
+    ("From charger", "От зарядного устройства"),
+    ("Discharging", "Разряжается"),
+    ("{watts} W", "{watts} Вт"),
     ("Using", "Потребление"),
     (
         "Charging · full in {time}",
