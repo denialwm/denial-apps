@@ -1,5 +1,7 @@
-//! The Battery page: the level and what the battery is doing, then how worn
-//! it is. UPower supplies the battery readings and charge-limit controls.
+//! The Battery page: the level and what the battery is doing, where the
+//! power goes right now, then how worn the battery is. UPower supplies the
+//! battery readings and charge-limit controls, the kernel's power supplies
+//! what flows (`crate::flow`).
 
 use denial_look::words::{fill, tr};
 use std::time::Duration;
@@ -9,6 +11,7 @@ use gpui::{Context, Div, SharedString, prelude::*};
 
 use super::{Layer, Settings};
 use crate::battery::{self, Battery, Charge};
+use crate::flow;
 
 impl Settings {
     /// The Battery page's islands, top to bottom: the level, then the
@@ -44,6 +47,36 @@ impl Settings {
         );
         let mut parts = vec![island(&self.look).child(level)];
 
+        let flow = power.flow.shown();
+        if let Some(flow) = flow {
+            let mut rows: Vec<(&str, &str, Option<&str>, String)> = Vec::new();
+            if let Some(charger) = flow.charger {
+                rows.push(("flow-charger", "From charger", None, watts(charger)));
+            }
+            rows.push((
+                "flow-battery",
+                "Battery",
+                battery_doing(flow.battery),
+                signed_watts(flow.battery),
+            ));
+            rows.push(("flow-used", "Using", None, watts(flow.used())));
+            parts.push(self.chip_row("Power now"));
+            parts.push(self.rows_island(
+                rows.into_iter(),
+                0.,
+                |(id, title, detail, value), ends| {
+                    self.row(
+                        id,
+                        None,
+                        title,
+                        detail.map(|detail| tr(detail).into()),
+                        ends,
+                    )
+                    .child(self.value(value))
+                },
+            ));
+        }
+
         let mut details: Vec<(&str, String)> = Vec::new();
         if let Some(health) = battery.health {
             details.push(("Health", percent(health)));
@@ -54,12 +87,13 @@ impl Settings {
         if let Some(celsius) = battery.temperature {
             details.push(("Temperature", format!("{celsius:.1} °C")));
         }
-        if battery.power > 0.0 {
+        // UPower's own figure, where the kernel's supplies say nothing.
+        if flow.is_none() && battery.power > 0.0 {
             let title = match battery.charge {
                 Charge::Charging => "Charging at",
                 _ => "Using",
             };
-            details.push((title, format!("{:.2} W", battery.power)));
+            details.push((title, watts(battery.power)));
         }
         if !details.is_empty() {
             parts.push(self.chip_row("Battery"));
@@ -159,6 +193,33 @@ impl Settings {
         .detach();
     }
 
+    /// Reads the power supplies twice a second while Battery shows; the
+    /// page shows the mean of the last two seconds.
+    pub(super) fn follow_flow(&mut self, cx: &mut Context<Self>) {
+        if !self.screen.is_page("battery") {
+            self.reading_flow = None;
+            self.power.flow.clear();
+            return;
+        }
+        if self.reading_flow.is_some() {
+            return;
+        }
+        self.reading_flow = Some(cx.spawn(async move |this, cx| {
+            loop {
+                // A read asks the battery's firmware: not on the window's thread.
+                let sample = cx.background_spawn(async { flow::read() }).await;
+                let taken = this.update(cx, |view, cx| {
+                    view.power.flow.push(sample);
+                    cx.notify();
+                });
+                if taken.is_err() {
+                    return;
+                }
+                cx.background_executor().timer(flow::EVERY).await;
+            }
+        }));
+    }
+
     /// Battery's line under its title on the home screen.
     pub(super) fn battery_summary(&self) -> Option<SharedString> {
         let power = &self.power;
@@ -184,6 +245,33 @@ impl Settings {
 
 fn percent(level: f64) -> String {
     format!("{}%", level.round())
+}
+
+/// Power to a tenth of a watt: a steadier figure than that is not measured.
+fn watts(power: f64) -> String {
+    fill("{watts} W", &[("watts", &format!("{:.1}", power.abs()))])
+}
+
+/// Power into the battery with a plus, out of it with a minus.
+fn signed_watts(power: f64) -> String {
+    let sign = match battery_doing(power) {
+        Some("Charging") => "+",
+        Some(_) => "\u{2212}",
+        None => "",
+    };
+    format!("{sign}{}", watts(power))
+}
+
+/// What the battery does with `power` watts into it; nothing to say of
+/// less than shows as a figure.
+fn battery_doing(power: f64) -> Option<&'static str> {
+    if power >= 0.05 {
+        Some("Charging")
+    } else if power <= -0.05 {
+        Some("Discharging")
+    } else {
+        None
+    }
 }
 
 /// What the battery is doing, and for how long, as one line.
@@ -231,5 +319,17 @@ mod tests {
         assert_eq!(minutes(120), "2 h");
         assert_eq!(minutes(23 * 60 + 31), "23 h");
         assert_eq!(minutes(72 * 60), "3 days");
+    }
+
+    #[test]
+    fn says_which_way_the_power_goes() {
+        assert_eq!(watts(17.127), "17.1 W");
+        assert_eq!(signed_watts(8.8), "+8.8 W");
+        assert_eq!(signed_watts(-6.925), "\u{2212}6.9 W");
+        assert_eq!(battery_doing(8.8), Some("Charging"));
+        assert_eq!(battery_doing(-6.925), Some("Discharging"));
+        // Held by the charger: no sign and no "-0.0".
+        assert_eq!(signed_watts(-0.04), "0.0 W");
+        assert_eq!(battery_doing(-0.04), None);
     }
 }

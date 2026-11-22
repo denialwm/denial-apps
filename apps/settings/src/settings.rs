@@ -62,6 +62,7 @@ use crate::clock;
 use crate::country;
 use crate::denial;
 use crate::fingerprint;
+use crate::flow;
 use crate::location;
 use crate::mobile;
 use crate::values::Values;
@@ -548,6 +549,8 @@ struct Power {
     changing_limits: HashSet<zbus::zvariant::OwnedObjectPath>,
     /// Whether UPower has been read, or found missing, once.
     read: bool,
+    /// What the charger delivers and the battery takes, while Battery shows.
+    flow: flow::Flow,
 }
 
 /// The mobile network as Settings knows it.
@@ -712,6 +715,8 @@ pub struct Settings {
     /// Reading the data link's traffic every two seconds, while Mobile
     /// network shows; its times move on meanwhile.
     reading_mobile: Option<Task<()>>,
+    /// Reading the power supplies twice a second, while Battery shows.
+    reading_flow: Option<Task<()>>,
     /// Unlocking the SIM, until dmail answers.
     _unlocking: Task<()>,
     _bluetooth: Task<()>,
@@ -964,6 +969,7 @@ impl Settings {
             reading_clock: None,
             country: country::read(),
             reading_mobile: None,
+            reading_flow: None,
             _unlocking: Task::ready(()),
             bluetooth: Bluetooth::default(),
             android: android::Android::default(),
@@ -1196,6 +1202,7 @@ impl Settings {
         self.follow_input(cx);
         self.follow_clock(cx);
         self.follow_traffic(cx);
+        self.follow_flow(cx);
         self.follow_android(cx);
         if self.screen.is_page("storage") {
             self.read_storage(cx);
