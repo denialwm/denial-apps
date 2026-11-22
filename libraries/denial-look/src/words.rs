@@ -1,12 +1,12 @@
 //! The apps' words in the user's language. Apps are written in English;
 //! each registers its translations, from the English, and passes what it
 //! shows through `tr`. Denial's `localization.locale` picks the language,
-//! as it does the shell's: English, Simplified Chinese, or the system's,
-//! from `LC_ALL`, `LC_MESSAGES` or `LANG`. Words with no translation stay
-//! English.
+//! as it does the shell's: English, Simplified Chinese, Russian, or the
+//! system's, from `LC_ALL`, `LC_MESSAGES` or `LANG`. Words with no
+//! translation stay English.
 //!
 //! Words that take a value name it in braces, `"{count} fingers"`, the
-//! same in both languages; the app replaces it after `tr`.
+//! same in every language; the app replaces it after `tr`.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -18,20 +18,28 @@ use serde_json::Value;
 pub enum Language {
     English,
     Chinese,
+    Russian,
 }
 
 static LANGUAGE: AtomicU8 = AtomicU8::new(0);
 static CHINESE: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+static RUSSIAN: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 /// The app's words in Simplified Chinese, by their English; once, at start.
 pub fn register_chinese(words: &'static [(&'static str, &'static str)]) {
     let _ = CHINESE.set(words.iter().copied().collect());
 }
 
+/// The app's words in Russian, by their English; once, at start.
+pub fn register_russian(words: &'static [(&'static str, &'static str)]) {
+    let _ = RUSSIAN.set(words.iter().copied().collect());
+}
+
 /// The language the app shows, as Denial's settings last said.
 pub fn language() -> Language {
     match LANGUAGE.load(Ordering::Relaxed) {
         1 => Language::Chinese,
+        2 => Language::Russian,
         _ => Language::English,
     }
 }
@@ -46,6 +54,7 @@ pub(crate) fn follow(settings: &Value) {
     let language = match settings["localization"]["locale"].as_str() {
         Some("english") => Language::English,
         Some("simplifiedChinese") => Language::Chinese,
+        Some("russian") => Language::Russian,
         _ => system(),
     };
     LANGUAGE.store(language as u8, Ordering::Relaxed);
@@ -58,23 +67,31 @@ fn system() -> Language {
         .filter_map(std::env::var_os)
         .find(|value| !value.is_empty())
         .unwrap_or_default();
-    if locale.to_string_lossy().starts_with("zh") {
+    let locale = locale.to_string_lossy();
+    if locale.starts_with("zh") {
         Language::Chinese
+    } else if locale.starts_with("ru") {
+        Language::Russian
     } else {
         Language::English
     }
 }
 
+/// The words the app registered for `language`; English has none.
+fn words(language: Language) -> Option<&'static HashMap<&'static str, &'static str>> {
+    match language {
+        Language::English => None,
+        Language::Chinese => CHINESE.get(),
+        Language::Russian => RUSSIAN.get(),
+    }
+}
+
 /// `english` in the app's language.
 pub fn tr(english: &'static str) -> &'static str {
-    match language() {
-        Language::English => english,
-        Language::Chinese => CHINESE
-            .get()
-            .and_then(|words| words.get(english))
-            .copied()
-            .unwrap_or(english),
-    }
+    words(language())
+        .and_then(|words| words.get(english))
+        .copied()
+        .unwrap_or(english)
 }
 
 /// `english` in the app's language, its named values filled in:
@@ -90,10 +107,7 @@ pub fn fill(english: &'static str, values: &[(&str, &str)]) -> String {
 /// `text` in the app's language, when it is a word the app translates:
 /// for text that may also be a name, as a network's, which stays as it is.
 pub fn translate(text: &str) -> Option<&'static str> {
-    match language() {
-        Language::English => None,
-        Language::Chinese => CHINESE.get()?.get(text).copied(),
-    }
+    words(language())?.get(text).copied()
 }
 
 /// What is wrong with a table of words, for the app's tests: an English
@@ -130,5 +144,18 @@ mod tests {
         assert!(faults(&[("{count} fingers", "{count} 个指纹")]).is_empty());
         assert_eq!(faults(&[("A", "甲"), ("A", "乙")]).len(), 1);
         assert_eq!(faults(&[("{count} fingers", "{n} 个指纹")]).len(), 1);
+    }
+
+    #[test]
+    fn russian_is_a_language() {
+        register_russian(&[("Wi-Fi is off", "Wi-Fi выключен")]);
+        follow(&serde_json::json!({ "localization": { "locale": "russian" } }));
+        assert_eq!(language(), Language::Russian);
+        assert_eq!(tr("Wi-Fi is off"), "Wi-Fi выключен");
+        assert_eq!(translate("Wi-Fi is off"), Some("Wi-Fi выключен"));
+        assert_eq!(tr("Saved networks"), "Saved networks");
+        assert_eq!(translate("A network's name"), None);
+        follow(&serde_json::json!({ "localization": { "locale": "english" } }));
+        assert_eq!(tr("Wi-Fi is off"), "Wi-Fi is off");
     }
 }
