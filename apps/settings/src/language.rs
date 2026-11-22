@@ -13,7 +13,7 @@ pub struct Language {
     pub locale: &'static str,
 }
 
-pub const LANGUAGES: [Language; 2] = [
+pub const LANGUAGES: [Language; 3] = [
     Language {
         denial: "english",
         locale: "en_US.UTF-8",
@@ -21,6 +21,10 @@ pub const LANGUAGES: [Language; 2] = [
     Language {
         denial: "simplifiedChinese",
         locale: "zh_CN.UTF-8",
+    },
+    Language {
+        denial: "russian",
+        locale: "ru_RU.UTF-8",
     },
 ];
 

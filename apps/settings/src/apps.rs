@@ -116,6 +116,10 @@ fn entry(id: &str, path: &Path, dirs: &[PathBuf]) -> Option<App> {
             .into_iter()
             .find_map(|key| fields.get(key))
             .or_else(|| fields.get("Name")),
+        Language::Russian => ["Name[ru_RU]", "Name[ru]"]
+            .into_iter()
+            .find_map(|key| fields.get(key))
+            .or_else(|| fields.get("Name")),
         Language::English => fields.get("Name"),
     }?;
     Some(App {

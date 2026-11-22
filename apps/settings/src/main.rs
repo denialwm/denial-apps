@@ -28,6 +28,7 @@ mod wallpaper;
 mod welcome;
 mod wifi;
 mod words;
+mod words_ru;
 
 use futures_lite::future;
 use gpui::{
@@ -44,6 +45,7 @@ fn main() {
     diagnostics::init();
     log::info!("starting Settings");
     denial_look::words::register_chinese(words::CHINESE);
+    denial_look::words::register_russian(words_ru::RUSSIAN);
     let Start {
         page,
         welcome,

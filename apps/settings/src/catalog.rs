@@ -1055,7 +1055,7 @@ pub static GROUPS: &[Group] = &[
                     lead(&[item(
                         "language.system",
                         "Language",
-                        Kind::Choice(&["System default", "English", "简体中文"], 0),
+                        Kind::Choice(&["System default", "English", "简体中文", "Русский"], 0),
                     )
                     .icon(Icon::Language)
                     .from(Source::Own),

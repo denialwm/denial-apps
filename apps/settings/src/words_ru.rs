@@ -1,0 +1,653 @@
+//! Settings' words in Russian, by their English (`denial_look::words`), in
+//! the order of the Chinese table in `words.rs`. Names of things stay as
+//! they are: Wi-Fi, Bluetooth, Denial, Droidloom, NetworkManager. Words with
+//! none here stay English. The terms are those of the shell's Russian
+//! catalog (`app_ru.arb` in Denial's Flutter SDK).
+
+pub static RUSSIAN: &[(&str, &str)] = &[
+    // Pages and their groups.
+    ("Connections", "Подключения"),
+    ("Device", "Устройство"),
+    ("Personal", "Личное"),
+    ("System", "Система"),
+    ("Wi-Fi", "Wi-Fi"),
+    (
+        "Networks, scanning, saved passwords",
+        "Сети, поиск, сохранённые пароли",
+    ),
+    ("Mobile network", "Мобильная сеть"),
+    ("Data, SIM, network", "Интернет, SIM-карта, сеть"),
+    ("Bluetooth", "Bluetooth"),
+    (
+        "Paired devices, visibility",
+        "Сопряжённые устройства, видимость",
+    ),
+    ("Hotspot", "Точка доступа"),
+    (
+        "Share this phone's connection",
+        "Раздать интернет с этого устройства",
+    ),
+    ("Display", "Экран"),
+    (
+        "Brightness, appearance, timeout",
+        "Яркость, оформление, отключение",
+    ),
+    ("Physical input", "Устройства ввода"),
+    (
+        "Keyboard layouts, mouse, touchpad",
+        "Раскладки клавиатуры, мышь, тачпад",
+    ),
+    ("Desktop overlays", "Панели рабочего стола"),
+    (
+        "Launcher, dashboard, notifications, HUD",
+        "Меню приложений, панель виджетов, уведомления, индикатор",
+    ),
+    ("Top left", "Слева вверху"),
+    ("Top centre", "Вверху по центру"),
+    ("Top right", "Справа вверху"),
+    ("Centre left", "Слева по центру"),
+    ("Centre", "По центру"),
+    ("Centre right", "Справа по центру"),
+    ("Bottom left", "Слева внизу"),
+    ("Bottom centre", "Внизу по центру"),
+    ("Bottom right", "Справа внизу"),
+    ("Display position", "Положение экрана"),
+    (
+        "Enter X and Y, separated by a comma.",
+        "Введите X и Y через запятую.",
+    ),
+    ("Display configuration", "Настройка экранов"),
+    (
+        "Resolution, refresh rate, scale, rotation",
+        "Разрешение, частота обновления, масштаб, поворот",
+    ),
+    ("Custom scale", "Свой масштаб"),
+    (
+        "Enter a percentage from 25 to 800.",
+        "Введите процент от 25 до 800.",
+    ),
+    ("Desktop layout", "Компоновка рабочего стола"),
+    (
+        "Windows, workspaces, system bar",
+        "Окна, рабочие области, системная панель",
+    ),
+    // Welcome.
+    ("Shortcuts", "Сочетания клавиш"),
+    ("Monitor", "Монитор"),
+    ("Scale, windows, wallpaper", "Масштаб, окна, обои"),
+    ("Sound and vibration", "Звук и вибрация"),
+    (
+        "Volume, ringtone, vibration",
+        "Громкость, мелодия звонка, вибрация",
+    ),
+    ("Notifications", "Уведомления"),
+    (
+        "Do not disturb, lock screen",
+        "«Не беспокоить», экран блокировки",
+    ),
+    ("Power", "Питание"),
+    (
+        "Idle lock, suspend, power button",
+        "Блокировка при бездействии, сон, кнопка питания",
+    ),
+    ("Automatic idle actions", "Действия при бездействии"),
+    ("Lock when idle", "Блокировать при бездействии"),
+    (
+        "Phones use the lock delay after the display turns off.",
+        "На телефонах задержка блокировки отсчитывается после отключения экрана.",
+    ),
+    ("Idle lock timeout", "Время до блокировки"),
+    (
+        "Turn off display when idle",
+        "Выключать экран при бездействии",
+    ),
+    ("Display-off timeout", "Время до отключения экрана"),
+    ("Suspend when idle", "Переходить в сон при бездействии"),
+    ("Idle suspend timeout", "Время до перехода в сон"),
+    ("Suspend mode", "Режим сна"),
+    ("Power button", "Кнопка питания"),
+    ("Short press", "Короткое нажатие"),
+    ("Long press", "Долгое нажатие"),
+    (
+        "The mobile shell uses the power menu.",
+        "Мобильная оболочка показывает меню питания.",
+    ),
+    ("Reset power preferences", "Сбросить настройки питания"),
+    ("Suspend to idle", "Сон в режиме простоя"),
+    ("Standby", "Режим ожидания"),
+    ("Suspend to RAM", "Сон в оперативной памяти"),
+    ("Turn off display", "Выключить экран"),
+    ("Suspend", "Спящий режим"),
+    ("Hibernate", "Гибернация"),
+    ("Power off", "Выключение"),
+    ("Do nothing", "Ничего не делать"),
+    ("Power menu", "Меню питания"),
+    ("Power preferences", "Настройки питания"),
+    ("Battery", "Батарея"),
+    ("Level, health", "Заряд, состояние"),
+    ("Storage", "Хранилище"),
+    ("Used and free space", "Занятое и свободное место"),
+    ("Wallpaper and style", "Обои и стиль"),
+    ("Wallpaper, accent, glass", "Обои, акцентный цвет, стекло"),
+    (
+        "Lock screen and security",
+        "Экран блокировки и безопасность",
+    ),
+    (
+        "Screen lock, fingerprint",
+        "Блокировка экрана, отпечаток пальца",
+    ),
+    ("Privacy", "Конфиденциальность"),
+    ("Camera, microphone", "Камера, микрофон"),
+    (
+        "GPS, apps that may use it",
+        "GPS и приложения, которым он доступен",
+    ),
+    ("Apps", "Приложения"),
+    (
+        "Installed apps, defaults",
+        "Установленные приложения и приложения по умолчанию",
+    ),
+    (
+        "Android apps, through Droidloom",
+        "Android-приложения через Droidloom",
+    ),
+    ("Language and keyboard", "Язык и клавиатура"),
+    ("Language, keyboard", "Язык, клавиатура"),
+    ("Date and time", "Дата и время"),
+    (
+        "Time zone, 24-hour clock",
+        "Часовой пояс, 24-часовой формат",
+    ),
+    ("About Denial", "О Denial"),
+    ("Support and credits", "Поддержка и благодарности"),
+    ("About phone", "Об устройстве"),
+    ("Name, model, versions", "Имя, модель, версии"),
+    // Style.
+    ("System default", "Как в системе"),
+    (
+        "Denial could not open the editor",
+        "Denial не удалось открыть редактор",
+    ),
+    // Security.
+    ("Fingerprint", "Отпечаток пальца"),
+    ("Reading…", "Чтение…"),
+    ("Not set", "Не задано"),
+    (
+        "Could not change the country: {why}",
+        "Не удалось изменить страну: {why}",
+    ),
+    ("Off", "Выкл."),
+    ("Wrong password", "Неверный пароль"),
+    ("Set a PIN", "Задать PIN-код"),
+    (
+        "Your account password; the lock screen then asks for it",
+        "Пароль учётной записи; его будет запрашивать экран блокировки",
+    ),
+    ("Use the password", "Использовать пароль"),
+    ("Remove PIN", "Удалить PIN-код"),
+    // Fingerprints.
+    ("Add a fingerprint", "Добавить отпечаток"),
+    (
+        "A name to tell it from the others",
+        "Имя, чтобы отличать его от других",
+    ),
+    ("Next", "Далее"),
+    ("Remove", "Удалить"),
+    // Privacy.
+    ("Location", "Местоположение"),
+    // Android.
+    ("Restart", "Перезапустить"),
+    ("Android (Droidloom)", "Android (Droidloom)"),
+    ("Failed", "Ошибка"),
+    ("Model", "Модель"),
+    ("Installed apps", "Установленные приложения"),
+    ("Droidloom is not installed", "Droidloom не установлен"),
+    (
+        "Could not change Android apps: {why}",
+        "Не удалось изменить Android-приложения: {why}",
+    ),
+    // Language.
+    ("Language", "Язык"),
+    ("Keyboard", "Клавиатура"),
+    ("Autocorrect", "Автоисправление"),
+    ("Show the key you press", "Показывать нажатую клавишу"),
+    ("Keyboard height", "Высота клавиатуры"),
+    (
+        "Could not change the system's language: {why}",
+        "Не удалось изменить язык системы: {why}",
+    ),
+    // Date and time.
+    ("Date", "Дата"),
+    ("Time", "Время"),
+    ("The clock does not answer", "Служба времени не отвечает"),
+    (
+        "The phone has no service to set the time",
+        "На устройстве нет службы для установки времени",
+    ),
+    (
+        "Could not change the clock: {why}",
+        "Не удалось изменить время: {why}",
+    ),
+    (
+        "Could not change the time zone: {why}",
+        "Не удалось изменить часовой пояс: {why}",
+    ),
+    (
+        "Year, month and day: 2026-10-22",
+        "Год, месяц и день: 2026-10-22",
+    ),
+    ("Hours and minutes: 17:45", "Часы и минуты: 17:45"),
+    ("Set", "Задать"),
+    ("Not a date", "Это не дата"),
+    ("Not a time", "Это не время"),
+    // Storage.
+    ("What uses it", "Что занимает место"),
+    ("Your files", "Ваши файлы"),
+    ("The home folder", "Домашняя папка"),
+    ("Everything else", "Всё остальное"),
+    ("Counting…", "Подсчёт…"),
+    ("{used} used of {all}", "Занято {used} из {all}"),
+    // About.
+    ("Phone name", "Имя устройства"),
+    (", ", ", "),
+    ("{minutes} min", "{minutes} мин"),
+    ("{hours} h {minutes} min", "{hours} ч {minutes} мин"),
+    ("{hours} h", "{hours} ч"),
+    ("{days} days", "{days} дн."),
+    // Battery.
+    ("Battery is not available", "Батарея недоступна"),
+    (
+        "UPower, which reads the battery, does not run on this phone",
+        "UPower, который читает данные батареи, не запущен на этом устройстве",
+    ),
+    ("No battery", "Нет батареи"),
+    (
+        "This device runs on its charger",
+        "Это устройство работает от сети",
+    ),
+    ("Health", "Состояние"),
+    ("Charge cycles", "Циклы зарядки"),
+    ("Temperature", "Температура"),
+    ("Charging at", "Мощность зарядки"),
+    ("Using", "Потребление"),
+    (
+        "Charging · full in {time}",
+        "Заряжается · полностью через {time}",
+    ),
+    ("Charging", "Заряжается"),
+    ("Fully charged", "Полностью заряжена"),
+    (
+        "Plugged in, not charging",
+        "Подключено к сети, не заряжается",
+    ),
+    ("About {time} left", "Осталось около {time}"),
+    ("Plugged in", "Подключено к сети"),
+    ("On battery", "От батареи"),
+    // The monitor beside the phone.
+    ("Keep {rate}?", "Оставить {rate}?"),
+    (
+        "Goes back to {rate} in {count} seconds",
+        "Вернётся к {rate} через {count} с",
+    ),
+    ("Keep", "Оставить"),
+    ("Denial does not answer", "Denial не отвечает"),
+    // Dialogs.
+    ("Cancel", "Отмена"),
+    ("Hide", "Скрыть"),
+    ("Show", "Показать"),
+    ("Rename", "Переименовать"),
+    ("What nearby devices see", "Что видят ближайшие устройства"),
+    // Mobile network.
+    ("SIM 1", "SIM 1"),
+    ("SIM 2", "SIM 2"),
+    (
+        "Mobile network is not available",
+        "Мобильная сеть недоступна",
+    ),
+    (
+        "dmail, the modem service, does not run on this phone",
+        "dmail, служба модема, не запущена на этом устройстве",
+    ),
+    ("The modem is off", "Модем выключен"),
+    ("Starting the modem…", "Запуск модема…"),
+    ("The modem stopped", "Модем остановился"),
+    (
+        "dmail could not keep it running",
+        "dmail не удалось сохранить его работу",
+    ),
+    ("No SIM card", "Нет SIM-карты"),
+    ("Nothing in {slot}", "{slot}: пусто"),
+    ("The SIM is blocked", "SIM-карта заблокирована"),
+    (
+        "It needs its PUK, which the phone cannot take yet",
+        "Нужен PUK-код, а ввести его на устройстве пока нельзя",
+    ),
+    ("The SIM is locked", "SIM-карта заблокирована PIN-кодом"),
+    ("Looking for a network…", "Поиск сети…"),
+    ("Unlock", "Разблокировать"),
+    ("Connecting…", "Подключение…"),
+    ("When the phone is on a network", "Когда устройство в сети"),
+    ("Mobile data", "Мобильный интернет"),
+    ("SIM used", "Используемая SIM-карта"),
+    (
+        "For messages, calls and data",
+        "Для сообщений, звонков и интернета",
+    ),
+    ("Network type", "Тип сети"),
+    ("Yes", "Да"),
+    ("No", "Нет"),
+    ("Data link", "Передача данных"),
+    ("Network", "Сеть"),
+    ("Not available", "Недоступно"),
+    ("Starting…", "Запуск…"),
+    ("SIM locked", "Заблокирована PIN-кодом"),
+    ("Roaming", "Роуминг"),
+    (
+        "Could not turn mobile data on: {why}",
+        "Не удалось включить мобильный интернет: {why}",
+    ),
+    (
+        "Could not turn mobile data off: {why}",
+        "Не удалось выключить мобильный интернет: {why}",
+    ),
+    (
+        "Could not change the SIM: {why}",
+        "Не удалось сменить SIM-карту: {why}",
+    ),
+    ("Wrong PIN", "Неверный PIN-код"),
+    ("wrong PIN", "неверный PIN-код"),
+    (
+        "Could not unlock: {why}",
+        "Не удалось разблокировать: {why}",
+    ),
+    (
+        "1 try left before the SIM blocks",
+        "Осталась 1 попытка до блокировки SIM-карты",
+    ),
+    ("{count} tries left", "Осталось попыток: {count}"),
+    ("Unlock the SIM", "Разблокировать SIM-карту"),
+    ("Trying again in {seconds} s", "Повтор через {seconds} с"),
+    (
+        "Waiting for the network to allow data",
+        "Ожидание разрешения сети на передачу данных",
+    ),
+    (
+        "The network turned data down. Restart the radio to ask again",
+        "Сеть отказала в передаче данных. Перезапустите радиомодуль, чтобы запросить снова",
+    ),
+    ("Signal", "Сигнал"),
+    ("Packet service", "Пакетная передача данных"),
+    ("Attached", "Подключено"),
+    ("Not attached", "Не подключено"),
+    ("VoLTE", "VoLTE"),
+    ("Working", "Работает"),
+    ("Last refusal", "Последний отказ"),
+    ("Address", "Адрес"),
+    ("Connected for", "Время подключения"),
+    ("Received and sent", "Получено и отправлено"),
+    ("Drops since dmail started", "Обрывов с запуска dmail"),
+    ("Last drop", "Последний обрыв"),
+    ("If the network goes away", "Если сеть пропала"),
+    ("Reconnect mobile data", "Переподключить мобильный интернет"),
+    (
+        "Ends the data session and starts a new one",
+        "Завершает сеанс передачи данных и начинает новый",
+    ),
+    ("Reconnecting…", "Переподключение…"),
+    (
+        "Could not reconnect: {why}",
+        "Не удалось переподключиться: {why}",
+    ),
+    ("Restart the radio", "Перезапустить радиомодуль"),
+    (
+        "Calls and data stop for a few seconds while the phone registers again",
+        "Звонки и интернет прервутся на несколько секунд, пока устройство заново регистрируется в сети",
+    ),
+    ("Restarting the radio…", "Перезапуск радиомодуля…"),
+    (
+        "Could not restart the radio: {why}",
+        "Не удалось перезапустить радиомодуль: {why}",
+    ),
+    ("Start the modem over", "Перезапустить модем"),
+    (
+        "dmail sets the modem up again from the beginning",
+        "dmail заново настраивает модем с самого начала",
+    ),
+    ("Starting the modem over…", "Перезапуск модема…"),
+    (
+        "Could not start the modem over: {why}",
+        "Не удалось перезапустить модем: {why}",
+    ),
+    // Bluetooth.
+    (
+        "Off by airplane mode or a hardware switch",
+        "Выключено режимом полёта или аппаратным переключателем",
+    ),
+    ("Connected", "Подключено"),
+    ("Idle inhibition", "Запрет бездействия"),
+    (
+        "Application activity such as video playback can temporarily pause these timers.",
+        "Действия приложений, например воспроизведение видео, могут временно приостанавливать эти таймеры.",
+    ),
+    ("Wi-Fi is off", "Wi-Fi выключен"),
+    ("Local network only", "Только локальная сеть"),
+    ("Limited internet access", "Ограниченный доступ в интернет"),
+    ("Network sign-in required", "Требуется вход в сеть"),
+    ("Connected to network", "Подключено к сети"),
+    ("Internet access", "Есть доступ в интернет"),
+    ("Charging limits", "Ограничения зарядки"),
+    ("Limit battery charging", "Ограничить зарядку батареи"),
+    (
+        "Limit charging for {battery}",
+        "Ограничить зарядку: {battery}",
+    ),
+    (
+        "Resume charging below {start}% and stop at {end}%.",
+        "Возобновлять зарядку ниже {start}% и прекращать на {end}%.",
+    ),
+    ("Stop charging at {end}%.", "Прекращать зарядку на {end}%."),
+    (
+        "Resume charging below {start}%.",
+        "Возобновлять зарядку ниже {start}%.",
+    ),
+    (
+        "Firmware chooses the charging pattern.",
+        "Режим зарядки выбирает прошивка.",
+    ),
+    (
+        "Limit the full charge level to reduce battery wear.",
+        "Ограничить максимальный уровень заряда, чтобы уменьшить износ батареи.",
+    ),
+    (
+        "Could not change the battery charge limit",
+        "Не удалось изменить ограничение заряда",
+    ),
+    ("Permissions", "Разрешения"),
+    ("Keyboard shortcut access", "Доступ к сочетаниям клавиш"),
+    ("You", "Вы"),
+    (
+        "Account name, display name, profile photo",
+        "Имя учётной записи, отображаемое имя, фото профиля",
+    ),
+    ("Preview profile photo", "Просмотр фото профиля"),
+    ("Reset language preferences", "Сбросить языковые настройки"),
+    ("Application environment", "Окружение приложений"),
+    (
+        "Variables for all apps or individual apps",
+        "Переменные для всех или отдельных приложений",
+    ),
+    ("Not connected", "Не подключено"),
+    ("Forget", "Забыть"),
+    ("Forget {name}?", "Забыть {name}?"),
+    (
+        "Could not forget {name}: {why}",
+        "Не удалось забыть {name}: {why}",
+    ),
+    ("Pair with {name}", "Сопряжение с {name}"),
+    ("Connect", "Подключить"),
+    ("Disconnect", "Отключить"),
+    ("not allowed", "не разрешено"),
+    // Wi-Fi.
+    ("Wi-Fi is not available", "Wi-Fi недоступен"),
+    (
+        "Neither NetworkManager nor iwd runs on this phone",
+        "На этом устройстве не запущены ни NetworkManager, ни iwd",
+    ),
+    ("No Wi-Fi hardware", "Нет модуля Wi-Fi"),
+    (
+        "{manager} finds no Wi-Fi device",
+        "{manager} не находит устройство Wi-Fi",
+    ),
+    ("Use Wi-Fi", "Использовать Wi-Fi"),
+    ("Looking for networks…", "Поиск сетей…"),
+    ("No networks in range", "Нет сетей поблизости"),
+    ("Networks", "Сети"),
+    ("None yet", "Пока нет"),
+    ("1 network", "1 сеть"),
+    ("{count} networks", "Сетей: {count}"),
+    (
+        "One that does not show its name",
+        "Сеть, которая не показывает своё имя",
+    ),
+    ("Saved", "Сохранена"),
+    ("Saved networks", "Сохранённые сети"),
+    ("No saved networks", "Нет сохранённых сетей"),
+    ("Joined by hand", "Подключается вручную"),
+    ("In range", "В зоне действия"),
+    ("Hidden network", "Скрытая сеть"),
+    ("Not in range", "Вне зоны действия"),
+    (
+        "This network is no longer saved",
+        "Эта сеть больше не сохранена",
+    ),
+    ("Band", "Диапазон"),
+    ("Link speed", "Скорость соединения"),
+    ("Security", "Защита"),
+    ("IP address", "IP-адрес"),
+    ("Gateway", "Шлюз"),
+    ("IPv6 address", "IPv6-адрес"),
+    ("MAC address", "MAC-адрес"),
+    ("Connection", "Соединение"),
+    ("Joining", "Подключение"),
+    ("Join by itself", "Подключаться автоматически"),
+    (
+        "Whenever the network is in range",
+        "Когда сеть в зоне действия",
+    ),
+    ("Detect automatically", "Определять автоматически"),
+    ("Metered", "Лимитная"),
+    ("Not metered", "Безлимитная"),
+    ("Billed by the amount of data", "Оплата по объёму трафика"),
+    ("Phone's default", "Как на устройстве"),
+    ("Private address", "Случайный адрес"),
+    ("Device address", "Адрес устройства"),
+    (
+        "The hardware address the network sees",
+        "Аппаратный адрес, который видит сеть",
+    ),
+    ("Join with a new password", "Подключиться с новым паролем"),
+    ("Connecting to {name}", "Подключение к {name}"),
+    (
+        "Could not turn Wi-Fi on: {why}",
+        "Не удалось включить Wi-Fi: {why}",
+    ),
+    (
+        "Could not turn Wi-Fi off: {why}",
+        "Не удалось выключить Wi-Fi: {why}",
+    ),
+    (
+        "Wrong password, try again",
+        "Неверный пароль, попробуйте ещё раз",
+    ),
+    (
+        "Could not disconnect: {why}",
+        "Не удалось отключиться: {why}",
+    ),
+    (
+        "The phone stops joining it, and its password is deleted.",
+        "Устройство перестанет к ней подключаться, а её пароль будет удалён.",
+    ),
+    (
+        "The phone stops joining it.",
+        "Устройство перестанет к ней подключаться.",
+    ),
+    ("Could not change it: {why}", "Не удалось изменить: {why}"),
+    ("it did not work", "не получилось"),
+    ("Enter the password", "Введите пароль"),
+    ("Join", "Подключиться"),
+    (
+        "Leave the password empty for an open network",
+        "Для открытой сети оставьте пароль пустым",
+    ),
+    ("Add a hidden network", "Добавить скрытую сеть"),
+    ("Open", "Открытая"),
+    ("Enhanced open", "Открытая с шифрованием"),
+    ("Enterprise", "Корпоративная"),
+    ("Checking the password…", "Проверка пароля…"),
+    ("Getting an address…", "Получение адреса…"),
+    (
+        "This kind of network is not supported yet",
+        "Такие сети пока не поддерживаются",
+    ),
+    ("The network is not in range", "Сеть вне зоны действия"),
+    ("Excellent", "Отличный"),
+    ("Good", "Хороший"),
+    ("Fair", "Средний"),
+    ("Weak", "Слабый"),
+    ("No password was typed", "Пароль не введён"),
+    (
+        "Enterprise networks are not supported",
+        "Корпоративные сети не поддерживаются",
+    ),
+    ("iwd could not join it", "iwd не удалось подключиться"),
+    ("Already joining a network", "Уже идёт подключение к сети"),
+    ("Joining was stopped", "Подключение прервано"),
+    ("Not allowed to change Wi-Fi", "Нет прав на изменение Wi-Fi"),
+    (
+        "NetworkManager could not join it",
+        "NetworkManager не удалось подключиться",
+    ),
+    ("NetworkManager stopped", "NetworkManager остановлен"),
+    ("The network did not answer", "Сеть не ответила"),
+    ("The network gave no address", "Сеть не выдала адрес"),
+    ("Could not connect", "Не удалось подключиться"),
+    // Plugins and Developer.
+    ("Plugins", "Плагины"),
+    (
+        "What your desktop is built from",
+        "Из чего состоит ваш рабочий стол",
+    ),
+    ("Developer", "Для разработчиков"),
+    (
+        "Live UI development, builds, recovery",
+        "Разработка интерфейса на лету, сборки, восстановление",
+    ),
+];
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn table_is_sound() {
+        assert_eq!(
+            denial_look::words::faults(super::RUSSIAN),
+            Vec::<String>::new()
+        );
+    }
+
+    /// Each word is one the app passes through `tr`: the Chinese table has
+    /// them all.
+    #[test]
+    fn every_word_is_one_the_app_translates() {
+        let chinese: std::collections::HashSet<&str> = crate::words::CHINESE
+            .iter()
+            .map(|(english, _)| *english)
+            .collect();
+        let unknown: Vec<&str> = super::RUSSIAN
+            .iter()
+            .map(|(english, _)| *english)
+            .filter(|english| !chinese.contains(english))
+            .collect();
+        assert_eq!(unknown, Vec::<&str>::new());
+    }
+}
