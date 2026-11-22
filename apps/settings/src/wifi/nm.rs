@@ -53,6 +53,13 @@ mod reason {
     pub const SSID_NOT_FOUND: u32 = 53;
 }
 
+/// NMActiveConnectionState values.
+mod active_state {
+    pub const ACTIVATING: u32 = 1;
+    pub const ACTIVATED: u32 = 2;
+    pub const DEACTIVATED: u32 = 4;
+}
+
 /// NM80211ApFlags and NM80211ApSecurityFlags bits.
 const AP_PRIVACY: u32 = 0x1;
 const KEY_PSK: u32 = 0x100;
@@ -62,7 +69,8 @@ const KEY_OWE: u32 = 0x800;
 const KEY_EAP_SUITE_B: u32 = 0x2000;
 
 /// Joining gives up after this long without NetworkManager saying how it
-/// went; it says within about half a minute.
+/// went; it says within about half a minute. A new connection is kept then:
+/// NetworkManager may still join with it.
 const JOIN_LIMIT: Duration = Duration::from_secs(45);
 
 #[derive(Clone)]
@@ -182,7 +190,7 @@ impl Nm {
         network: &Network,
         password: Option<String>,
     ) -> Result<(), Failure> {
-        let states = self.device_states(device).await.map_err(failed)?;
+        let changes = self.state_changes().await.map_err(failed)?;
         match &network.saved {
             Some(id) => {
                 if let Some(password) = password {
@@ -191,10 +199,14 @@ impl Nm {
                         .await
                         .map_err(failed)?;
                 }
-                self.activate(id, device, &network.path)
+                let active = self
+                    .activate(id, device, &network.path)
                     .await
                     .map_err(failed)?;
-                outcome(states, network.security).await
+                result(
+                    joined(changes, device, active.as_str()).await,
+                    network.security,
+                )
             }
             None => {
                 let settings = new_connection(
@@ -204,7 +216,7 @@ impl Nm {
                     password,
                     false,
                 );
-                self.add_and_join(settings, device, &network.path, network.security, states)
+                self.add_and_join(settings, device, &network.path, network.security, changes)
                     .await
             }
         }
@@ -216,29 +228,31 @@ impl Nm {
         name: &str,
         password: Option<String>,
     ) -> Result<(), Failure> {
-        let states = self.device_states(device).await.map_err(failed)?;
+        let changes = self.state_changes().await.map_err(failed)?;
         let security = if password.is_some() {
             Security::Personal
         } else {
             Security::Open
         };
         let settings = new_connection(name, name.as_bytes(), security, password, true);
-        self.add_and_join(settings, device, "/", security, states)
+        self.add_and_join(settings, device, "/", security, changes)
             .await
     }
 
-    /// Saves a new connection and joins with it; one that does not join is
-    /// deleted again, so a wrong password is never kept.
+    /// Saves a new connection and joins with it; one the device fails to
+    /// join with is deleted again, so a wrong password is never kept. A join
+    /// that something else ends first, as the user leaving or choosing
+    /// another network, keeps it.
     async fn add_and_join(
         &self,
         settings: HashMap<&'static str, HashMap<&'static str, Value<'static>>>,
         device: &Device,
         point: &str,
         security: Security,
-        states: MessageStream,
+        changes: MessageStream,
     ) -> Result<(), Failure> {
         let options: HashMap<&str, Value> = HashMap::from([("persist", Value::from("disk"))]);
-        let (connection, _, _): (
+        let (connection, active, _): (
             OwnedObjectPath,
             OwnedObjectPath,
             HashMap<String, OwnedValue>,
@@ -251,35 +265,40 @@ impl Nm {
             )
             .await
             .map_err(failed)?;
-        let joined = outcome(states, security).await;
-        if joined.is_err() {
+        let end = joined(changes, device, active.as_str()).await;
+        if end.forgets() {
             let _ = self.forget(connection.as_str()).await;
         }
-        joined
+        result(end, security)
     }
 
-    async fn activate(&self, id: &str, device: &Device, point: &str) -> zbus::Result<()> {
-        let _: OwnedObjectPath = self
-            .call(
-                ROOT,
-                MANAGER,
-                "ActivateConnection",
-                &(object(id), object(&device.path), object(point)),
-            )
-            .await?;
-        Ok(())
+    /// Starts joining with saved connection `id`; the active connection that
+    /// is the join.
+    async fn activate(
+        &self,
+        id: &str,
+        device: &Device,
+        point: &str,
+    ) -> zbus::Result<OwnedObjectPath> {
+        self.call(
+            ROOT,
+            MANAGER,
+            "ActivateConnection",
+            &(object(id), object(&device.path), object(point)),
+        )
+        .await
     }
 
-    /// The device's state changes from now on.
-    async fn device_states(&self, device: &Device) -> zbus::Result<MessageStream> {
+    /// NetworkManager's state changes from now on, the devices' and the
+    /// active connections' in one stream: in the order it makes them, which
+    /// telling one join's changes from the one before depends on.
+    async fn state_changes(&self) -> zbus::Result<MessageStream> {
         let rule = MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
             .sender(SERVICE)?
-            .path(device.path.as_str())?
-            .interface(DEVICE)?
             .member("StateChanged")?
             .build();
-        MessageStream::for_match_rule(rule, &self.bus, Some(64)).await
+        MessageStream::for_match_rule(rule, &self.bus, Some(256)).await
     }
 
     pub async fn disconnect(&self, device: &Device) -> zbus::Result<()> {
@@ -375,28 +394,136 @@ fn failed(error: zbus::Error) -> Failure {
     }
 }
 
-/// Waits for the device to finish joining: on the network, or failed and
-/// why.
-async fn outcome(mut states: MessageStream, security: Security) -> Result<(), Failure> {
+/// How a join ended, as NetworkManager told it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum End {
+    Joined,
+    /// The device failed the join, for this NMDeviceStateReason.
+    Failed(u32),
+    /// Something else ended it first: the user left the network, another
+    /// join took the device, the connection was deleted.
+    Stopped,
+    /// NetworkManager said nothing more within `JOIN_LIMIT`.
+    Silent,
+    /// NetworkManager left the bus.
+    Gone,
+}
+
+impl End {
+    /// A connection saved for this join is deleted again: only a join the
+    /// device failed, as with a wrong password, says it does not work.
+    fn forgets(self) -> bool {
+        matches!(self, End::Failed(_))
+    }
+}
+
+/// What the user hears of how a join ended.
+fn result(end: End, security: Security) -> Result<(), Failure> {
+    match end {
+        End::Joined => Ok(()),
+        End::Failed(why) => Err(failure(why, security)),
+        End::Stopped => Err(Failure::Other("Joining was stopped")),
+        End::Silent => Err(Failure::Other("The network did not answer")),
+        End::Gone => Err(Failure::Other("NetworkManager stopped")),
+    }
+}
+
+/// A state change NetworkManager signalled.
+#[derive(Clone, Copy, Debug)]
+enum Change<'a> {
+    /// The Wi-Fi device's new state, and why.
+    Device(u32, u32),
+    /// An active connection's new state, by its object.
+    Active(&'a str, u32),
+}
+
+/// Follows the join that is active connection `active` through the state
+/// changes heard since it was asked for. Asking ends what the device was
+/// doing first: it deactivates and disconnects from the network it was on,
+/// and those changes are not this join's. They come before NetworkManager
+/// starts `active`, so the device's changes count from then on. Within a
+/// join the device passes NEED_AUTH every time, while NetworkManager looks
+/// for the connection's secrets; a wrong password ends in FAILED.
+struct Join<'a> {
+    active: &'a str,
+    /// NetworkManager started `active`: the device's changes are this join's.
+    started: bool,
+    /// The device has worked on the join since, so its leaving ends it.
+    working: bool,
+}
+
+impl<'a> Join<'a> {
+    fn new(active: &'a str) -> Self {
+        Self {
+            active,
+            started: false,
+            working: false,
+        }
+    }
+
+    /// How the join ended, once `change` says so.
+    fn hear(&mut self, change: Change<'_>) -> Option<End> {
+        match change {
+            Change::Active(path, _) if path != self.active => None,
+            Change::Active(_, active_state::ACTIVATING) => {
+                self.started = true;
+                None
+            }
+            Change::Active(_, active_state::ACTIVATED) => Some(End::Joined),
+            // The device's own change says how a join it worked on ended;
+            // one that never reached the device ends here.
+            Change::Active(_, active_state::DEACTIVATED) if !self.working => Some(End::Stopped),
+            Change::Active(..) => None,
+            Change::Device(..) if !self.started => None,
+            Change::Device(device_state::ACTIVATED, _) => Some(End::Joined),
+            Change::Device(device_state::FAILED, why) => Some(End::Failed(why)),
+            Change::Device(state, _)
+                if (device_state::PREPARE..device_state::ACTIVATED).contains(&state) =>
+            {
+                self.working = true;
+                None
+            }
+            Change::Device(state, _) if self.working && state <= device_state::DISCONNECTED => {
+                Some(End::Stopped)
+            }
+            Change::Device(..) => None,
+        }
+    }
+}
+
+/// Waits for NetworkManager to say how the join that is active connection
+/// `active` on `device` ends.
+async fn joined(mut changes: MessageStream, device: &Device, active: &str) -> End {
+    let mut join = Join::new(active);
     let wait = async {
-        let mut started = false;
-        while let Some(Ok(message)) = states.next().await {
-            let Ok((new, _, why)) = message.body().deserialize::<(u32, u32, u32)>() else {
+        while let Some(Ok(message)) = changes.next().await {
+            let header = message.header();
+            let (Some(path), Some(interface)) = (header.path(), header.interface()) else {
                 continue;
             };
-            started |= new >= device_state::PREPARE;
-            match new {
-                device_state::ACTIVATED => return Ok(()),
-                device_state::FAILED => return Err(failure(why, security)),
-                device_state::DISCONNECTED if started => return Err(failure(why, security)),
-                _ => {}
+            let body = message.body();
+            let change = match interface.as_str() {
+                DEVICE if path.as_str() == device.path => {
+                    match body.deserialize::<(u32, u32, u32)>() {
+                        Ok((new, _, why)) => Change::Device(new, why),
+                        Err(_) => continue,
+                    }
+                }
+                ACTIVE => match body.deserialize::<(u32, u32)>() {
+                    Ok((new, _)) => Change::Active(path.as_str(), new),
+                    Err(_) => continue,
+                },
+                _ => continue,
+            };
+            if let Some(end) = join.hear(change) {
+                return end;
             }
         }
-        Err(Failure::Other("NetworkManager stopped"))
+        End::Gone
     };
     wait.or(async {
         async_io::Timer::after(JOIN_LIMIT).await;
-        Err(Failure::Other("The network did not answer"))
+        End::Silent
     })
     .await
 }
@@ -652,5 +779,158 @@ mod connectivity_tests {
             connectivity(device_state::ACTIVATED, [None, None, None]),
             Connectivity::Local
         );
+    }
+}
+
+#[cfg(test)]
+mod join_tests {
+    use super::*;
+
+    const JOIN: &str = "/org/freedesktop/NetworkManager/ActiveConnection/9";
+    const LAST: &str = "/org/freedesktop/NetworkManager/ActiveConnection/8";
+    // NMDeviceState and NMDeviceStateReason values only the tests name.
+    const CONFIG: u32 = 50;
+    const IP_CHECK: u32 = 80;
+    const DEACTIVATING: u32 = 110;
+    const NONE: u32 = 0;
+    const NEW_ACTIVATION: u32 = 60;
+    // NMActiveConnectionState DEACTIVATING.
+    const LEAVING: u32 = 3;
+
+    use super::Change::{Active, Device};
+    use super::device_state::{
+        ACTIVATED, DISCONNECTED, FAILED, IP_CONFIG, NEED_AUTH, PREPARE, SECONDARIES,
+    };
+
+    /// How the join that is `JOIN` ends after `changes`, if it does.
+    fn end(changes: &[Change<'static>]) -> Option<End> {
+        let mut join = Join::new(JOIN);
+        changes.iter().find_map(|change| join.hear(*change))
+    }
+
+    /// The device leaving the network it was on for the join: NetworkManager
+    /// deactivates it for the new activation.
+    const LEAVING_THE_LAST: [Change<'static>; 4] = [
+        Device(DEACTIVATING, NEW_ACTIVATION),
+        Active(LAST, LEAVING),
+        Device(DISCONNECTED, NEW_ACTIVATION),
+        Active(LAST, active_state::DEACTIVATED),
+    ];
+
+    /// Joining a network the phone had not joined, from another one, as the
+    /// tablet's NetworkManager did on 22.11.2026: NEED_AUTH for a moment
+    /// while it finds the password the connection holds.
+    #[test]
+    fn joins_from_another_network_through_need_auth() {
+        let mut changes = LEAVING_THE_LAST.to_vec();
+        changes.extend([
+            Active(JOIN, active_state::ACTIVATING),
+            Device(PREPARE, NONE),
+            Device(CONFIG, NONE),
+            Device(NEED_AUTH, NONE),
+            Device(PREPARE, NONE),
+            Device(CONFIG, NONE),
+            Device(IP_CONFIG, NONE),
+            Device(IP_CHECK, NONE),
+            Device(SECONDARIES, NONE),
+        ]);
+        assert_eq!(end(&changes), None);
+        changes.push(Device(ACTIVATED, NONE));
+        assert_eq!(end(&changes), Some(End::Joined));
+        // The active connection may say so before the device does.
+        changes.pop();
+        changes.push(Active(JOIN, active_state::ACTIVATED));
+        assert_eq!(end(&changes), Some(End::Joined));
+    }
+
+    /// NetworkManager may signal the device's change before the active
+    /// connection's it causes.
+    #[test]
+    fn the_device_may_speak_first() {
+        let mut changes = LEAVING_THE_LAST.to_vec();
+        changes.extend([
+            Device(PREPARE, NONE),
+            Active(JOIN, active_state::ACTIVATING),
+            Device(CONFIG, NONE),
+            Device(NEED_AUTH, NONE),
+            Device(CONFIG, NONE),
+            Device(IP_CONFIG, NONE),
+        ]);
+        assert_eq!(end(&changes), None);
+        changes.push(Device(ACTIVATED, NONE));
+        assert_eq!(end(&changes), Some(End::Joined));
+    }
+
+    #[test]
+    fn a_wrong_password_fails_the_join_and_forgets_it() {
+        let mut changes = LEAVING_THE_LAST.to_vec();
+        changes.extend([
+            Active(JOIN, active_state::ACTIVATING),
+            Device(PREPARE, NONE),
+            Device(CONFIG, NONE),
+            Device(NEED_AUTH, reason::SUPPLICANT_DISCONNECT),
+        ]);
+        assert_eq!(end(&changes), None);
+        // In either order: the active connection's end waits for the
+        // device's, which says why.
+        let failed = [
+            Device(FAILED, reason::NO_SECRETS),
+            Active(JOIN, active_state::DEACTIVATED),
+        ];
+        for order in [failed, [failed[1], failed[0]]] {
+            let mut changes = changes.clone();
+            changes.extend(order);
+            changes.push(Device(DISCONNECTED, NONE));
+            let ended = end(&changes).unwrap();
+            assert_eq!(ended, End::Failed(reason::NO_SECRETS));
+            assert!(ended.forgets());
+            assert_eq!(
+                result(ended, Security::Personal),
+                Err(Failure::WrongPassword)
+            );
+        }
+    }
+
+    #[test]
+    fn another_join_stops_it_and_keeps_it() {
+        let changes = [
+            Active(JOIN, active_state::ACTIVATING),
+            Device(PREPARE, NONE),
+            Device(CONFIG, NONE),
+            Device(DEACTIVATING, NEW_ACTIVATION),
+            Active(JOIN, LEAVING),
+            Active(JOIN, active_state::DEACTIVATED),
+            Device(DISCONNECTED, NEW_ACTIVATION),
+        ];
+        assert_eq!(end(&changes), Some(End::Stopped));
+        assert!(!End::Stopped.forgets());
+    }
+
+    #[test]
+    fn a_join_the_device_never_took_up_is_stopped() {
+        let changes = [
+            Device(DEACTIVATING, NEW_ACTIVATION),
+            Active(JOIN, active_state::DEACTIVATED),
+        ];
+        assert_eq!(end(&changes), Some(End::Stopped));
+    }
+
+    #[test]
+    fn the_last_networks_changes_are_not_this_joins() {
+        let mut changes = LEAVING_THE_LAST.to_vec();
+        changes.extend([
+            Device(PREPARE, NONE),
+            Device(FAILED, reason::NO_SECRETS),
+            Active(LAST, active_state::ACTIVATED),
+        ]);
+        assert_eq!(end(&changes), None);
+    }
+
+    #[test]
+    fn only_a_failed_join_forgets_its_connection() {
+        assert!(End::Failed(reason::SUPPLICANT_TIMEOUT).forgets());
+        for end in [End::Joined, End::Stopped, End::Silent, End::Gone] {
+            assert!(!end.forgets(), "{end:?}");
+        }
     }
 }
