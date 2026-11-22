@@ -123,11 +123,14 @@ impl Settings {
                     let set = cx.background_spawn(droidloom::set(on)).await;
                     let _ = this.update(cx, |view, cx| {
                         view.installed.droidloom = droidloom::starts();
-                        if let Err(said) = set {
-                            view.note(
+                        match set {
+                            Err(said) => view.note(
                                 tr("Could not change Android apps: {why}").replace("{why}", &said),
                                 cx,
-                            );
+                            ),
+                            // Set up where it is not, then started.
+                            Ok(()) if on => view.start_android(false, cx),
+                            Ok(()) => {}
                         }
                         cx.notify();
                     });
