@@ -73,8 +73,14 @@ pub(super) struct Android {
     details: HashMap<String, Result<Details, String>>,
     /// The app being acted on, and what its screen says meanwhile.
     busy: Option<(String, &'static str)>,
-    /// Android is being restarted from here.
+    /// Android is being started or restarted from here, until systemd is
+    /// done with the start.
     restarting: bool,
+    /// Droidloom is being set up for the start, which may wait for the
+    /// administrator's password.
+    setting_up: bool,
+    /// Why the last start from here failed, until the next one.
+    start_failed: Option<String>,
     /// The display's density, read once Android is ready while its page
     /// shows; None until then.
     density: Option<Density>,
@@ -178,10 +184,9 @@ impl Settings {
             _ => None,
         };
         android.last_cpu = used.map(|used| (now, used));
-        if stats.as_ref().is_some_and(|stats| stats.ready)
-            || unit.is_some_and(|state| state.unit == Unit::Failed)
-        {
-            android.restarting = false;
+        if stats.as_ref().is_some_and(|stats| stats.ready) {
+            // Android runs after all, started from elsewhere.
+            android.start_failed = None;
         }
         android.stats = stats;
         android.read = true;
@@ -313,12 +318,24 @@ impl Settings {
         .detach();
     }
 
-    /// Droidloom failed to start or stopped on an error.
+    /// Android runs with the session, but systemd skipped its start: it was
+    /// not set up then.
+    fn android_skipped(&self) -> bool {
+        self.installed.droidloom
+            && self.android.stats.is_none()
+            && self.android.unit.is_some_and(|state| state.skipped)
+    }
+
+    /// Droidloom failed to start or stopped on an error, or was not set up
+    /// to start with the session.
     fn android_failed(&self) -> bool {
         let android = &self.android;
         !android.restarting
-            && (android.unit.is_some_and(|state| state.unit == Unit::Failed)
-                || android.ended.is_some())
+            && !android.setting_up
+            && (android.start_failed.is_some()
+                || android.unit.is_some_and(|state| state.unit == Unit::Failed)
+                || android.ended.is_some()
+                || self.android_skipped())
     }
 
     /// Why Android does not run, when it failed and the reason is known.
@@ -327,6 +344,14 @@ impl Settings {
             return None;
         }
         let android = &self.android;
+        if let Some(why) = &android.start_failed {
+            return Some(why);
+        }
+        if self.android_skipped() {
+            return Some(tr(
+                "Android is not set up yet. Start sets it up; it asks for your password once.",
+            ));
+        }
         android.ended.as_deref().or_else(|| {
             android
                 .failure
@@ -341,11 +366,14 @@ impl Settings {
         let android = &self.android;
         let unit = android.unit.map(|state| state.unit);
         match &android.stats {
-            _ if android.restarting => "Restarting…",
+            _ if android.setting_up => "Setting up…",
+            Some(_) if android.restarting => "Restarting…",
+            _ if android.restarting => "Starting…",
+            _ if self.android_skipped() && android.start_failed.is_none() => "Not set up",
             _ if self.android_failed() => "Failed",
             Some(stats) if stats.ready => "Ready",
             Some(_) => "Starting…",
-            None if unit == Some(Unit::Starting) => "Starting…",
+            None if matches!(unit, Some(Unit::Starting | Unit::Running)) => "Starting…",
             None if unit == Some(Unit::Stopping) => "Stopping…",
             None if self.installed.droidloom => "Stopped",
             None => "Off",
@@ -388,13 +416,13 @@ impl Settings {
                 "restart-android",
                 if running { "Restart" } else { "Start" },
                 Fill::Control,
-                live && !android.restarting,
+                live && !android.restarting && !android.setting_up,
                 cx,
                 move |this, _, cx| {
                     if running {
                         this.ask_restart_android(cx)
                     } else {
-                        this.restart_android(cx)
+                        this.start_android(false, cx)
                     }
                 },
             );
@@ -577,6 +605,11 @@ impl Settings {
             (false, _, _) => "Droidloom is not installed",
             (true, false, _) => "Off",
             (true, true, false) => "On",
+            (true, true, true)
+                if self.android_skipped() && self.android.start_failed.is_none() =>
+            {
+                "On – not set up"
+            }
             (true, true, true) => "On – failed",
         };
         summary.into()
@@ -898,24 +931,48 @@ impl Settings {
                 title: "Restart Android?".into(),
                 consequence: "Android apps close, and open again on a tap.".into(),
                 action: "Restart",
-                confirm: Rc::new(|this, _, cx| this.restart_android(cx)),
+                confirm: Rc::new(|this, _, cx| this.start_android(true, cx)),
             },
             cx,
         );
     }
 
-    fn restart_android(&mut self, cx: &mut Context<Self>) {
-        self.android.restarting = true;
+    /// Starts Android, afresh with `restart`. Droidloom is set up first
+    /// where it is not (its helper asks for the administrator's password
+    /// through Denial's dialog), then its unit starts; the page follows each
+    /// step, and ends with Android booting or with why it does not.
+    pub(super) fn start_android(&mut self, restart: bool, cx: &mut Context<Self>) {
+        let android = &mut self.android;
+        if android.restarting || android.setting_up {
+            return;
+        }
+        android.start_failed = None;
+        android.setting_up = !droidloom::set_up();
+        android.restarting = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let restarted = droidloom::restart().await;
+            let prepared = cx.background_spawn(async { droidloom::prepare() }).await;
+            let started = match prepared {
+                Ok(()) => {
+                    let _ = this.update(cx, |view, cx| {
+                        view.android.setting_up = false;
+                        cx.notify();
+                    });
+                    cx.background_spawn(droidloom::start(restart)).await
+                }
+                Err(why) => Err(why),
+            };
             let _ = this.update(cx, |view, cx| {
-                if let Err(why) = restarted {
-                    view.android.restarting = false;
-                    view.note(
-                        tr("Could not restart Android: {why}").replace("{why}", &why),
-                        cx,
-                    );
+                view.android.setting_up = false;
+                view.android.restarting = false;
+                if let Err(why) = started {
+                    let words = if restart {
+                        "Could not restart Android: {why}"
+                    } else {
+                        "Could not start Android: {why}"
+                    };
+                    view.note(tr(words).replace("{why}", &why), cx);
+                    view.android.start_failed = Some(why);
                 }
                 cx.notify();
             });

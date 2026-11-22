@@ -4,11 +4,18 @@
 //! in /usr/lib, as Droidloom's updater expects; `systemctl enable` would pin
 //! the release the unit comes from. How it runs, and its apps, come from
 //! droidloomd's control socket: one JSON request, one JSON answer.
+//!
+//! The unit does not start until Droidloom is set up for the account
+//! (`ConditionPathExists=/etc/droidloom/cell.json`): systemd skips it
+//! without a word. A start from here sets Droidloom up first where it is
+//! not, as `droidloomctl start` does, and waits for systemd to finish the
+//! start, so it ends with Droidloom running or with why it is not.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use zbus::Connection;
@@ -18,6 +25,13 @@ const INSTALLED: &str = "/usr/lib/systemd/user/droidloom.service";
 const SOCKET: &str = "/run/droidloom/control.sock";
 const SPEC: &str = "/etc/droidloom/cell.json";
 const RELEASE: &str = "/usr/lib/droidloom/last-update.json";
+/// Droidloom's setup helper: `prepare` sets Droidloom up for the calling
+/// account where it is not, asking for an administrator through polkit.
+const HELPER: &str = "/usr/lib/droidloom/droidloom-package-helper";
+/// The longest systemd works on a start of the unit: its TimeoutStartSec,
+/// 150 s, and the start of droidloomd before it.
+const START: Duration = Duration::from_secs(170);
+const JOB_POLL: Duration = Duration::from_millis(250);
 /// droidloomd answers one request at a time, and opening an app may wait
 /// for Android to start.
 const ANSWER: Duration = Duration::from_secs(150);
@@ -74,7 +88,13 @@ pub enum Unit {
 pub struct UnitState {
     pub unit: Unit,
     pub invocation: [u8; 16],
+    /// Stopped because systemd skipped its last start: Droidloom was not
+    /// set up then.
+    pub skipped: bool,
 }
+
+/// Why a start leaves nothing running: the unit's condition.
+pub const NOT_SET_UP: &str = "Droidloom is not set up for this account yet";
 
 /// One Android app, as Android describes it.
 #[derive(Clone, Debug, Default)]
@@ -206,15 +226,23 @@ pub async fn unit() -> Result<UnitState, String> {
         .await
         .map_err(|error| error.to_string())?;
     let invocation: Vec<u8> = unit.get_property("InvocationID").await.unwrap_or_default();
+    // Before any start the result is false too, but with no time to it.
+    let condition: bool = unit.get_property("ConditionResult").await.unwrap_or(true);
+    let checked: u64 = unit
+        .get_property("ConditionTimestampMonotonic")
+        .await
+        .unwrap_or_default();
+    let unit = match active.as_str() {
+        "active" | "reloading" | "refreshing" => Unit::Running,
+        "activating" => Unit::Starting,
+        "deactivating" => Unit::Stopping,
+        "failed" => Unit::Failed,
+        _ => Unit::Stopped,
+    };
     Ok(UnitState {
-        unit: match active.as_str() {
-            "active" | "reloading" | "refreshing" => Unit::Running,
-            "activating" => Unit::Starting,
-            "deactivating" => Unit::Stopping,
-            "failed" => Unit::Failed,
-            _ => Unit::Stopped,
-        },
+        unit,
         invocation: invocation.try_into().unwrap_or_default(),
+        skipped: unit == Unit::Stopped && !condition && checked > 0,
     })
 }
 
@@ -357,13 +385,100 @@ pub fn open(app: &crate::apps::Android) -> Result<(), String> {
     ask(request).map(drop)
 }
 
-/// Starts Android afresh: its apps close, and open again on a tap.
-pub async fn restart() -> Result<(), String> {
+/// Whether Droidloom is set up: its setup wrote the cell's specification.
+pub fn set_up() -> bool {
+    Path::new(SPEC).exists()
+}
+
+/// Sets Droidloom up for this account where it is not, or no longer fits
+/// the installed release or the GPUs, as `droidloomctl start` does before it
+/// starts: the helper asks for an administrator through polkit, whose agent
+/// in the session shows the dialog. Blocks until it is done.
+pub fn prepare() -> Result<(), String> {
+    let output = Command::new(HELPER)
+        .arg("prepare")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("{HELPER}: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(setup_failure(&String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+/// Why setup failed, from what the helper said: the first of its "failed"
+/// lines, which is the setup's own when pkexec ran it, else its last line.
+fn setup_failure(said: &str) -> String {
+    const FAILED: &str = "Droidloom package setup failed: ";
+    said.lines()
+        .find_map(|line| line.strip_prefix(FAILED))
+        .or_else(|| said.lines().rev().find(|line| !line.trim().is_empty()))
+        .map_or_else(
+            || "Droidloom's setup did not finish".to_owned(),
+            |why| why.trim().to_owned(),
+        )
+}
+
+/// Starts Droidloom's unit, afresh with `restart` (its apps close and open
+/// again on a tap), and waits for systemd to finish the start: Ok while the
+/// unit runs, from where Android boots; Err why it does not.
+pub async fn start(restart: bool) -> Result<(), String> {
     let bus = Connection::session()
         .await
         .map_err(|error| error.to_string())?;
+    // The unit or its link may be new since the manager read them.
+    manager(&bus, "Reload", &()).await?;
+    // A start that failed before leaves the unit refusing more.
     let _ = manager(&bus, "ResetFailedUnit", &(UNIT,)).await;
-    manager(&bus, "RestartUnit", &(UNIT, "replace")).await
+    let method = if restart { "RestartUnit" } else { "StartUnit" };
+    let job: zbus::zvariant::OwnedObjectPath = bus
+        .call_method(
+            Some("org.freedesktop.systemd1"),
+            "/org/freedesktop/systemd1",
+            Some("org.freedesktop.systemd1.Manager"),
+            method,
+            &(UNIT, "replace"),
+        )
+        .await
+        .map_err(|error| error.to_string())?
+        .body()
+        .deserialize()
+        .map_err(|error| error.to_string())?;
+    let asked = Instant::now();
+    while job_pending(&bus, &job).await {
+        if asked.elapsed() > START {
+            return Err(format!(
+                "Droidloom did not start within {} seconds",
+                START.as_secs()
+            ));
+        }
+        async_io::Timer::after(JOB_POLL).await;
+    }
+    let state = unit().await?;
+    match state.unit {
+        Unit::Running | Unit::Starting => Ok(()),
+        Unit::Failed => {
+            Err(failure(state).unwrap_or_else(|| "Droidloom failed to start".to_owned()))
+        }
+        _ if state.skipped => Err(NOT_SET_UP.to_owned()),
+        _ => Err("Droidloom stopped while it started".to_owned()),
+    }
+}
+
+/// Whether systemd still works on `job`: it forgets a job once it is done.
+async fn job_pending(bus: &Connection, job: &zbus::zvariant::OwnedObjectPath) -> bool {
+    bus.call_method(
+        Some("org.freedesktop.systemd1"),
+        job.as_str(),
+        Some("org.freedesktop.DBus.Properties"),
+        "Get",
+        &("org.freedesktop.systemd1.Job", "State"),
+    )
+    .await
+    .is_ok()
 }
 
 /// The link that starts Droidloom with the session.
@@ -454,8 +569,8 @@ pub fn starts() -> bool {
     link().is_some_and(|link| link.symlink_metadata().is_ok())
 }
 
-/// Starts Droidloom now and with each session, or stops it and leaves it
-/// stopped.
+/// Starts Droidloom with each session, or stops it now and leaves it
+/// stopped. Starting it now is `start`'s, after `prepare`.
 pub async fn set(on: bool) -> Result<(), String> {
     let link = link().ok_or("No home folder")?;
     if on {
@@ -476,18 +591,16 @@ pub async fn set(on: bool) -> Result<(), String> {
             _ => {}
         }
     }
+    if on {
+        // The start that follows has the manager read the link.
+        return Ok(());
+    }
     let bus = Connection::session()
         .await
         .map_err(|error| error.to_string())?;
     // The user's manager reads the link again, for the next session.
     manager(&bus, "Reload", &()).await?;
-    if on {
-        // A start that failed before leaves the unit refusing more.
-        let _ = manager(&bus, "ResetFailedUnit", &(UNIT,)).await;
-        manager(&bus, "StartUnit", &(UNIT, "replace")).await
-    } else {
-        manager(&bus, "StopUnit", &(UNIT, "replace")).await
-    }
+    manager(&bus, "StopUnit", &(UNIT, "replace")).await
 }
 
 async fn manager<B>(bus: &Connection, method: &str, body: &B) -> Result<(), String>
@@ -504,4 +617,31 @@ where
     .await
     .map(drop)
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::setup_failure;
+
+    #[test]
+    fn setup_failure_is_the_setup_s_own_reason() {
+        // pkexec ran the setup, which failed: its own line comes first.
+        let said = "Administrator authentication is needed to configure Droidloom for dmitry (UID 1000).\n\
+            Droidloom package setup failed: Droidloom needs an AMD, Intel, NVIDIA, Qualcomm Adreno or Arm Mali GPU: none found\n\
+            Droidloom package setup failed: the setup ended with status 1; Droidloom was not set up\n";
+        assert_eq!(
+            setup_failure(said),
+            "Droidloom needs an AMD, Intel, NVIDIA, Qualcomm Adreno or Arm Mali GPU: none found"
+        );
+        // The dialog was dismissed: pkexec's words, then the helper's.
+        let said = "Error executing command as another user: Request dismissed\n\
+            Droidloom package setup failed: the administrator authentication was dismissed; Droidloom was not set up\n";
+        assert_eq!(
+            setup_failure(said),
+            "the administrator authentication was dismissed; Droidloom was not set up"
+        );
+        // A helper that says something else: its last line.
+        assert_eq!(setup_failure("one\ntwo\n\n"), "two");
+        assert_eq!(setup_failure(""), "Droidloom's setup did not finish");
+    }
 }
