@@ -379,6 +379,12 @@ pub static GROUPS: &[Group] = &[
                             .from(Source::Words("layout.scrollingLayoutWheelUpDirection", &["left", "right"]))
                             .only("layout.windows", &[2]),
                     ]),
+                    section("Full screen", &[
+                        item("layout.middleButton", "Middle-button gestures", Kind::Toggle(true))
+                            .detail("Drag with the middle button held: sideways to the next app, up for the overview, down for the app's windows. A middle click still reaches the app; a middle-button drag no longer does.")
+                            .denial("layout.screensMiddleButtonGestures")
+                            .only("layout.windows", &[3]),
+                    ]),
                     section("Workspaces", &[
                         item("layout.workspaces", "Enable workspaces", Kind::Toggle(true))
                             .denial("layout.workspacesEnabled")
@@ -1352,6 +1358,36 @@ mod tests {
                 assert_eq!(words.len(), options.len(), "{}", item.key);
             }
         }
+    }
+
+    /// The full-screen apps layout's middle-button switch: deniald's
+    /// `layout.screensMiddleButtonGestures`, on like deniald's default, and
+    /// shown only while that layout is picked.
+    #[test]
+    fn the_middle_button_switch_shows_with_the_full_screen_layout() {
+        set_monitor(true);
+        let switch = find("layout.middleButton").expect("the switch is listed");
+        assert!(matches!(
+            switch.source,
+            Source::Denial("layout.screensMiddleButtonGestures")
+        ));
+        assert!(matches!(switch.kind, Kind::Toggle(true)));
+        assert!(switch.detail.is_some());
+        let Some(Item {
+            source: Source::Words("layout.windowLayout", layouts),
+            ..
+        }) = find("layout.windows")
+        else {
+            panic!("the window layout is a choice of words");
+        };
+        let screens = layouts
+            .iter()
+            .position(|layout| *layout == "screens")
+            .expect("the full-screen apps layout is offered");
+        assert_eq!(
+            switch.only,
+            Some(("layout.windows", &[screens][..]))
+        );
     }
 
     #[test]

@@ -135,6 +135,11 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Preserve sizes when swapping", "交换时保留大小"),
     ("Scroll wheel speed", "滚轮速度"),
     ("Scroll wheel up moves", "滚轮向上时移动方向"),
+    ("Middle-button gestures", "鼠标中键手势"),
+    (
+        "Drag with the middle button held: sideways to the next app, up for the overview, down for the app's windows. A middle click still reaches the app; a middle-button drag no longer does.",
+        "按住鼠标中键拖动：左右切换到相邻应用，向上打开概览，向下显示该应用的窗口。中键单击仍会传给应用，中键拖动则不再传给应用。",
+    ),
     ("Workspaces", "工作区"),
     // Welcome.
     ("Welcome", "欢迎"),
