@@ -125,6 +125,13 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("System bar displays", "显示系统栏的屏幕"),
     ("Desktop layout", "桌面布局"),
     ("Windows, workspaces, system bar", "窗口、工作区、系统栏"),
+    // The shell's presentation follows the keyboard (`app_zh.arb`).
+    ("Desktop view", "桌面视图"),
+    ("Follow the keyboard", "跟随键盘"),
+    (
+        "Attaching a keyboard switches to Desktop view, detaching it to Mobile view. The Desktop view tile switches by hand until the next attach or detach.",
+        "连接键盘时切换到桌面视图，断开后切换到移动视图。“桌面视图”磁贴可手动切换，直到下次连接或断开键盘。",
+    ),
     ("Window layout", "窗口布局"),
     ("Dwindle", "递归平铺"),
     ("Minimized windows", "最小化窗口"),
