@@ -136,6 +136,11 @@ pub static RUSSIAN: &[(&str, &str)] = &[
         "Every app on its own screen. Swipe between them with three fingers.",
         "У каждой программы свой экран. Между ними — смахивание тремя пальцами.",
     ),
+    ("Middle-button gestures", "Жесты средней кнопкой мыши"),
+    (
+        "Drag with the middle button held: sideways to the next app, up for the overview, down for the app's windows. A middle click still reaches the app; a middle-button drag no longer does.",
+        "Тяните с зажатой средней кнопкой: вбок — к соседней программе, вверх — обзор, вниз — окна программы. Щелчок средней кнопкой по-прежнему доходит до программы, а перетаскивание — нет.",
+    ),
     // Welcome.
     ("Shortcuts", "Сочетания клавиш"),
     ("Monitor", "Монитор"),
