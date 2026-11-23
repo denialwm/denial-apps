@@ -581,9 +581,10 @@ pub static GROUPS: &[Group] = &[
                             .denial("power.idleDpmsEnabled"),
                         item("power.displayTimeout", "Display-off timeout", Kind::Opens)
                             .from(Source::Own).only("power.display", &[1]),
-                        item("power.suspend", "Suspend when idle", Kind::Toggle(false))
+                        item("power.suspend", "Sleep automatically", Kind::Toggle(false))
                             .denial("power.idleSuspendEnabled"),
-                        item("power.suspendTimeout", "Idle suspend timeout", Kind::Opens)
+                        item("power.suspendTimeout", "Sleep after the screen turns off", Kind::Opens)
+                            .detail("Counted from when the screen turns off: by its timeout, the power button or the cover.")
                             .from(Source::Own).only("power.suspend", &[1]),
                         item("power.suspendMode", "Suspend mode", Kind::Opens)
                             .from(Source::Own),

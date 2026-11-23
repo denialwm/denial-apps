@@ -14,9 +14,15 @@ const MIN: u32 = 30;
 const MAX: u32 = 7200;
 const LOCK: (&str, u32) = ("power.idleLockTimeoutSeconds", 960);
 const DISPLAY: (&str, u32) = ("power.idleDpmsTimeoutSeconds", 900);
-const SUSPEND: (&str, u32) = ("power.idleSuspendTimeoutSeconds", 1800);
+/// How long after the screen went dark the system sleeps, whatever turned it
+/// off: Denial counts it from that moment, apart from the other two.
+const SUSPEND: (&str, u32) = ("power.idleSuspendAfterScreenOffSeconds", 900);
 const TIMERS: &[u32] = &[
     30, 60, 120, 180, 300, 600, 900, 960, 1200, 1800, 2700, 3600, 5400, 7200,
+];
+/// Sleep after the screen turns off, from a minute.
+const SUSPEND_TIMERS: &[u32] = &[
+    60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200,
 ];
 const MODES: &[(&str, &str)] = &[
     ("systemDefault", "System default"),
@@ -56,23 +62,35 @@ fn choice_for(
 )> {
     match key {
         "power.suspendMode" => Some(("power.suspendMode", "deep", MODES)),
-        "power.press" => Some(("power.powerButtonAction", "powerOff", PRESS)),
+        "power.press" => Some(("power.powerButtonAction", "dpms", PRESS)),
         "power.hold" => Some(("power.powerButtonLongPressAction", "nothing", HOLD)),
         _ => None,
     }
 }
 
+/// A timer as the document holds it. Each stands alone: sleep counts from
+/// the screen going dark, so it is held neither above the display timeout
+/// nor above the lock.
 fn seconds(document: &Value, (path, fallback): (&str, u32)) -> u32 {
-    let configured = denial::at(document, path)
+    denial::at(document, path)
         .as_u64()
         .map_or(fallback, |seconds| {
             seconds.clamp(u64::from(MIN), u64::from(MAX)) as u32
-        });
-    match path {
-        path if path == SUSPEND.0 => configured.max(seconds(document, DISPLAY)),
-        path if path == LOCK.0 => configured.min(seconds(document, SUSPEND)),
-        _ => configured,
-    }
+        })
+}
+
+/// The values a timer offers: its list and the one it holds now.
+fn timer_choices(timer: (&str, u32), current: u32) -> Vec<u32> {
+    let listed = if timer == SUSPEND {
+        SUSPEND_TIMERS
+    } else {
+        TIMERS
+    };
+    let mut choices = listed.to_vec();
+    choices.push(current);
+    choices.sort_unstable();
+    choices.dedup();
+    choices
 }
 
 async fn can_hibernate() -> bool {
@@ -118,20 +136,7 @@ impl Settings {
         };
         if let Some(timer) = timer_for(item.key) {
             let current = seconds(document, timer);
-            let suspend = seconds(document, SUSPEND);
-            let (low, high) = if timer == SUSPEND {
-                (seconds(document, DISPLAY), MAX)
-            } else {
-                (MIN, suspend)
-            };
-            let mut choices: Vec<u32> = TIMERS
-                .iter()
-                .copied()
-                .filter(|&seconds| (low..=high).contains(&seconds))
-                .collect();
-            choices.extend([low, high, current.clamp(low, high)]);
-            choices.sort_unstable();
-            choices.dedup();
+            let choices = timer_choices(timer, current);
             let picked = choices
                 .iter()
                 .position(|&value| value == current)
@@ -148,18 +153,7 @@ impl Settings {
                         let value = choices[index];
                         this.change(
                             item.title,
-                            move |document| {
-                                let suspend = seconds(document, SUSPEND);
-                                let value = if timer == SUSPEND {
-                                    value.max(seconds(document, DISPLAY))
-                                } else {
-                                    value.min(suspend)
-                                };
-                                if timer == SUSPEND && seconds(document, LOCK) > value {
-                                    denial::put(document, LOCK.0, json!(value));
-                                }
-                                denial::put(document, timer.0, json!(value));
-                            },
+                            move |document| denial::put(document, timer.0, json!(value)),
                             cx,
                         );
                     }),
@@ -241,7 +235,7 @@ impl Settings {
                     denial::put(document, path, json!(default));
                 }
                 for (path, default) in [
-                    ("power.powerButtonAction", "powerOff"),
+                    ("power.powerButtonAction", "dpms"),
                     ("power.powerButtonLongPressAction", "nothing"),
                     ("power.suspendMode", "deep"),
                 ] {
@@ -250,5 +244,58 @@ impl Settings {
             },
             cx,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_timer_stands_alone() {
+        // The tablet's owner: the screen off after 30 min, sleep 5 min after it.
+        let document = json!({"power": {
+            "idleLockTimeoutSeconds": 5400,
+            "idleDpmsTimeoutSeconds": 1800,
+            "idleSuspendAfterScreenOffSeconds": 300,
+            "idleSuspendTimeoutSeconds": 1800,
+        }});
+        assert_eq!(seconds(&document, SUSPEND), 300);
+        assert_eq!(seconds(&document, DISPLAY), 1800);
+        assert_eq!(seconds(&document, LOCK), 5400);
+    }
+
+    #[test]
+    fn sleep_after_the_screen_turns_off_reads_its_own_key() {
+        // The key of an older Denial does not count; the default is a quarter hour.
+        let document = json!({"power": {"idleSuspendTimeoutSeconds": 300}});
+        assert_eq!(seconds(&document, SUSPEND), 900);
+        assert_eq!(SUSPEND.0, "power.idleSuspendAfterScreenOffSeconds");
+        // Within half a minute and two hours.
+        let document = json!({"power": {"idleSuspendAfterScreenOffSeconds": 5}});
+        assert_eq!(seconds(&document, SUSPEND), MIN);
+        let document = json!({"power": {"idleSuspendAfterScreenOffSeconds": 99999}});
+        assert_eq!(seconds(&document, SUSPEND), MAX);
+    }
+
+    #[test]
+    fn sleep_offers_a_minute_to_two_hours_whatever_the_display_timeout() {
+        let choices = timer_choices(SUSPEND, 300);
+        assert_eq!(choices.first(), Some(&60));
+        assert_eq!(choices.last(), Some(&MAX));
+        assert!(choices.contains(&300));
+        // A value set elsewhere stays on offer.
+        assert!(timer_choices(SUSPEND, 45).contains(&45));
+        // The display and lock timers still start at half a minute.
+        assert_eq!(timer_choices(DISPLAY, 1800).first(), Some(&MIN));
+        assert_eq!(timer_choices(LOCK, 960).last(), Some(&MAX));
+    }
+
+    #[test]
+    fn the_power_button_turns_the_screen_off_by_default() {
+        let (path, default, choices) = choice_for("power.press").unwrap();
+        assert_eq!(path, "power.powerButtonAction");
+        assert_eq!(default, "dpms");
+        assert!(choices.iter().any(|(word, _)| *word == default));
     }
 }
