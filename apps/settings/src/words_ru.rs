@@ -117,6 +117,13 @@ pub static RUSSIAN: &[(&str, &str)] = &[
         "Windows, workspaces, system bar",
         "Окна, рабочие области, системная панель",
     ),
+    // The shell's presentation follows the keyboard (`app_ru.arb`).
+    ("Desktop view", "Настольный режим"),
+    ("Follow the keyboard", "Режим по клавиатуре"),
+    (
+        "Attaching a keyboard switches to Desktop view, detaching it to Mobile view. The Desktop view tile switches by hand until the next attach or detach.",
+        "С подключённой клавиатурой — настольный режим, без неё — мобильный. Плитка «Настольный режим» переключает вручную до следующего подключения или отключения клавиатуры.",
+    ),
     // The window layouts, in the shell's words (`app_ru.arb`).
     ("Windows", "Окна"),
     ("Window layout", "Раскладка окон"),

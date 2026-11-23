@@ -276,6 +276,11 @@ pub const LOCK_DELAYS: [(&str, u32); 6] = [
     ("10 minutes", 10 * 60),
 ];
 
+/// What Follow the keyboard does: the shell's presentation follows a
+/// physical keyboard (Denial's `presentation.followKeyboard`), and its
+/// Desktop view tile switches by hand until the next attach or detach.
+const FOLLOW_KEYBOARD_DETAIL: &str = "Attaching a keyboard switches to Desktop view, detaching it to Mobile view. The Desktop view tile switches by hand until the next attach or detach.";
+
 const ANCHOR_LABELS: &[&str] = &[
     "Top left", "Top centre", "Top right", "Centre left", "Centre", "Centre right",
     "Bottom left", "Bottom centre", "Bottom right",
@@ -357,6 +362,11 @@ pub static GROUPS: &[Group] = &[
                 icon: Icon::Layout,
                 summary: "Windows, workspaces, system bar",
                 content: Content::Settings(&[
+                    section("Desktop view", &[
+                        item("layout.followKeyboard", "Follow the keyboard", Kind::Toggle(true))
+                            .detail(FOLLOW_KEYBOARD_DETAIL)
+                            .denial("presentation.followKeyboard"),
+                    ]),
                     section("Windows", &[
                         item("layout.windows", "Window layout", Kind::Segmented(&["Stacking", "Dwindle", "Scrolling", "Full screen"], 0))
                             .from(Source::Words("layout.windowLayout", &["stacking", "dwindle", "scrolling", "screens"])),
@@ -1352,6 +1362,27 @@ mod tests {
                 assert_eq!(words.len(), options.len(), "{}", item.key);
             }
         }
+    }
+
+    /// The presentation follows the keyboard unless switched off, in the
+    /// section of Denial's document the shell keeps it in.
+    #[test]
+    fn follow_the_keyboard_is_on_by_default_in_the_presentation_section() {
+        let (page, _, item) = items()
+            .find(|(_, _, item)| item.key == "layout.followKeyboard")
+            .expect("Follow the keyboard is listed");
+        assert_eq!(page.id, "layout");
+        assert!(matches!(item.kind, Kind::Toggle(true)));
+        assert!(matches!(
+            item.source,
+            Source::Denial("presentation.followKeyboard")
+        ));
+        let mut document = serde_json::json!({"version": 30, "layout": {}});
+        crate::denial::put(&mut document, "presentation.followKeyboard", false.into());
+        assert_eq!(
+            document["presentation"],
+            serde_json::json!({"followKeyboard": false})
+        );
     }
 
     #[test]
