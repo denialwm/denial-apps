@@ -117,6 +117,18 @@ pub static RUSSIAN: &[(&str, &str)] = &[
         "Windows, workspaces, system bar",
         "Окна, рабочие области, системная панель",
     ),
+    // The window layouts, in the shell's words (`app_ru.arb`).
+    ("Windows", "Окна"),
+    ("Window layout", "Раскладка окон"),
+    ("Stacking", "Наложение"),
+    ("Dwindle", "Мозаика"),
+    ("Tiling", "Мозаика"),
+    ("Scrolling", "Прокрутка"),
+    ("Full screen", "На весь экран"),
+    (
+        "Every app on its own screen. Swipe between them with three fingers.",
+        "У каждой программы свой экран. Между ними — смахивание тремя пальцами.",
+    ),
     // Welcome.
     ("Shortcuts", "Сочетания клавиш"),
     ("Monitor", "Монитор"),

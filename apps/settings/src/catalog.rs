@@ -358,8 +358,8 @@ pub static GROUPS: &[Group] = &[
                 summary: "Windows, workspaces, system bar",
                 content: Content::Settings(&[
                     section("Windows", &[
-                        item("layout.windows", "Window layout", Kind::Segmented(&["Stacking", "Dwindle", "Scrolling"], 0))
-                            .from(Source::Words("layout.windowLayout", &["stacking", "dwindle", "scrolling"])),
+                        item("layout.windows", "Window layout", Kind::Segmented(&["Stacking", "Dwindle", "Scrolling", "Full screen"], 0))
+                            .from(Source::Words("layout.windowLayout", &["stacking", "dwindle", "scrolling", "screens"])),
                         item("layout.minimized", "Minimized windows", Kind::Segmented(&["On desktop", "Off-screen"], 1))
                             .from(Source::Words("layout.minimizedWindowPlacement", &["desktop", "offscreen"])),
                         measured(
@@ -381,7 +381,8 @@ pub static GROUPS: &[Group] = &[
                     ]),
                     section("Workspaces", &[
                         item("layout.workspaces", "Enable workspaces", Kind::Toggle(true))
-                            .denial("layout.workspacesEnabled"),
+                            .denial("layout.workspacesEnabled")
+                            .only("layout.windows", &[0, 1, 2]),
                         measured(
                             "layout.count", "Workspace count", "layout.workspaceCount",
                             4.0, 2.0, 9.0, SliderUnit::Count,
@@ -465,11 +466,11 @@ pub static GROUPS: &[Group] = &[
                         item(
                             "monitor.layout",
                             "Windows",
-                            Kind::Segmented(&["Stacking", "Tiling", "Scrolling"], 0),
+                            Kind::Segmented(&["Stacking", "Tiling", "Scrolling", "Full screen"], 0),
                         )
                         .from(Source::Words(
                             "layout.windowLayout",
-                            &["stacking", "dwindle", "scrolling"],
+                            &["stacking", "dwindle", "scrolling", "screens"],
                         )),
                         item("monitor.corners", "Roundness", Kind::Slider(0.25)).from(
                             Source::Range("appearance.monitorCornerRadiusScale", 0.0, 2.0),

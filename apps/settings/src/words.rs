@@ -163,6 +163,10 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Place and overlap windows freely.", "自由放置和重叠窗口。"),
     ("Windows tile into a balanced, branching layout.", "窗口自动平铺为分割布局。"),
     ("A flowing strip of windows with room to keep going.", "窗口横向排列，随时滚动扩展工作空间。"),
+    (
+        "Every app on its own screen. Swipe between them with three fingers.",
+        "每个应用独占一个屏幕，三指滑动即可切换。",
+    ),
     ("A desktop that feels like you.", "让桌面体现你的风格。"),
     ("Window material", "窗口材质"),
     ("None", "无"),
@@ -805,6 +809,7 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Stacking", "层叠"),
     ("Tiling", "平铺"),
     ("Scrolling", "滚动"),
+    ("Full screen", "全屏应用"),
     ("Scale", "缩放"),
     (
         "Larger text and windows on the monitor",

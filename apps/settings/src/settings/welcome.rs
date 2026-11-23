@@ -38,7 +38,7 @@ const WORDMARK: f32 = 240.0;
 const COMMAND: f32 = 240.0;
 
 /// What a window does with the others, and what it is called in the settings.
-const LAYOUTS: [(&str, Icon, &str, &str); 3] = [
+const LAYOUTS: [(&str, Icon, &str, &str); 4] = [
     (
         "stacking",
         Icon::Copy,
@@ -56,6 +56,12 @@ const LAYOUTS: [(&str, Icon, &str, &str); 3] = [
         Icon::Layout,
         "Scrolling",
         "A flowing strip of windows with room to keep going.",
+    ),
+    (
+        "screens",
+        Icon::FitScreen,
+        "Full screen",
+        "Every app on its own screen. Swipe between them with three fingers.",
     ),
 ];
 
