@@ -37,6 +37,11 @@ pub static RUSSIAN: &[(&str, &str)] = &[
         "Keyboard layouts, mouse, touchpad",
         "Раскладки клавиатуры, мышь, тачпад",
     ),
+    ("Pointer speed", "Скорость указателя"),
+    ("Right click", "Правый щелчок"),
+    ("Two-finger press", "Двумя пальцами"),
+    ("Corner press", "В углу"),
+    ("Pointer acceleration", "Ускорение указателя"),
     ("Desktop overlays", "Панели рабочего стола"),
     (
         "Launcher, dashboard, notifications, HUD",
