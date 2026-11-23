@@ -98,6 +98,15 @@ pub struct PointerSettings {
     pub natural_scroll_enabled: bool,
     pub scroll_speed_factor: f64,
     pub scrolling_layout_swipe_speed_factor: f64,
+    /// The touchpad's pointer speed, acceleration and click method
+    /// (`clickfinger` or `buttonAreas`); None from a Denial that predates
+    /// them, which would refuse the fields.
+    #[serde(default)]
+    pub touchpad_speed: Option<f64>,
+    #[serde(default)]
+    pub touchpad_acceleration_enabled: Option<bool>,
+    #[serde(default)]
+    pub touchpad_click_method: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -415,14 +424,24 @@ impl Link {
                 "mouse": fields,
             }))
         } else {
+            let mut fields = json!({
+                "tapToClickEnabled": settings.tap_to_click_enabled,
+                "naturalScrollEnabled": settings.natural_scroll_enabled,
+                "scrollSpeedFactor": settings.scroll_speed_factor,
+                "scrollingLayoutSwipeSpeedFactor": settings.scrolling_layout_swipe_speed_factor,
+            });
+            if let Some(speed) = settings.touchpad_speed {
+                fields["speed"] = speed.into();
+            }
+            if let Some(acceleration) = settings.touchpad_acceleration_enabled {
+                fields["accelerationEnabled"] = acceleration.into();
+            }
+            if let Some(method) = &settings.touchpad_click_method {
+                fields["clickMethod"] = method.as_str().into();
+            }
             ("settings.touchpad.apply", json!({
                 "expected_revision": settings.revision,
-                "touchpad": {
-                    "tapToClickEnabled": settings.tap_to_click_enabled,
-                    "naturalScrollEnabled": settings.natural_scroll_enabled,
-                    "scrollSpeedFactor": settings.scroll_speed_factor,
-                    "scrollingLayoutSwipeSpeedFactor": settings.scrolling_layout_swipe_speed_factor,
-                },
+                "touchpad": fields,
             }))
         };
         Ok(serde_json::from_value(self.call(method, Some(params)).await?)?)

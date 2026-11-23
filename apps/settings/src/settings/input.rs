@@ -11,6 +11,7 @@ use gpui::{Context, Div, Entity, SharedString, Task, div, prelude::*, px};
 
 use super::parts::{ICON, ROW_PAD};
 use super::{Layer, Settings};
+use crate::catalog::SliderUnit;
 use crate::denial::{KeyboardLayout, KeyboardSettings, KeyboardSnapshot, PointerSettings, Refusal};
 
 pub(super) struct Input {
@@ -97,6 +98,11 @@ fn active_layout(snapshot: &KeyboardSnapshot) -> Option<String> {
             }
         })
 }
+
+/// The touchpad's click methods as deniald names them, in the order of
+/// `CLICK_METHOD_NAMES`.
+const CLICK_METHODS: [&str; 2] = ["clickfinger", "buttonAreas"];
+const CLICK_METHOD_NAMES: [&str; 2] = ["Two-finger press", "Corner press"];
 
 fn tokens(text: &str) -> impl Iterator<Item = &str> {
     text.split(',')
@@ -193,6 +199,7 @@ impl Settings {
                         pointer.mouse_speed,
                         (-1.0, 1.0),
                         true,
+                        SliderUnit::Percent,
                         live,
                         cx,
                         |state| &mut state.mouse_speed,
@@ -231,6 +238,42 @@ impl Settings {
             let tap = self
                 .row("touchpad-tap", None, "Tap to click", None, (true, false))
                 .child(self.toggle(pointer.tap_to_click_enabled));
+            let click_method = pointer.touchpad_click_method.as_deref().map(|method| {
+                self.options_row(
+                    "touchpad-click",
+                    "Right click",
+                    None,
+                    &CLICK_METHOD_NAMES,
+                    // None picked for a method this app does not know.
+                    CLICK_METHODS
+                        .iter()
+                        .position(|&known| known == method)
+                        .unwrap_or(CLICK_METHODS.len()),
+                    live,
+                    (false, false),
+                    cx,
+                    Rc::new(|this, option, _, cx| {
+                        let Some(&method) = CLICK_METHODS.get(option) else {
+                            return;
+                        };
+                        this.edit_pointer(
+                            false,
+                            |state| state.touchpad_click_method = Some(method.to_owned()),
+                            cx,
+                        );
+                    }),
+                )
+            });
+            let acceleration = pointer.touchpad_acceleration_enabled.map(|enabled| {
+                self.row(
+                    "touchpad-acceleration",
+                    None,
+                    "Pointer acceleration",
+                    None,
+                    (false, false),
+                )
+                .child(self.toggle(enabled))
+            });
             let natural = self
                 .row(
                     "touchpad-natural",
@@ -250,6 +293,40 @@ impl Settings {
                             cx,
                         );
                     }))
+                    .when_some(click_method, |island, click_method| {
+                        island.child(self.separator(0.)).child(click_method)
+                    })
+                    .when_some(pointer.touchpad_speed, |island, speed| {
+                        island.child(self.separator(0.)).child(self.pointer_slider(
+                            "touchpad-speed",
+                            "Pointer speed",
+                            speed,
+                            (-1.0, 1.0),
+                            false,
+                            SliderUnit::Percent,
+                            live,
+                            cx,
+                            |state| state.touchpad_speed.get_or_insert(0.0),
+                        ))
+                    })
+                    .when_some(acceleration, |island, acceleration| {
+                        island.child(self.separator(0.)).child(self.live(
+                            acceleration,
+                            live,
+                            cx,
+                            |this, _, cx| {
+                                this.edit_pointer(
+                                    false,
+                                    |state| {
+                                        state.touchpad_acceleration_enabled = state
+                                            .touchpad_acceleration_enabled
+                                            .map(|enabled| !enabled)
+                                    },
+                                    cx,
+                                );
+                            },
+                        ))
+                    })
                     .child(self.separator(0.))
                     .child(self.pointer_slider(
                         "touchpad-scroll",
@@ -257,6 +334,7 @@ impl Settings {
                         pointer.scroll_speed_factor,
                         (0.05, 5.0),
                         false,
+                        SliderUnit::Multiplier,
                         live,
                         cx,
                         |state| &mut state.scroll_speed_factor,
@@ -268,6 +346,7 @@ impl Settings {
                         pointer.scrolling_layout_swipe_speed_factor,
                         (0.25, 4.0),
                         false,
+                        SliderUnit::Multiplier,
                         live,
                         cx,
                         |state| &mut state.scrolling_layout_swipe_speed_factor,
@@ -482,14 +561,16 @@ impl Settings {
         value: f64,
         (min, max): (f64, f64),
         mouse: bool,
+        unit: SliderUnit,
         live: bool,
         cx: &mut Context<Self>,
         field: fn(&mut PointerSettings) -> &mut f64,
     ) -> gpui::Stateful<Div> {
-        let shown = if mouse {
-            format!("{:.0}%", value * 100.0)
-        } else {
-            format!("{value:.2}×")
+        // The two units pointer settings use: libinput's speed, -1 to 1, as
+        // -100% to 100%, and factors.
+        let shown = match unit {
+            SliderUnit::Percent => format!("{:.0}%", value * 100.0),
+            _ => format!("{value:.2}×"),
         };
         self.slider_row(
             key,
