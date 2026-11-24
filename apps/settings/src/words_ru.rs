@@ -88,6 +88,7 @@ pub static RUSSIAN: &[(&str, &str)] = &[
         "Launcher, dashboard, notifications, HUD",
         "Меню приложений, панель виджетов, уведомления, индикатор",
     ),
+    ("Control Center", "Пункт управления"),
     ("Top left", "Слева вверху"),
     ("Top centre", "Вверху по центру"),
     ("Top right", "Справа вверху"),
