@@ -443,17 +443,16 @@ pub static GROUPS: &[Group] = &[
                             .denial("overlays.launcher.hoverTriggerEnabled")
                             .only("overlays.launcherAnchor", EDGE_ANCHORS),
                     ]).under("Launcher"),
-                    section("Dashboard", &[
-                        item("overlays.dashboardAnchor", "Anchor", Kind::Choice(ANCHOR_LABELS, 6))
-                            .from(Source::Words("overlays.dashboard.anchor", ANCHOR_VALUES)),
+                    // The dashboard is the desktop's control center since
+                    // denial eb19: it drops down under the system bar's
+                    // control-center icon, so its anchor and hover trigger
+                    // (overlays.dashboard.anchor, .hoverTriggerEnabled) no
+                    // longer place or open it, and are not offered.
+                    section("Control Center", &[
                         measured("overlays.dashboardWidth", "Width", "overlays.dashboard.width", 420.0, 320.0, 1400.0, SliderUnit::Pixels),
                         measured("overlays.dashboardHeight", "Height", "overlays.dashboard.height", 740.0, 360.0, 1200.0, SliderUnit::Pixels),
-                        measured("overlays.dashboardMargin", "Edge distance", "overlays.dashboard.margin", 8.0, 0.0, 96.0, SliderUnit::Pixels)
-                            .only("overlays.dashboardAnchor", EDGE_ANCHORS),
-                        item("overlays.dashboardHover", "Hover trigger", Kind::Toggle(true))
-                            .denial("overlays.dashboard.hoverTriggerEnabled")
-                            .only("overlays.dashboardAnchor", EDGE_ANCHORS),
-                    ]).under("Dashboard"),
+                        measured("overlays.dashboardMargin", "Edge distance", "overlays.dashboard.margin", 8.0, 0.0, 96.0, SliderUnit::Pixels),
+                    ]).under("Control Center"),
                     section("Notifications", &[
                         item("overlays.notificationsAnchor", "Anchor", Kind::Choice(ANCHOR_LABELS, 8))
                             .from(Source::Words("overlays.notifications.anchor", ANCHOR_VALUES)),

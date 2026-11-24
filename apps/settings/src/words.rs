@@ -54,6 +54,7 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Launcher, dashboard, notifications, HUD", "启动器、仪表板、通知、状态浮层"),
     ("Launcher", "启动器"),
     ("Dashboard", "仪表板"),
+    ("Control Center", "控制中心"),
     ("System HUD", "系统状态浮层"),
     ("Anchor", "停靠位置"),
     ("Top left", "左上"),
