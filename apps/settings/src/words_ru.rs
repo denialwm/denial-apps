@@ -6,6 +6,8 @@
 
 pub static RUSSIAN: &[(&str, &str)] = &[
     // Pages and their groups.
+    ("Settings", "Настройки"),
+    ("Search settings", "Поиск настроек"),
     ("Connections", "Подключения"),
     ("Device", "Устройство"),
     ("Personal", "Личное"),
@@ -204,10 +206,9 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("Used and free space", "Занятое и свободное место"),
     ("Wallpaper and style", "Обои и стиль"),
     ("Wallpaper, accent, glass", "Обои, акцентный цвет, стекло"),
-    (
-        "Lock screen and security",
-        "Экран блокировки и безопасность",
-    ),
+    // Short enough for the side list: the full «Экран блокировки и
+    // безопасность» was cut there.
+    ("Lock screen and security", "Блокировка и защита"),
     (
         "Screen lock, fingerprint",
         "Блокировка экрана, отпечаток пальца",
@@ -398,6 +399,47 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("About {time} left", "Осталось около {time}"),
     ("Plugged in", "Подключено к сети"),
     ("On battery", "От батареи"),
+    // Display.
+    ("Display brightness", "Яркость экрана"),
+    ("Hardware brightness", "Яркость подсветки"),
+    (
+        "Hardware brightness unavailable",
+        "Яркость подсветки недоступна",
+    ),
+    ("Software dimming", "Программное затемнение"),
+    (
+        "Could not change display brightness: {why}",
+        "Не удалось изменить яркость экрана: {why}",
+    ),
+    (
+        "Display settings are not available",
+        "Настройки экрана недоступны",
+    ),
+    (
+        "Denial, which runs the screen, does not answer",
+        "Denial, который управляет экраном, не отвечает",
+    ),
+    ("Brightness", "Яркость"),
+    ("Appearance", "Оформление"),
+    ("Dark", "Тёмная"),
+    ("Light", "Светлая"),
+    ("No preference", "Без предпочтений"),
+    ("Screen", "Экран"),
+    ("Screen timeout", "Отключение экрана"),
+    ("When nothing touches it", "Если его не касаться"),
+    ("Refresh rate", "Частота обновления"),
+    (
+        "Could not change the refresh rate: {why}",
+        "Не удалось изменить частоту обновления: {why}",
+    ),
+    ("{count} minutes", "{count} мин"),
+    ("{count} seconds", "{count} с"),
+    ("Never", "Никогда"),
+    // Searching the settings.
+    ("Nothing found", "Ничего не найдено"),
+    ("Select a setting", "Выберите настройку"),
+    ("Pages · {count}", "Страницы · {count}"),
+    ("Settings · {count}", "Настройки · {count}"),
     // A display's scale.
     ("Scale", "Масштаб"),
     ("Looks like {width} × {height}", "Выглядит как {width} × {height}"),
