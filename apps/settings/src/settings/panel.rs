@@ -1,7 +1,8 @@
 //! The Display page: the panel's brightness, the dark or light appearance,
-//! when the idle screen turns off, and the refresh rate. What the user
-//! does goes to deniald through `denial::Link`; the appearance and timeout
-//! come back through Denial's settings, the panel by reading it again.
+//! when the idle screen turns off, the refresh rate and the scale, which
+//! sizes the shell and every app together (`scales`). What the user does goes
+//! to deniald through `denial::Link`; the appearance and timeout come back
+//! through Denial's settings, the panel by reading it again.
 
 use denial_look::words::fill;
 use std::rc::Rc;
@@ -9,20 +10,18 @@ use std::rc::Rc;
 use denial_look_gpui::{Icon, island};
 use gpui::{Context, Div, SharedString, Window, prelude::*};
 
-use super::monitor::{percent, same};
-use super::{Dialog, Layer, Settings};
+use super::monitor::percent;
+use super::{Dialog, Layer, Settings, scales};
 use crate::denial::{self, Appearance, Output};
 
 /// The slider's key while the finger holds it.
 const BRIGHTNESS: &str = "display.brightness";
-/// Seconds the idle screen may stay on; None for always.
-/// How much larger than the screen's scale apps are drawn.
-const APP_SIZES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 const APPEARANCES: [Appearance; 3] = [
     Appearance::Dark,
     Appearance::Light,
     Appearance::NoPreference,
 ];
+/// Seconds the idle screen may stay on; None for always.
 const SCREEN_OFF: [Option<u32>; 7] = [
     Some(30),
     Some(60),
@@ -35,7 +34,7 @@ const SCREEN_OFF: [Option<u32>; 7] = [
 
 impl Settings {
     /// The Display page's islands, top to bottom: brightness, appearance,
-    /// then the screen's timeout, refresh rate and app size.
+    /// then the screen's timeout, refresh rate and scale.
     pub(super) fn display_page(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
         let display = &self.denial;
         if !display.read {
@@ -83,7 +82,7 @@ impl Settings {
                 None,
                 "Screen timeout",
                 Some("When nothing touches it".into()),
-                (true, false),
+                (true, display.output.is_none()),
             )
             .child(self.value(screen_off(prefs.screen_off)))
             .child(self.chevron());
@@ -103,20 +102,33 @@ impl Settings {
                     .child(self.separator(0.))
                     .child(self.live(rate, live, cx, |this, _, cx| this.choose_rate(cx)));
         }
-        let size = self
-            .row(
-                "display.apps",
-                None,
-                "App size",
-                Some("Apps opened after a change".into()),
-                (false, true),
-            )
-            .child(self.value(percent(self.app_size())))
-            .child(self.chevron());
-        screen =
-            screen
-                .child(self.separator(0.))
-                .child(self.live(size, live, cx, |this, _, cx| this.choose_app_size(cx)));
+        if let Some(output) = &display.output {
+            let scale = self
+                .row(
+                    "display.scale",
+                    None,
+                    "Scale",
+                    Some(scales::summary(output.pixels, output.scale)),
+                    (false, true),
+                )
+                .child(self.value(percent(output.scale)))
+                .child(self.chevron());
+            let output = output.clone();
+            screen = screen.child(self.separator(0.)).child(self.live(
+                scale,
+                live,
+                cx,
+                move |this, _, cx| {
+                    this.pick_scale(
+                        output.name.clone(),
+                        output.pixels,
+                        output.scale,
+                        output.default_scale,
+                        cx,
+                    )
+                },
+            ));
+        }
         parts.push(screen);
         parts
     }
@@ -225,36 +237,6 @@ impl Settings {
         );
     }
 
-    /// Apps' size beside the shell's: Denial's `apps.scale`.
-    fn app_size(&self) -> f64 {
-        self.kept("apps.scale")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(1.0)
-    }
-
-    fn choose_app_size(&mut self, cx: &mut Context<Self>) {
-        let size = self.app_size();
-        self.show(
-            Dialog::Pick {
-                title: "App size".into(),
-                options: APP_SIZES.iter().map(|&scale| percent(scale)).collect(),
-                picked: APP_SIZES
-                    .iter()
-                    .position(|&scale| same(scale, size))
-                    .unwrap_or(0),
-                pick: Rc::new(|this, option, _, cx| {
-                    let scale = serde_json::json!(APP_SIZES[option]);
-                    this.change(
-                        "App size",
-                        move |document| denial::put(document, "apps.scale", scale.clone()),
-                        cx,
-                    );
-                }),
-            },
-            cx,
-        );
-    }
-
     fn choose_rate(&mut self, cx: &mut Context<Self>) {
         let Some(output) = self.denial.output.clone() else {
             return;
@@ -355,7 +337,7 @@ impl Settings {
         .detach();
     }
 
-    fn reread_panel(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn reread_panel(&mut self, cx: &mut Context<Self>) {
         let link = self.denial.link.clone();
         cx.spawn(async move |this, cx| {
             let panel = Self::read_panel(link).await;

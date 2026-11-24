@@ -29,6 +29,7 @@ mod position;
 mod phone;
 mod plugins;
 mod profile;
+mod scales;
 mod power;
 mod shortcuts;
 mod system;
@@ -689,9 +690,6 @@ pub struct Settings {
     /// one.
     monitor: Option<denial::Monitor>,
     _monitor: Task<()>,
-    /// The densities Droidloom gives Android apps by screen, read when the
-    /// Monitor or Android page opens.
-    densities: crate::droidloom::Densities,
     /// Device pixels per pixel of the window, as the compositor scales it.
     scale: f32,
     /// The window is wide enough for the list beside a page.
@@ -974,7 +972,6 @@ impl Settings {
             bluetooth: Bluetooth::default(),
             android: android::Android::default(),
             monitor: None,
-            densities: Default::default(),
             _monitor: cx.spawn_in(window, async move |this, cx| {
                 Self::follow_monitor(this, cx).await
             }),
@@ -1224,10 +1221,6 @@ impl Settings {
         }
         if self.screen.is_page("monitor") {
             self.read_monitor_wallpaper();
-            self.read_densities();
-        }
-        if self.screen.is_page("android") {
-            self.read_densities();
         }
         self.follow_wallpaper_status(cx);
         match self.screen {

@@ -13,8 +13,10 @@ use gpui::{Context, Div, Focusable, SharedString, Stateful, Task, Window, prelud
 
 use super::monitor::percent;
 use super::panel::hertz;
-use super::{Dialog, Layer, Settings};
-use crate::denial::{ConfiguredOutput, InputDeckStatus, OutputConfiguration, OutputMode, Refusal};
+use super::{Dialog, Layer, Settings, scales};
+use crate::denial::{
+    self, ConfiguredOutput, InputDeckStatus, OutputConfiguration, OutputMode, Refusal,
+};
 
 #[derive(Default)]
 pub(super) struct OutputModes {
@@ -617,9 +619,13 @@ impl Settings {
         };
         let name = output.name.clone();
         let current = output.scale;
-        let choices = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+        let pixels = output
+            .mode()
+            .map(|mode| denial::turned((mode.width, mode.height), &output.transform))
+            .unwrap_or((0, 0));
+        let choices = scales::steps(pixels, current, output.default_scale)
             .into_iter()
-            .map(|scale| (Some(scale), percent(scale)))
+            .map(|step| (Some(step.scale), step.label()))
             .chain(std::iter::once((None, "Custom scale".into())))
             .collect();
         self.output_picker(

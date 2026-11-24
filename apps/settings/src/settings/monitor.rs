@@ -8,23 +8,18 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use denial_look::words::{fill, tr};
-use denial_look_gpui::{Icon, island, solid};
-use gpui::{AsyncWindowContext, Context, Div, SharedString, WeakEntity, div, prelude::*};
+use denial_look::words::fill;
+use denial_look_gpui::{Icon, island};
+use gpui::{AsyncWindowContext, Context, Div, SharedString, WeakEntity, prelude::*};
 
-use super::android::{DEFAULT_DPI, SIZE_SCALES, SIZES};
 use super::panel::hertz;
-use super::{Dialog, Layer, Screen, Settings};
+use super::{Dialog, Layer, Screen, Settings, scales};
 use crate::catalog::{self, Section};
 use crate::denial;
-use crate::droidloom;
 use crate::wallpaper;
 
 /// How often Settings looks for a monitor.
 const LOOK_AGAIN: Duration = Duration::from_secs(2);
-
-/// The scales offered; one set otherwise joins them.
-const SCALES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
 impl Settings {
     /// Looks for a monitor beside the phone for as long as the window
@@ -104,14 +99,26 @@ impl Settings {
                 "monitor.scale",
                 Some(Icon::Computer),
                 "Scale",
-                Some("Larger text and windows on the monitor".into()),
+                Some(scales::summary(monitor.pixels, monitor.scale)),
                 (true, monitor.rates.len() <= 1),
             )
             .child(self.value(percent(monitor.scale)))
             .child(self.chevron());
-        let mut screen =
-            island(&self.look)
-                .child(self.live(scale, layer.live(), cx, |this, _, cx| this.choose_scale(cx)));
+        let shown = monitor.clone();
+        let mut screen = island(&self.look).child(self.live(
+            scale,
+            layer.live(),
+            cx,
+            move |this, _, cx| {
+                this.pick_scale(
+                    shown.name.clone(),
+                    shown.pixels,
+                    shown.scale,
+                    shown.default_scale,
+                    cx,
+                )
+            },
+        ));
         if monitor.rates.len() > 1 {
             let rate = self
                 .row("monitor.rate", None, "Refresh rate", None, (false, true))
@@ -125,144 +132,8 @@ impl Settings {
             ));
         }
         let mut parts = vec![screen];
-        if droidloom::installed() {
-            parts.push(self.android_size_island(monitor, layer, cx));
-        }
         parts.extend(self.page(sections, layer, cx));
         parts
-    }
-
-    /// How large Android apps are on the monitor, apart from the phone.
-    fn android_size_island(
-        &self,
-        monitor: &denial::Monitor,
-        layer: Layer,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let per_scale = self
-            .densities
-            .outputs
-            .get(&monitor.name)
-            .copied()
-            .or(self.densities.every)
-            .unwrap_or(DEFAULT_DPI);
-        let picked = SIZE_SCALES
-            .iter()
-            .position(|share| (DEFAULT_DPI * share - per_scale).abs() < 0.5)
-            .unwrap_or(SIZES.len());
-        let dpi = Some({
-            let dpi = (f64::from(per_scale) * monitor.scale).round();
-            fill("{dpi} dpi", &[("dpi", &dpi.to_string())]).into()
-        });
-        island(&self.look).child(
-            self.options_row(
-                "monitor.android",
-                "Android apps",
-                dpi,
-                &SIZES,
-                picked,
-                layer.live(),
-                (true, true),
-                cx,
-                Rc::new(|this, option, _, cx| this.pick_monitor_android(option, cx)),
-            )
-            .child(
-                div()
-                    .text_color(solid(self.look.palette.secondary))
-                    .child(tr("Open Android apps may restart to take the new size")),
-            ),
-        )
-    }
-
-    /// Draws Android apps on the monitor at the size picked from `SIZES`.
-    fn pick_monitor_android(&mut self, option: usize, cx: &mut Context<Self>) {
-        let (Some(monitor), Some(share)) = (self.monitor.clone(), SIZE_SCALES.get(option)) else {
-            return;
-        };
-        let per_scale = DEFAULT_DPI * share;
-        self.densities
-            .outputs
-            .insert(monitor.name.clone(), per_scale);
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            let set = cx
-                .background_spawn(async move {
-                    droidloom::set_densities(Some(&monitor.name), Some(per_scale))
-                })
-                .await;
-            let _ = this.update(cx, |view, cx| {
-                if let Err(error) = set {
-                    view.densities = droidloom::densities();
-                    view.note(
-                        fill(
-                            "Could not change the size: {why}",
-                            &[("why", &error.to_string())],
-                        ),
-                        cx,
-                    );
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    /// Reads the densities by screen.
-    pub(super) fn read_densities(&mut self) {
-        self.densities = droidloom::densities();
-    }
-
-    fn choose_scale(&mut self, cx: &mut Context<Self>) {
-        let Some(monitor) = self.monitor.clone() else {
-            return;
-        };
-        let mut scales = SCALES.to_vec();
-        if !scales.iter().any(|&scale| same(scale, monitor.scale)) {
-            scales.push(monitor.scale);
-            scales.sort_by(f64::total_cmp);
-        }
-        let picked = scales
-            .iter()
-            .position(|&scale| same(scale, monitor.scale))
-            .unwrap_or(0);
-        self.show(
-            Dialog::Pick {
-                title: "Scale".into(),
-                options: scales.iter().map(|&scale| percent(scale)).collect(),
-                picked,
-                pick: Rc::new(move |this, option, _, cx| {
-                    this.try_scale(&monitor, scales[option], cx)
-                }),
-            },
-            cx,
-        );
-    }
-
-    /// Scales the monitor to `scale` and asks whether to keep it; Denial
-    /// goes back by itself if nobody answers.
-    fn try_scale(&mut self, monitor: &denial::Monitor, scale: f64, cx: &mut Context<Self>) {
-        if same(scale, monitor.scale) {
-            return;
-        }
-        let (link, name, back) = (
-            self.denial.link.clone(),
-            monitor.name.clone(),
-            monitor.scale,
-        );
-        cx.spawn(async move |this, cx| {
-            let tried = link.try_scale(&name, scale).await;
-            let _ = this.update(cx, |view, cx| match tried {
-                Ok(token) => {
-                    view.reread_monitor(cx);
-                    view.ask_keep(token, percent(scale), percent(back), cx)
-                }
-                Err(denial::Refusal(said)) => view.note(
-                    fill("Could not change the scale: {why}", &[("why", &said)]),
-                    cx,
-                ),
-            });
-        })
-        .detach();
     }
 }
 

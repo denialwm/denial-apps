@@ -140,6 +140,10 @@ pub struct ConfiguredOutput {
     pub x: i32,
     pub y: i32,
     pub scale: f64,
+    /// The scale Denial gives the display while none is set; None from a
+    /// Denial that does not tell.
+    #[serde(default)]
+    pub default_scale: Option<f64>,
     pub transform: String,
     pub scrolling_layout_axis: Option<String>,
     #[serde(default)]
@@ -217,6 +221,12 @@ pub struct Output {
     /// millihertz.
     pub rate: u32,
     pub rates: Vec<u32>,
+    /// Device pixels per logical pixel, and the scale Denial gives the panel
+    /// while none is set.
+    pub scale: f64,
+    pub default_scale: Option<f64>,
+    /// Its mode, in pixels as it is turned now, wide by high.
+    pub pixels: (u32, u32),
 }
 
 /// A monitor beside the phone, as Denial shows it.
@@ -224,10 +234,14 @@ pub struct Output {
 pub struct Monitor {
     /// Its connector: `DP-1`.
     pub name: String,
-    /// Device pixels per logical pixel.
+    /// Device pixels per logical pixel, and the scale Denial gives the
+    /// monitor while none is set.
     pub scale: f64,
+    pub default_scale: Option<f64>,
     /// Its mode, in pixels, wide by high.
     pub size: (u32, u32),
+    /// The same as it is turned now.
+    pub pixels: (u32, u32),
     /// The phone's own panel's scale, beside it.
     pub panel_scale: f64,
     /// The current refresh rate, and the ones its resolution offers, in
@@ -266,6 +280,25 @@ fn rates(output: &Value) -> (u32, Vec<u32>) {
     }
     shown.reverse();
     (rate, shown)
+}
+
+/// A screen's current mode in pixels, wide by high as it is turned now.
+fn pixels(output: &Value) -> (u32, u32) {
+    let mode = &output["current_mode"];
+    let side = |key: &str| mode[key].as_u64().unwrap_or(0) as u32;
+    turned(
+        (side("width"), side("height")),
+        output["transform"].as_str().unwrap_or("normal"),
+    )
+}
+
+/// The pixels a screen shows in `transform`: a quarter turn swaps them.
+pub fn turned(pixels: (u32, u32), transform: &str) -> (u32, u32) {
+    if transform.ends_with("90") || transform.ends_with("270") {
+        (pixels.1, pixels.0)
+    } else {
+        pixels
+    }
 }
 
 /// Whether the screen named `name` is built in: the phone's own panel.
@@ -559,6 +592,9 @@ impl Link {
                 name: output["name"].as_str().unwrap_or_default().to_owned(),
                 rate,
                 rates,
+                scale: output["scale"].as_f64().unwrap_or(1.0),
+                default_scale: output["default_scale"].as_f64(),
+                pixels: pixels(output),
             }
         }))
     }
@@ -585,10 +621,12 @@ impl Link {
             Monitor {
                 name: output["name"].as_str().unwrap_or_default().to_owned(),
                 scale: output["scale"].as_f64().unwrap_or(1.0),
+                default_scale: output["default_scale"].as_f64(),
                 size: (
                     mode["width"].as_u64().unwrap_or(0) as u32,
                     mode["height"].as_u64().unwrap_or(0) as u32,
                 ),
+                pixels: pixels(output),
                 panel_scale,
                 rate,
                 rates,
@@ -1010,4 +1048,20 @@ fn rates_that_sound_alike_show_once() {
         ],
     });
     assert_eq!(rates(&output), (59_951, vec![59_951, 144_000, 240_001]));
+}
+
+#[cfg(test)]
+#[test]
+fn a_quarter_turn_swaps_a_screens_pixels() {
+    let output = |transform: &str| {
+        json!({
+            "current_mode": {"width": 3392, "height": 2400, "refresh_millihz": 120_000},
+            "transform": transform,
+        })
+    };
+    assert_eq!(pixels(&output("normal")), (3392, 2400));
+    assert_eq!(pixels(&output("180")), (3392, 2400));
+    assert_eq!(pixels(&output("90")), (2400, 3392));
+    assert_eq!(pixels(&output("flipped-270")), (2400, 3392));
+    assert_eq!(pixels(&json!({})), (0, 0));
 }
