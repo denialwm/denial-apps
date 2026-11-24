@@ -23,32 +23,16 @@ use super::system::APP_ICON;
 use super::{Dialog, Layer, Screen, Settings};
 use crate::apps::{self, App};
 use crate::catalog::Section;
-use crate::droidloom::{self, Action, Cell, Density, Details, GamesDriver, Stats, Unit, UnitState};
+use crate::droidloom::{self, Action, Cell, Details, GamesDriver, Stats, Unit, UnitState};
 use crate::{about, clock};
 
 /// How often the page reads how Android runs.
 const READ_EVERY: Duration = Duration::from_secs(2);
 
-/// The sizes Android apps can be drawn at, as shares of the default density.
-pub(super) const SIZES: [&str; 4] = ["Small", "Default", "Large", "Larger"];
-pub(super) const SIZE_SCALES: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
-
-/// Android's density for the default size, per unit of the scale Denial
-/// gives windows: 460 dpi at scale 2, which matches a stock Android phone
-/// side by side. Android's own 160 drew its apps smaller than Denial's.
-/// Droidloom draws apps at it until a size is picked.
-pub(super) const DEFAULT_DPI: f32 = 230.0;
-
 /// The OpenGL drivers games can start with, in the order `DRIVERS` names
 /// them.
 const DRIVERS: [&str; 2] = ["ANGLE", "Mesa"];
 const GAMES_DRIVERS: [GamesDriver; 2] = [GamesDriver::Angle, GamesDriver::Mesa];
-
-/// Android's density at the size `option` of `SIZES`.
-fn size_dpi(scale: f32, option: usize) -> Option<u32> {
-    let share = SIZE_SCALES.get(option)?;
-    Some((DEFAULT_DPI * scale * share).round() as u32)
-}
 
 /// Android as Settings knows it.
 #[derive(Default)]
@@ -81,11 +65,8 @@ pub(super) struct Android {
     setting_up: bool,
     /// Why the last start from here failed, until the next one.
     start_failed: Option<String>,
-    /// The display's density, read once Android is ready while its page
-    /// shows; None until then.
-    density: Option<Density>,
-    reading_density: bool,
-    /// The driver games start with, read like the density.
+    /// The driver games start with, read once Android is ready while its
+    /// page shows; None until then.
     games: Option<GamesDriver>,
     reading_games: bool,
     reading: Option<Task<()>>,
@@ -117,7 +98,6 @@ impl Settings {
         }
         if self.screen.is_page("android") {
             self.android.release = droidloom::release();
-            self.android.density = None;
             self.android.games = None;
             self.read_android_apps(cx);
         }
@@ -192,12 +172,8 @@ impl Settings {
         android.read = true;
         let ready = android.stats.as_ref().is_some_and(|stats| stats.ready);
         if !ready {
-            android.density = None;
             android.games = None;
         } else if self.screen.is_page("android") {
-            if android.density.is_none() && !android.reading_density {
-                self.read_density(cx);
-            }
             if self.android.games.is_none() && !self.android.reading_games {
                 self.read_games_driver(cx);
             }
@@ -234,54 +210,6 @@ impl Settings {
             let _ = this.update(cx, |view, cx| {
                 if let Err(why) = set {
                     view.android.games = Some(before);
-                    view.note(fill("Android said: {why}", &[("why", &why)]), cx);
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn read_density(&mut self, cx: &mut Context<Self>) {
-        self.android.reading_density = true;
-        cx.spawn(async move |this, cx| {
-            let density = cx.background_spawn(async { droidloom::density() }).await;
-            let _ = this.update(cx, |view, cx| {
-                view.android.reading_density = false;
-                view.android.density = density.ok();
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    /// Draws Android apps at the size picked from `SIZES`.
-    fn pick_android_size(&mut self, option: usize, cx: &mut Context<Self>) {
-        let (Some(density), Some(dpi)) = (self.android.density, size_dpi(self.scale, option))
-        else {
-            return;
-        };
-        let before = (density.dpi, self.densities.every);
-        // Screens of another scale, such as a monitor, take the same size
-        // in their own units.
-        let per_scale = DEFAULT_DPI * SIZE_SCALES[option];
-        self.android.density = Some(Density { dpi, ..density });
-        self.densities.every = Some(per_scale);
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            let set = cx
-                .background_spawn(async move {
-                    droidloom::set_density(dpi)?;
-                    droidloom::set_densities(None, Some(per_scale))
-                        .map_err(|error| error.to_string())
-                })
-                .await;
-            let _ = this.update(cx, |view, cx| {
-                if let Err(why) = set {
-                    if let Some(density) = &mut view.android.density {
-                        density.dpi = before.0;
-                    }
-                    view.densities.every = before.1;
                     view.note(fill("Android said: {why}", &[("why", &why)]), cx);
                 }
                 cx.notify();
@@ -449,40 +377,6 @@ impl Settings {
                             .pb(px(ROW_PAD))
                             .child(self.buttons([restart])),
                     ),
-            );
-        }
-        {
-            // The size Droidloom gives every screen; faint until Android
-            // tells its density.
-            let per_scale = self.densities.every.unwrap_or(DEFAULT_DPI);
-            let dpi = android
-                .density
-                .map(|_| (per_scale * self.scale).round() as u32);
-            let picked = SIZE_SCALES
-                .iter()
-                .position(|share| dpi.is_some() && (DEFAULT_DPI * share - per_scale).abs() < 0.5)
-                .unwrap_or(SIZES.len());
-            parts.push(self.chip_row("Display"));
-            parts.push(
-                island(&self.look).child(
-                    self.options_row(
-                        "android.size",
-                        "Display size",
-                        dpi.map(|dpi| fill("{dpi} dpi", &[("dpi", &dpi.to_string())]).into()),
-                        &SIZES,
-                        picked,
-                        live && dpi.is_some(),
-                        (true, true),
-                        cx,
-                        Rc::new(|this, option, _, cx| this.pick_android_size(option, cx)),
-                    )
-                    .child(
-                        div()
-                            .text_color(solid(self.look.palette.secondary))
-                            .child(tr("Open Android apps may restart to take the new size")),
-                    )
-                    .when(dpi.is_none(), |row| row.opacity(FAINT)),
-                ),
             );
         }
         {

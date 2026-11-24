@@ -397,6 +397,21 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("About {time} left", "Осталось около {time}"),
     ("Plugged in", "Подключено к сети"),
     ("On battery", "От батареи"),
+    // A display's scale.
+    ("Scale", "Масштаб"),
+    ("Looks like {width} × {height}", "Выглядит как {width} × {height}"),
+    (
+        "{percent} · looks like {width} × {height}",
+        "{percent} · выглядит как {width} × {height}",
+    ),
+    (
+        "{percent} · looks like {width} × {height} · default",
+        "{percent} · выглядит как {width} × {height} · по умолчанию",
+    ),
+    (
+        "Could not change the scale: {why}",
+        "Не удалось изменить масштаб: {why}",
+    ),
     // The monitor beside the phone.
     ("Keep {rate}?", "Оставить {rate}?"),
     (
