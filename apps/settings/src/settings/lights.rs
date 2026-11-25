@@ -98,8 +98,7 @@ impl Settings {
         vec![lights, island(&self.look).child(row)]
     }
 
-    /// Whether `name` is on, and its colour: off, in the first colour, until
-    /// chosen.
+    /// Whether `name` is on, and its colour: off, in purple, until chosen.
     fn light_choice(&self, name: &str) -> (bool, u32) {
         let light = self
             .denial

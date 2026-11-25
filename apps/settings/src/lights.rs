@@ -26,9 +26,10 @@ const SYSTEM: &[&str] = &[
     "torch",
 ];
 
-/// The colours a light offers, as `0xrrggbb`.
+/// The colours a light offers, as `0xrrggbb`. The first, purple, is the one
+/// a light takes until another is chosen.
 pub const COLORS: &[u32] = &[
-    0xff1a1a, 0xff7a00, 0xffd000, 0x2bd94a, 0x00d5e0, 0x2a5cff, 0xa03cff, 0xff3ca0, 0xffffff,
+    0xa03cff, 0xff3ca0, 0xff1a1a, 0xff7a00, 0xffd000, 0x2bd94a, 0x00d5e0, 0x2a5cff, 0xffffff,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
