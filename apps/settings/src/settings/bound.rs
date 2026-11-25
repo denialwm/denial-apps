@@ -405,6 +405,7 @@ impl Settings {
                     "transparencyMode": "glass", "backdropBlurLevel": "good",
                     "backdropBlurOpacityThreshold": 0.19, "glass": {},
                     "applicationThemingEnabled": true, "focusedWindowBorderEnabled": true,
+                    "roundedWindowFrame": false, "windowCornerRadiusScale": 0.5,
                     "focusedWindowOpacity": 1, "unfocusedWindowOpacity": 1,
                     "cursorThemeId": crate::cursor_theme::DEFAULT, "allowClientCursorSurfaces": true,
                 }));

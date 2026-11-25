@@ -206,6 +206,17 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("Used and free space", "Занятое и свободное место"),
     ("Wallpaper and style", "Обои и стиль"),
     ("Wallpaper, accent, glass", "Обои, акцентный цвет, стекло"),
+    // Wallpaper and style: the shell's corners and the windows'.
+    ("Roundness", "Скругление"),
+    ("The shell's panels and cards", "Панели и карточки оболочки"),
+    ("Window appearance", "Вид окон"),
+    ("Rounded window corners and border", "Скруглённые углы и рамка окон"),
+    (
+        "Off, square windows use the whole screen",
+        "Если выключено, окна прямоугольные и занимают весь экран",
+    ),
+    ("Window roundness", "Скругление окон"),
+    ("Focused-window border", "Выделять рамку активного окна"),
     // Short enough for the side list: the full «Экран блокировки и
     // безопасность» was cut there.
     ("Lock screen and security", "Блокировка и защита"),

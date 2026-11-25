@@ -372,10 +372,12 @@ pub static GROUPS: &[Group] = &[
                             .from(Source::Words("layout.windowLayout", &["stacking", "dwindle", "scrolling", "screens"])),
                         item("layout.minimized", "Minimized windows", Kind::Segmented(&["On desktop", "Off-screen"], 1))
                             .from(Source::Words("layout.minimizedWindowPlacement", &["desktop", "offscreen"])),
+                        // Square windows use the whole screen: no padding.
                         measured(
                             "layout.maximizePadding", "Maximized window padding", "layout.maximizePadding",
                             8.0, 0.0, 64.0, SliderUnit::Pixels,
-                        ),
+                        )
+                        .only("style.windowFrame", &[1]),
                     ]),
                     section("Scrolling layout", &[
                         item("layout.preserveSwap", "Preserve sizes when swapping", Kind::Toggle(true))
@@ -702,6 +704,7 @@ pub static GROUPS: &[Group] = &[
                                 &["glass", "blur", "off"],
                             )),
                             item("style.corners", "Roundness", Kind::Slider(0.5))
+                                .detail("The shell's panels and cards")
                                 .from(Source::Range("appearance.cornerRadiusScale", 0.0, 2.0)),
                         ],
                     ),
@@ -845,12 +848,26 @@ pub static GROUPS: &[Group] = &[
                     section(
                         "Window appearance",
                         &[
+                            // Off, the shell's default, windows are square
+                            // with no line around them and no gaps.
+                            item(
+                                "style.windowFrame",
+                                "Rounded window corners and border",
+                                Kind::Toggle(false),
+                            )
+                            .detail("Off, square windows use the whole screen")
+                            .denial("appearance.roundedWindowFrame"),
+                            // The shell's 0.5 of 0 to 2.
+                            item("style.windowCorners", "Window roundness", Kind::Slider(0.25))
+                                .from(Source::Range("appearance.windowCornerRadiusScale", 0.0, 2.0))
+                                .only("style.windowFrame", &[1]),
                             item(
                                 "style.focusBorder",
                                 "Focused-window border",
                                 Kind::Toggle(true),
                             )
-                            .denial("appearance.focusedWindowBorderEnabled"),
+                            .denial("appearance.focusedWindowBorderEnabled")
+                            .only("style.windowFrame", &[1]),
                             measured(
                                 "style.focusOpacity", "Focused-window opacity",
                                 "appearance.focusedWindowOpacity",
@@ -1418,6 +1435,42 @@ mod tests {
             switch.only,
             Some(("layout.windows", &[screens][..]))
         );
+    }
+
+    /// The owner's request (eb20): one switch for rounded window corners
+    /// and their border, Denial's `appearance.roundedWindowFrame`, off by
+    /// default like the shell's. The window roundness, the focused-window
+    /// border and the window padding show only while it is on; the shell's
+    /// own roundness stays apart.
+    #[test]
+    fn rounded_windows_are_one_switch_off_by_default() {
+        set_monitor(true);
+        let switch = find("style.windowFrame").expect("the switch is listed");
+        assert!(matches!(
+            switch.source,
+            Source::Denial("appearance.roundedWindowFrame")
+        ));
+        assert!(matches!(switch.kind, Kind::Toggle(false)));
+        for key in ["style.windowCorners", "style.focusBorder", "layout.maximizePadding"] {
+            let item = find(key).expect("listed");
+            assert_eq!(item.only, Some(("style.windowFrame", &[1][..])), "{key}");
+        }
+        let Some(Item {
+            source: Source::Range("appearance.windowCornerRadiusScale", low, high),
+            kind: Kind::Slider(start),
+            ..
+        }) = find("style.windowCorners")
+        else {
+            panic!("the window roundness is a slider of its own key");
+        };
+        // The shell's default roundness, 0.5.
+        assert!((low + start * (high - low) - 0.5).abs() < 1e-6);
+        let shell = find("style.corners").expect("the shell's roundness is listed");
+        assert!(matches!(
+            shell.source,
+            Source::Range("appearance.cornerRadiusScale", _, _)
+        ));
+        assert_eq!(shell.only, None);
     }
 
     #[test]
