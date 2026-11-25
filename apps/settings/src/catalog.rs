@@ -39,6 +39,9 @@ pub enum Content {
     Bluetooth,
     /// The battery, through UPower.
     Battery,
+    /// The device's own lights, through Denial. Listed only where there
+    /// are some.
+    Lights,
     /// The display, through deniald.
     Display,
     OutputConfiguration,
@@ -606,6 +609,13 @@ pub static GROUPS: &[Group] = &[
                 icon: Icon::Battery,
                 summary: "Level, health",
                 content: Content::Battery,
+            },
+            Page {
+                id: "lights",
+                title: "Lights",
+                icon: Icon::Palette,
+                summary: "Colours, off with the screen",
+                content: Content::Lights,
             },
             Page {
                 id: "storage",
@@ -1239,6 +1249,13 @@ pub fn set_wifi(present: bool) {
 /// it has looked.
 static MOBILE: AtomicBool = AtomicBool::new(true);
 
+static LIGHTS: AtomicBool = AtomicBool::new(false);
+
+/// Whether the device has lights of its own, for the Lights page.
+pub fn set_lights(present: bool) {
+    LIGHTS.store(present, Ordering::Relaxed);
+}
+
 pub fn set_mobile(present: bool) {
     MOBILE.store(present, Ordering::Relaxed);
 }
@@ -1253,6 +1270,7 @@ pub fn shown(page: &Page) -> bool {
         Content::Unavailable if page.id == "hotspot" => WIFI.load(Ordering::Relaxed),
         Content::Monitor(_) => MONITOR.load(Ordering::Relaxed),
         Content::Plugins => crate::plugins::command().is_some(),
+        Content::Lights => LIGHTS.load(Ordering::Relaxed),
         Content::Developer => DEVELOPER.load(Ordering::Relaxed),
         _ => true,
     }
@@ -1302,6 +1320,7 @@ pub fn items() -> impl Iterator<Item = (&'static Page, &'static Section, &'stati
             | Content::Location
             | Content::Bluetooth
             | Content::Battery
+            | Content::Lights
             | Content::Display
             | Content::Input
             | Content::Permissions

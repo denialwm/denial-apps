@@ -58,6 +58,7 @@ impl Settings {
                         Content::Settings(_)
                         | Content::Apps(_)
                         | Content::AboutDenial
+                        | Content::Lights
                         | Content::Display
                         | Content::OutputConfiguration
                         | Content::Input

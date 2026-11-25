@@ -18,6 +18,7 @@ mod environment;
 mod home;
 mod input;
 mod idle_power;
+mod lights;
 mod monitor;
 mod networks;
 mod output_modes;
@@ -670,6 +671,8 @@ pub struct Settings {
     mobile: Mobile,
     location: Location,
     power: Power,
+    /// The device's own lights, read once: they are part of it.
+    lights: Vec<crate::lights::Light>,
     denial: Denial,
     display_controls: display_controls::DisplayControls,
     output_modes: output_modes::OutputModes,
@@ -929,6 +932,11 @@ impl Settings {
             location: Location::default(),
             _location: cx.spawn(async move |this, cx| Self::follow_location(this, cx).await),
             power: Power::default(),
+            lights: {
+                let lights = crate::lights::lights();
+                catalog::set_lights(!lights.is_empty());
+                lights
+            },
             _power: cx.spawn(async move |this, cx| Self::follow_power(this, cx).await),
             denial: Denial {
                 link: denial::Link::new(),
@@ -1553,6 +1561,7 @@ impl Settings {
                 Content::Location => self.location_page(layer, cx),
                 Content::Bluetooth => self.bluetooth_page(layer, cx),
                 Content::Battery => self.battery_page(layer, cx),
+                Content::Lights => self.lights_page(layer, cx),
                 Content::Display => self.display_page(layer, cx),
                 Content::OutputConfiguration => {
                     let mut parts = self.output_modes_page(width, layer, cx);

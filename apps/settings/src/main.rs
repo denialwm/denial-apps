@@ -15,6 +15,7 @@ mod fingerprint;
 mod glibc;
 mod instance;
 mod language;
+mod lights;
 mod location;
 mod lock;
 mod mobile;
