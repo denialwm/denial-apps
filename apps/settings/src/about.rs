@@ -227,8 +227,8 @@ pub fn memory_size(bytes: u64) -> String {
     const SIZES: [u64; 15] = [1, 2, 3, 4, 6, 8, 10, 12, 16, 18, 24, 32, 48, 64, 128];
     let gib = bytes as f64 / (1u64 << 30) as f64;
     match SIZES.iter().find(|&&size| size as f64 >= gib) {
-        Some(size) => format!("{size} GB"),
-        None => format!("{} GB", gib.ceil()),
+        Some(size) => fill("{size} GB", &[("size", &size.to_string())]),
+        None => fill("{size} GB", &[("size", &gib.ceil().to_string())]),
     }
 }
 
@@ -236,11 +236,14 @@ pub fn memory_size(bytes: u64) -> String {
 pub fn bytes(bytes: u64) -> String {
     let gb = bytes as f64 / 1e9;
     if gb >= 100.0 {
-        format!("{gb:.0} GB")
+        fill("{size} GB", &[("size", &format!("{gb:.0}"))])
     } else if gb >= 1.0 {
-        format!("{gb:.1} GB")
+        fill("{size} GB", &[("size", &format!("{gb:.1}"))])
     } else {
-        format!("{:.0} MB", bytes as f64 / 1e6)
+        fill(
+            "{size} MB",
+            &[("size", &format!("{:.0}", bytes as f64 / 1e6))],
+        )
     }
 }
 

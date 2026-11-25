@@ -349,7 +349,7 @@ impl Settings {
 
 /// A refresh rate as people say it: "120 Hz".
 pub(super) fn hertz(millihertz: u32) -> SharedString {
-    format!("{} Hz", (millihertz + 500) / 1000).into()
+    fill("{rate} Hz", &[("rate", &((millihertz + 500) / 1000).to_string())]).into()
 }
 
 pub(super) fn screen_off(seconds: Option<u32>) -> SharedString {

@@ -549,7 +549,11 @@ impl Settings {
                     other.refresh_millihz != rate
                         && (other.refresh_millihz + 500) / 1000 == (rate + 500) / 1000
                 }) {
-                    format!("{:.3} Hz", f64::from(rate) / 1000.0).into()
+                    fill(
+                        "{rate} Hz",
+                        &[("rate", &format!("{:.3}", f64::from(rate) / 1000.0))],
+                    )
+                    .into()
                 } else {
                     hertz(rate)
                 };
