@@ -359,6 +359,8 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ("Everything else", "Всё остальное"),
     ("Counting…", "Подсчёт…"),
     ("{used} used of {all}", "Занято {used} из {all}"),
+    ("{size} GB", "{size} ГБ"),
+    ("{size} MB", "{size} МБ"),
     // About.
     ("Phone name", "Имя устройства"),
     (", ", ", "),
@@ -434,6 +436,7 @@ pub static RUSSIAN: &[(&str, &str)] = &[
     ),
     ("{count} minutes", "{count} мин"),
     ("{count} seconds", "{count} с"),
+    ("{rate} Hz", "{rate} Гц"),
     ("Never", "Никогда"),
     // Searching the settings.
     ("Nothing found", "Ничего не найдено"),

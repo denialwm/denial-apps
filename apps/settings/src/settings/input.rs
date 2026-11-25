@@ -503,7 +503,7 @@ impl Settings {
                 None,
                 "Key repeat rate",
                 None,
-                format!("{rate} Hz").into(),
+                fill("{rate} Hz", &[("rate", &rate.to_string())]).into(),
                 rate as f32 / 100.0,
                 live,
                 (false, false),

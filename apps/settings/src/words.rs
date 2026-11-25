@@ -736,6 +736,8 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("{used} used of {all}", "已用 {used}，共 {all}"),
     ("{size} used", "已用 {size}"),
     ("of {size}", "共 {size}"),
+    ("{size} GB", "{size} GB"),
+    ("{size} MB", "{size} MB"),
     // About.
     ("This phone", "这部手机"),
     ("Device name", "设备名称"),
@@ -826,6 +828,7 @@ pub static CHINESE: &[(&str, &str)] = &[
     ("Could not answer Denial: {why}", "无法回应 Denial：{why}"),
     ("{count} minutes", "{count} 分钟"),
     ("{count} seconds", "{count} 秒"),
+    ("{rate} Hz", "{rate} Hz"),
     ("Keep {rate}?", "保留 {rate}？"),
     (
         "Goes back to {rate} in {count} seconds",
