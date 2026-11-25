@@ -1,5 +1,6 @@
 //! The Battery page: the level and what the battery is doing, then how worn
-//! it is. UPower supplies the battery readings and charge-limit controls.
+//! it is. UPower supplies the battery readings and charge-limit controls;
+//! the battery's driver, through the `charge-hold` helper, bypass charging.
 
 use denial_look::words::{fill, tr};
 use std::time::Duration;
@@ -26,7 +27,7 @@ impl Settings {
             )];
         };
         let Some(battery) = &state.battery else {
-            if !state.charge_limits.is_empty() {
+            if !state.charge_limits.is_empty() || !state.charge_holds.is_empty() {
                 return self.charge_limit_parts(layer, cx);
             }
             return vec![self.missing(
@@ -74,16 +75,31 @@ impl Settings {
         parts
     }
 
+    /// The charge limits UPower offers, then bypass charging where the
+    /// battery's driver offers it.
     pub(super) fn charge_limit_parts(&self, layer: Layer, cx: &mut Context<Self>) -> Vec<Div> {
-        let Some(state) = self
-            .power
-            .state
-            .as_ref()
-            .filter(|state| !state.charge_limits.is_empty())
-        else {
+        let Some(state) = self.power.state.as_ref().filter(|state| {
+            !state.charge_limits.is_empty() || !state.charge_holds.is_empty()
+        }) else {
             return Vec::new();
         };
-        let group = self.rows_island(state.charge_limits.iter(), 0., |limit, ends| {
+        let mut parts = vec![self.chip_row("Charging limits")];
+        if !state.charge_limits.is_empty() {
+            parts.push(self.charge_limit_group(state, layer, cx));
+        }
+        if !state.charge_holds.is_empty() {
+            parts.push(self.charge_hold_group(state, layer, cx));
+        }
+        parts
+    }
+
+    fn charge_limit_group(
+        &self,
+        state: &battery::State,
+        layer: Layer,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        self.rows_island(state.charge_limits.iter(), 0., |limit, ends| {
             let detail = match (limit.start, limit.end, limit.firmware_optimized) {
                 (Some(start), Some(end), _) => fill(
                     "Resume charging below {start}% and stop at {end}%.",
@@ -119,8 +135,80 @@ impl Settings {
                 cx,
                 move |this, _, cx| this.set_charge_limit(path.clone(), enabled, cx),
             )
-        });
-        vec![self.chip_row("Charging limits"), group]
+        })
+    }
+
+    /// One switch per battery that can hold its charge: the device then
+    /// runs from the charger and the battery neither charges nor drains.
+    fn charge_hold_group(
+        &self,
+        state: &battery::State,
+        layer: Layer,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        self.rows_island(state.charge_holds.iter(), 0., |hold, ends| {
+            let title = if state.charge_holds.len() == 1 {
+                tr("Bypass charging").to_owned()
+            } else {
+                fill("Bypass charging for {battery}", &[("battery", &hold.supply)])
+            };
+            let detail = if hold.held {
+                tr("Running from the charger. The battery is not charging.")
+            } else {
+                tr("Run from the charger and leave the battery as it is.")
+            };
+            let row = self
+                .row(
+                    SharedString::from(format!("charge-hold:{}", hold.supply)),
+                    Some(Icon::Battery),
+                    title,
+                    Some(detail.into()),
+                    ends,
+                )
+                .child(self.toggle(hold.held));
+            let supply = hold.supply.clone();
+            let held = !hold.held;
+            self.live(
+                row,
+                layer.live() && !self.power.changing_holds.contains(&supply),
+                cx,
+                move |this, _, cx| this.set_charge_hold(supply.clone(), held, cx),
+            )
+        })
+    }
+
+    fn set_charge_hold(&mut self, supply: String, held: bool, cx: &mut Context<Self>) {
+        if !self.power.changing_holds.insert(supply.clone()) {
+            return;
+        }
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let name = supply.clone();
+            let result = cx
+                .background_spawn(async move { battery::set_charge_hold(&name, held) })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                view.power.changing_holds.remove(&supply);
+                match result {
+                    Ok(()) => {
+                        if let Some(hold) = view.power.state.as_mut().and_then(|state| {
+                            state
+                                .charge_holds
+                                .iter_mut()
+                                .find(|hold| hold.supply == supply)
+                        }) {
+                            hold.held = held;
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("settings: setting bypass charging: {error}");
+                        view.note("Could not change bypass charging", cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn set_charge_limit(

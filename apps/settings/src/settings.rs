@@ -547,6 +547,8 @@ struct Power {
     state: Option<battery::State>,
     changing_limits: HashSet<zbus::zvariant::OwnedObjectPath>,
     /// Whether UPower has been read, or found missing, once.
+    /// Batteries whose bypass charging is being changed, by supply name.
+    changing_holds: HashSet<String>,
     read: bool,
 }
 
