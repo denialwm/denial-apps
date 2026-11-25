@@ -8,6 +8,7 @@
 mod android;
 mod bound;
 mod cellular;
+mod call_volume;
 mod developer;
 mod devices;
 mod display_controls;
@@ -547,9 +548,9 @@ struct Power {
     /// None while UPower does not run.
     state: Option<battery::State>,
     changing_limits: HashSet<zbus::zvariant::OwnedObjectPath>,
-    /// Whether UPower has been read, or found missing, once.
     /// Batteries whose bypass charging is being changed, by supply name.
     changing_holds: HashSet<String>,
+    /// Whether UPower has been read, or found missing, once.
     read: bool,
 }
 
@@ -713,6 +714,7 @@ pub struct Settings {
     reading_panel: Option<Task<()>>,
     /// Reading the volume again every second, while the Sound page shows.
     reading_volume: Option<Task<()>>,
+    call_volume: call_volume::State,
     /// Reading the clock again every second, while Date and time shows.
     reading_clock: Option<Task<()>>,
     /// Reading the data link's traffic every two seconds, while Mobile
@@ -742,6 +744,7 @@ impl Settings {
     pub fn new(
         page: Option<String>,
         welcome: bool,
+        bus: Option<zbus::Connection>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -973,6 +976,7 @@ impl Settings {
             _display: cx.spawn(async move |this, cx| Self::follow_display(this, cx).await),
             reading_panel: None,
             reading_volume: None,
+            call_volume: call_volume::State::new(bus),
             reading_clock: None,
             country: country::read(),
             reading_mobile: None,
@@ -995,6 +999,9 @@ impl Settings {
             scanning: None,
             _subscriptions: subscriptions,
         };
+        if !welcome && !settings.screen.is_page("sound") {
+            settings.read_call_volume(cx);
+        }
         settings.follow_screen(cx);
         settings
     }

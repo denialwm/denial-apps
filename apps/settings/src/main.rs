@@ -99,7 +99,7 @@ fn main() {
                         app_id: Some(name.into()),
                         ..Default::default()
                     },
-                    |window, cx| cx.new(|cx| Settings::new(page, welcome, window, cx)),
+                    |window, cx| cx.new(|cx| Settings::new(page, welcome, bus, window, cx)),
                 )
                 .unwrap();
             log::info!("Settings window opened");
@@ -109,7 +109,6 @@ fn main() {
                 })
                 .unwrap();
             cx.spawn(async move |cx| {
-                let _bus = bus;
                 while let Ok((page, token)) = opens.recv().await {
                     let shown = window.update(cx, |view, window, cx| {
                         if !page.is_empty() {

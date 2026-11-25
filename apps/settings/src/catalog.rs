@@ -118,8 +118,8 @@ pub enum Source {
     Range(&'static str, f32, f32),
     /// The media volume, through Denial.
     Volume,
-    /// Faint, showing the media volume: the phone has one volume for now.
-    SameAsVolume,
+    /// The modem call playback level, through Phonewave's callaudio.
+    CallVolume,
     /// Worked out by Settings by the item's key: the screen lock, the
     /// lock's delay, the accent, the wallpaper.
     Own,
@@ -128,7 +128,7 @@ pub enum Source {
 impl Source {
     /// Whether the row can be changed.
     pub fn changes(self) -> bool {
-        !matches!(self, Source::Fixed | Source::SameAsVolume)
+        !matches!(self, Source::Fixed)
     }
 }
 
@@ -492,11 +492,11 @@ pub static GROUPS: &[Group] = &[
                     section(
                         "Volume",
                         &[
-                            item("sound.media", "Media", Kind::Slider(0.5)).from(Source::Volume),
-                            item("sound.ring", "Ring", Kind::Slider(0.7))
-                                .from(Source::SameAsVolume),
-                            item("sound.alarm", "Alarms", Kind::Slider(0.8))
-                                .from(Source::SameAsVolume),
+                            item("sound.media", "Media", Kind::Slider(0.5))
+                                .detail("Apps, ringtones, alarms and other playback")
+                                .from(Source::Volume),
+                            item("sound.call", "In-call volume", Kind::Slider(0.0))
+                                .from(Source::CallVolume),
                         ],
                     ),
                     section(

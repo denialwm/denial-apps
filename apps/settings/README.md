@@ -242,9 +242,10 @@ where its value lives (`src/settings/bound.rs`):
   the accent, the material and what it takes (glass opacities and frost,
   or blur quality and panel and card opacity), roundness and the lock
   screen's clock and wallpaper.
-- The media volume, through Denial's `audio.get` and `audio.set`, read again
-  every second while the Sound page shows. Ring and Alarms show the same
-  level, faint: the phone has one volume for now.
+- Media volume controls apps, ringtones, alarms and other playback through
+  Denial's `audio.get` and `audio.set`. Phones with a modem call playback
+  control also show In-call volume. It sets the hardware level through
+  Phonewave's `org.callaudio.CallAudio1.Volume`, during or between calls.
 - The screen lock: PIN or password, through `deniald --lock-pin` (the
   compositor that started Settings names itself in
   `DENIAL_COMPOSITOR_BINARY`). A new PIN has 6 digits, typed twice. The

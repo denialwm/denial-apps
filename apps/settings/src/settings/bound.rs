@@ -53,7 +53,8 @@ impl Settings {
                 .map_or(start, |value| {
                     ((value as f32 - low) / (high - low)).clamp(0.0, 1.0)
                 }),
-            Source::Volume | Source::SameAsVolume => self.denial.volume.unwrap_or(0.0),
+            Source::Volume => self.denial.volume.unwrap_or(0.0),
+            Source::CallVolume => self.call_volume.level().unwrap_or(0.0),
             Source::Made => self.values.level(item),
             _ => start,
         }
@@ -94,6 +95,9 @@ impl Settings {
     /// Whether a row shows now: some only go with one option of another,
     /// or with a toggle off (0) or on (1).
     pub(super) fn applies(&self, item: &Item) -> bool {
+        if matches!(item.source, Source::CallVolume) {
+            return self.call_volume.level().is_some();
+        }
         // The editor is hosted by the mobile shell. Window size alone
         // also matches large desktop windows, whose shell ignores the action.
         if item.key == "style.lockLayout" {
@@ -234,7 +238,8 @@ impl Settings {
         done: bool,
         cx: &mut Context<Self>,
     ) {
-        let level = (level.clamp(0.0, 1.0) * 100.0).round() / 100.0;
+        let fraction = level.clamp(0.0, 1.0);
+        let level = (fraction * 100.0).round() / 100.0;
         match item.source {
             Source::Range(path, low, high) => {
                 let value = low + level * (high - low);
@@ -252,6 +257,7 @@ impl Settings {
                 }
             }
             Source::Volume => self.set_volume(level, cx),
+            Source::CallVolume => self.set_call_volume(fraction, cx),
             Source::Made => {
                 self.values.set_unsaved(item, level);
                 if done {
@@ -647,7 +653,8 @@ impl Settings {
         }
         self.reading_volume = Some(cx.spawn(async move |this, cx| {
             loop {
-                let Ok((link, revision)) = this.update(cx, |view, _| {
+                let Ok((link, revision)) = this.update(cx, |view, cx| {
+                    view.read_call_volume(cx);
                     (view.denial.link.clone(), view.denial.audio_stream_revision)
                 }) else {
                     return;
