@@ -142,7 +142,9 @@ impl Settings {
         let (fill, accent) = (control_fill(&self.look), solid(self.look.accent));
         let radius = px(self.look.group_radius());
         let pad = self.nav_side();
-        let mark = self.eased("selected", selected, move |at| {
+        // Only the list beside a page selects a row; a phone's list never
+        // does, and leaves the mark out.
+        let mark = self.wide.then(|| self.eased("selected", selected, move |at| {
             div()
                 .absolute()
                 .top_0()
@@ -162,11 +164,11 @@ impl Settings {
                         .rounded_full()
                         .bg(accent),
                 )
-        });
+        }));
         let row = self
             .nav_row(page.id, page.icon, page.title, detail, (first, last))
             .relative()
-            .child(mark);
+            .children(mark);
         if matches!(page.content, Content::Unavailable) {
             row.opacity(0.5)
         } else if layer.live() {

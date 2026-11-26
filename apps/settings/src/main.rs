@@ -42,6 +42,14 @@ use crate::instance::{InstanceProxy, Open, Opener};
 use crate::settings::{Back, Settings};
 
 fn main() {
+    // Two malloc arenas, before any thread starts. glibc gives each of
+    // Settings' two dozen threads an arena of its own, and where the kernel
+    // backs memory with huge pages each arena holds 2 MiB: on the phones
+    // that was half of Settings' memory.
+    // SAFETY: mallopt only sets an allocator parameter.
+    unsafe {
+        libc::mallopt(libc::M_ARENA_MAX, 2);
+    }
     diagnostics::init();
     log::info!("starting Settings");
     denial_look::words::register_chinese(words::CHINESE);

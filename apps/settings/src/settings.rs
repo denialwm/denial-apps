@@ -627,6 +627,10 @@ pub struct Settings {
     /// Rows are being made for the panel inside an opened card: their
     /// corners follow the panel's, not an island's.
     nested: std::cell::Cell<bool>,
+    /// When each element `appearing` builds was first built, by id: kept
+    /// while every render builds it, so a fade plays once however the
+    /// element is drawn. Ids a render left out are forgotten after it.
+    appeared: std::cell::RefCell<Appeared>,
     /// The home screen's top group leaves as the pages scroll on, and comes
     /// back as they scroll back.
     top_away: ScrollAway,
@@ -904,6 +908,7 @@ impl Settings {
             expanded_sections: HashSet::new(),
             cursors: cursor::Cursors::default(),
             nested: std::cell::Cell::new(false),
+            appeared: Default::default(),
             top_away: ScrollAway::default(),
             scrolls: HashMap::new(),
             dialog: None,
@@ -1617,6 +1622,7 @@ impl Settings {
         let scroll = self.scroll(screen);
         let parts = self.screen_parts(screen, layer, width, cx);
         let content = div()
+            .cull_offscreen()
             .id(screen.key())
             .size_full()
             .overflow_y_scroll()
@@ -1851,6 +1857,7 @@ impl Settings {
         bottom: f32,
     ) -> Stateful<Div> {
         div()
+            .cull_offscreen()
             .id(id)
             .flex_1()
             .min_h_0()
@@ -2029,6 +2036,46 @@ impl Render for Settings {
         if self.animating(now) {
             window.request_animation_frame();
         }
+        let root = self.render_root(window, now, cx);
+        if self.appeared.borrow_mut().finish_render() {
+            window.request_animation_frame();
+        }
+        root
+    }
+}
+
+/// Ids `appearing` built in this render and in the ones before it.
+#[derive(Default)]
+struct Appeared {
+    since: HashMap<gpui::ElementId, Instant>,
+    built: HashSet<gpui::ElementId>,
+    fading: bool,
+}
+
+impl Appeared {
+    /// How long ago `id` was first built, counting this render.
+    fn age(&mut self, id: gpui::ElementId, now: Instant) -> Duration {
+        let since = *self.since.entry(id.clone()).or_insert(now);
+        self.built.insert(id);
+        now.saturating_duration_since(since)
+    }
+
+    /// Forgets the ids this render did not build; true while one fades.
+    fn finish_render(&mut self) -> bool {
+        let built = std::mem::take(&mut self.built);
+        self.since.retain(|id, _| built.contains(id));
+        std::mem::take(&mut self.fading)
+    }
+}
+
+impl Settings {
+    fn render_root(
+        &mut self,
+        window: &mut Window,
+        now: Instant,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let viewport = window.viewport_size();
         let width = f32::from(viewport.width);
         self.wide = width >= SIDEBAR_WIDTH + DETAIL_MIN_WIDTH;
         let root = div()

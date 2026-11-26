@@ -8,7 +8,7 @@ use denial_look::{
 };
 use denial_look_gpui::{Icon, chip, color, control_fill, control_radius, icon, island, say, solid};
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, Div, ElementId, Entity, FontWeight,
+    AnimationExt, AnyElement, ClickEvent, Context, Div, ElementId, Entity, FontWeight,
     SharedString, SpringAnimation, SpringConfig, Stateful, Window, div, prelude::*, px,
 };
 
@@ -156,19 +156,23 @@ impl Settings {
         }
     }
 
-    /// `element` fading in where it first shows: what a row opens.
+    /// `element` fading in where it first shows: what a row opens. The
+    /// fade starts when Settings first builds it, not when it is first
+    /// drawn, so a scroll view that leaves it out a while does not replay it.
     pub(super) fn appearing(&self, id: impl Into<ElementId>, element: Div) -> AnyElement {
         let seconds = motion::CHIP_FADE as f32 * self.look.duration_scale / 1000.0;
-        if seconds <= 0.0 {
+        let mut appeared = self.appeared.borrow_mut();
+        let age = appeared.age(id.into(), std::time::Instant::now());
+        let shown = if seconds <= 0.0 {
+            1.0
+        } else {
+            (age.as_secs_f32() / seconds).min(1.0)
+        };
+        if shown >= 1.0 {
             return element.into_any_element();
         }
-        element
-            .with_animation(
-                id,
-                Animation::new(std::time::Duration::from_secs_f32(seconds)).with_easing(decelerate),
-                |element, shown| element.opacity(shown),
-            )
-            .into_any_element()
+        appeared.fading = true;
+        element.opacity(decelerate(shown)).into_any_element()
     }
 
     /// A clear icon button in the top group.
@@ -427,11 +431,13 @@ impl Settings {
             .flex()
             .flex_col()
             .gap(px(2.))
-            .child(
-                div()
-                    .when(one_line, |line| line.truncate())
-                    .child(say(title)),
-            )
+            // Cut to a line it needs a box of its own; wrapped, the text
+            // stands in the column itself, a box fewer on every row.
+            .child(if one_line {
+                div().truncate().child(say(title)).into_any_element()
+            } else {
+                say(title).into_any_element()
+            })
             .children(detail.map(|detail| {
                 div()
                     .when(one_line, |line| line.truncate())

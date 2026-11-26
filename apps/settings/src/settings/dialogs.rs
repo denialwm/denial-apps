@@ -85,6 +85,7 @@ impl Settings {
                     )
                     .child(
                         div()
+                            .cull_offscreen()
                             .id("pick-options")
                             .max_h(px((self.window_pixels.1 as f32 / self.scale * 0.6).min(420.0)))
                             .overflow_y_scroll()

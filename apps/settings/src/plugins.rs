@@ -17,13 +17,19 @@ const CONTRACT: u64 = 1;
 
 /// The plugin manager, as the session names it or as installed; None on a
 /// phone without it, which then has no Plugins page.
+/// Looked up once: the home screen asks every frame.
 pub fn command() -> Option<PathBuf> {
-    let named = std::env::var_os("DENIAL_PLUGINS_BINARY").map(PathBuf::from);
-    named.filter(|path| path.is_file()).or_else(|| {
-        std::env::split_paths(&std::env::var_os("PATH")?)
-            .map(|folder| folder.join("denial-plugins"))
-            .find(|path| path.is_file())
-    })
+    static COMMAND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    COMMAND
+        .get_or_init(|| {
+            let named = std::env::var_os("DENIAL_PLUGINS_BINARY").map(PathBuf::from);
+            named.filter(|path| path.is_file()).or_else(|| {
+                std::env::split_paths(&std::env::var_os("PATH")?)
+                    .map(|folder| folder.join("denial-plugins"))
+                    .find(|path| path.is_file())
+            })
+        })
+        .clone()
 }
 
 /// A sentence of the manager's, and the code that names it.
