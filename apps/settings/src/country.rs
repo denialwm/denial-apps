@@ -17,7 +17,8 @@ const ZONES: &str = "/usr/share/zoneinfo/zone.tab";
 
 /// Whether the system lets Settings set the country.
 pub fn available() -> bool {
-    std::path::Path::new(HELPER).exists()
+    static HELPER_NOW: crate::presence::Presence = crate::presence::Presence::new(HELPER);
+    HELPER_NOW.get()
 }
 
 /// The country set, when it is one Settings knows.

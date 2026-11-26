@@ -21,6 +21,7 @@ mod lock;
 mod mobile;
 mod name;
 mod plugins;
+mod presence;
 mod props;
 mod settings;
 mod values;
