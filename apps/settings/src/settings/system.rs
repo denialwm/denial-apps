@@ -336,8 +336,8 @@ impl Settings {
         self.open_at(back, true, window, cx);
         // A phone with no country takes the time zone's for its Wi-Fi.
         let country = match self.country {
-            None => country::for_zone(&zone),
-            Some(_) => None,
+            None if country::available() => country::for_zone(&zone),
+            _ => None,
         };
         cx.spawn(async move |this, cx| {
             let set = clock::set_zone(&zone).await;

@@ -161,9 +161,10 @@ clocks follow. The page reads timedated again every second while it shows.
 The country or region on the same page is the one whose rules the Wi-Fi
 radios follow (`src/country.rs`): wireless-regdb's
 `/etc/conf.d/wireless-regdom`, which its udev rule applies whenever the Wi-Fi
-stack loads. The `wifi-country` helper (`src/bin/wifi-country.rs`) writes it
-and applies it at once with `iw`; Settings runs it through pkexec, under the
-polkit action in `packaging/`. The list is every country the regulatory
+stack loads. The system's `wifi-country` helper writes it and applies it at
+once with `iw`; Settings runs it through pkexec. Phonewave's system package
+has it at `/usr/lib/phonewave-system/wifi-country`; on a machine without it
+the country is the system's business and the row does not show. The list is every country the regulatory
 database knows, in English and Chinese, searchable by name or code;
 `tools/countries.py` writes it from wireless-regdb and iso-codes. The time
 zone's country comes first, and picking a time zone while no country is set

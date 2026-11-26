@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 use super::{Dialog, Layer, Screen, Settings};
 use crate::catalog::{self, ACCENTS, Item, Kind, LOCK_DELAYS, SliderUnit, Source};
+use crate::country;
 use crate::denial::{self, Refusal};
 use crate::fingerprint::{self, Opened};
 use crate::lock::{self, Outcome};
@@ -97,6 +98,9 @@ impl Settings {
     pub(super) fn applies(&self, item: &Item) -> bool {
         if matches!(item.source, Source::CallVolume) {
             return self.call_volume.level().is_some();
+        }
+        if item.key == "time.country" {
+            return country::available();
         }
         // The editor is hosted by the mobile shell. Window size alone
         // also matches large desktop windows, whose shell ignores the action.

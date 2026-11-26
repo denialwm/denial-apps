@@ -1,6 +1,8 @@
 //! The country whose rules the Wi-Fi radios follow: wireless-regdb's
-//! `/etc/conf.d/wireless-regdom`, set through the `wifi-country` helper
-//! with pkexec. Without one the radios keep the world rules, which find
+//! `/etc/conf.d/wireless-regdom`, set through the system's `wifi-country`
+//! helper with pkexec: Phonewave's on a phone. Without the helper the
+//! country is the system's business and Settings does not show it.
+//! With no country set the radios keep the world rules, which find
 //! some 5 GHz networks only by listening.
 
 use std::process::Command;
@@ -10,8 +12,13 @@ use denial_look::words::{self, Language};
 use crate::countries::COUNTRIES;
 
 const FILE: &str = "/etc/conf.d/wireless-regdom";
-const HELPER: &str = "/usr/lib/denial-apps/wifi-country";
+const HELPER: &str = "/usr/lib/phonewave-system/wifi-country";
 const ZONES: &str = "/usr/share/zoneinfo/zone.tab";
+
+/// Whether the system lets Settings set the country.
+pub fn available() -> bool {
+    std::path::Path::new(HELPER).exists()
+}
 
 /// The country set, when it is one Settings knows.
 pub fn read() -> Option<&'static str> {
@@ -76,7 +83,7 @@ pub fn matches(code: &str, typed: &str) -> bool {
 }
 
 /// Sets the country; blocks until the helper is done. Denial's polkit agent
-/// asks for a password where the phone's rules do not allow it outright.
+/// asks for a password where the system's rules do not allow it outright.
 pub fn set(code: &str) -> Result<(), String> {
     let output = Command::new("pkexec")
         .args([HELPER, code])

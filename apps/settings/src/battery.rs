@@ -6,10 +6,13 @@
 //!
 //! Whether a battery can hold its charge with the charger attached, and
 //! does, is read from its `charge_behaviour` in sysfs with each reading:
-//! UPower does not carry it. The `charge-hold` helper writes it as root.
+//! UPower does not carry it. Settings writes it where the system lets the
+//! session do so (Phonewave's udev rule on a phone); elsewhere the switch
+//! does not show.
 
 use std::collections::HashMap;
-use std::process::Command;
+use std::ffi::CString;
+use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 
 use async_channel::Sender;
@@ -25,7 +28,6 @@ const DEVICE: &str = "org.freedesktop.UPower.Device";
 const SETTLE: Duration = Duration::from_millis(150);
 const RETRY: Duration = Duration::from_secs(2);
 const SUPPLIES: &str = "/sys/class/power_supply";
-const HOLD_HELPER: &str = "/usr/lib/denial-apps/charge-hold";
 
 /// UPower's device types and states.
 const LINE_POWER: u32 = 1;
@@ -247,7 +249,8 @@ async fn read(bus: &Connection) -> zbus::Result<State> {
     })
 }
 
-/// The batteries that can hold their charge, by name.
+/// The batteries that can hold their charge and that this session may
+/// switch, by name.
 fn charge_holds() -> Vec<ChargeHold> {
     let Ok(entries) = std::fs::read_dir(SUPPLIES) else {
         return Vec::new();
@@ -260,7 +263,11 @@ fn charge_holds() -> Vec<ChargeHold> {
             if kind.trim() != "Battery" {
                 return None;
             }
-            let behaviour = std::fs::read_to_string(folder.join("charge_behaviour")).ok()?;
+            let file = folder.join("charge_behaviour");
+            let behaviour = std::fs::read_to_string(&file).ok()?;
+            if !writable(&file) {
+                return None;
+            }
             Some(ChargeHold {
                 supply: entry.file_name().into_string().ok()?,
                 held: holding(&behaviour)?,
@@ -288,21 +295,20 @@ fn holding(behaviour: &str) -> Option<bool> {
     offered.then_some(chosen == Some("inhibit-charge"))
 }
 
-/// Holds a battery's charge or lets it charge; blocks until the helper is
-/// done. Denial's polkit agent asks for a password where the phone's rules
-/// do not allow it outright.
+/// Whether this process may write a file.
+fn writable(file: &std::path::Path) -> bool {
+    CString::new(file.as_os_str().as_bytes())
+        .is_ok_and(|path| unsafe { libc::access(path.as_ptr(), libc::W_OK) } == 0)
+}
+
+/// Holds a battery's charge or lets it charge.
 pub fn set_charge_hold(supply: &str, held: bool) -> Result<(), String> {
-    let output = Command::new("pkexec")
-        .args([HOLD_HELPER, supply, if held { "on" } else { "off" }])
-        .output()
-        .map_err(|error| error.to_string())?;
-    match output.status.code() {
-        Some(0) => Ok(()),
-        // pkexec's own: the password asked for was not given, or the
-        // rules do not allow it.
-        Some(126 | 127) => Err("Not allowed".to_owned()),
-        _ => Err(String::from_utf8_lossy(&output.stderr).trim().to_owned()),
+    if supply.is_empty() || supply.starts_with('.') || supply.contains('/') {
+        return Err(format!("{supply} is not a power supply"));
     }
+    let file = std::path::Path::new(SUPPLIES).join(supply).join("charge_behaviour");
+    std::fs::write(&file, if held { "inhibit-charge" } else { "auto" })
+        .map_err(|error| error.to_string())
 }
 
 pub async fn set_charge_limit(path: &OwnedObjectPath, enabled: bool) -> zbus::Result<()> {
