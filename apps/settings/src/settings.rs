@@ -1621,8 +1621,19 @@ impl Settings {
     ) -> AnyElement {
         let scroll = self.scroll(screen);
         let parts = self.screen_parts(screen, layer, width, cx);
+        let this = cx.entity().downgrade();
         let content = div()
             .cull_offscreen()
+            // A scroll shows the last frame moved, unless the top group
+            // moves with it.
+            .replay_scroll(move |_, _, cx| {
+                this.update(cx, |this, _| {
+                    let away = this.top_away.away();
+                    this.follow_scroll();
+                    this.top_away.away() != away
+                })
+                .unwrap_or(true)
+            })
             .id(screen.key())
             .size_full()
             .overflow_y_scroll()
