@@ -369,7 +369,9 @@ cargo run --release
 ```
 
 This is a Cargo workspace of its own, with its own `Cargo.lock`: run Cargo
-from this directory. It writes to `target/` at the denial-apps root, as the
+from this directory. The Polkit agent (`../polkit`) is its second member, so
+Denial builds both in one run; Cargo here builds Settings unless told
+`-p polkit` or `--workspace`. It writes to `target/` at the denial-apps root, as the
 other apps do.
 
 Denial builds and packages it. `denial/settings/SOURCE_LOCK.json` names the

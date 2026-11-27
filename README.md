@@ -13,13 +13,13 @@ Device services and per-device configuration are in
 | `apps/<name>/` | One app per directory, with its own README and device build scripts. |
 | `libraries/<name>/` | Our crates shared by the apps. |
 
-Everything but Settings is one Cargo workspace. The root `Cargo.toml` carries
+Everything but Settings and the Polkit agent is one Cargo workspace. The root `Cargo.toml` carries
 the release profile and the `[patch.crates-io]` entries GPUI needs (zed's
 `async-process`, `async-task` and `calloop`); a member's own patches are
 ignored. Settings is a workspace of its own, with its own `Cargo.lock` and
-the same profile and patches in `apps/settings/Cargo.toml`: Denial builds it
-for every distribution from this repository and gpui-touch alone, and Camera
-needs Phonewave beside them. Keep the two in step when a patch or the
+the same profile and patches in `apps/settings/Cargo.toml`, and the Polkit
+agent is its second member: Denial builds both for every distribution from
+this repository and gpui-touch alone, and Camera needs Phonewave beside them. Keep the two in step when a patch or the
 profile changes.
 
 ## Apps
@@ -30,6 +30,7 @@ profile changes.
 | [`calls`](apps/calls) | Phone and contacts app, on Phonewave's dmail |
 | [`camera`](apps/camera) | Camera app: our own raw pipeline, burst photos, front and back cameras |
 | [`settings`](apps/settings) | Denial's Settings and Welcome, on the desktop and the phones; Denial builds and packages it |
+| [`polkit`](apps/polkit) | Denial's Polkit agent, its password and PIN dialog, and denial-portal's Access dialog; Denial builds and packages it |
 | [`sensors`](apps/sensors) | What the phone's sensors read, from Phonewave's steinerd: orientation, compass, level, gyroscope, ambient light, proximity |
 
 ## Libraries
@@ -45,8 +46,8 @@ profile changes.
 From an app's directory, `cargo run --release` on the host. Phones get the
 apps as packages from Phonewave's `denial-apps` recipe:
 `phonewave/tools/phone-install HOST denial-apps` from the workspace root tries
-them on one. Settings comes with the `denial` package instead; see its
-README. Output goes to `target/` here.
+them on one. Settings and the Polkit agent come with the `denial` package instead; see
+their READMEs. Output goes to `target/` here.
 
 ## Icons
 

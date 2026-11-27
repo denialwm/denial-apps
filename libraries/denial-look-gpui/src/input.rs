@@ -127,6 +127,12 @@ impl TextInput {
         }
     }
 
+    /// What the empty field says.
+    pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.placeholder = placeholder.into();
+        cx.notify();
+    }
+
     /// Shows the text as dots, or as it is.
     pub fn set_secret(&mut self, secret: bool, cx: &mut Context<Self>) {
         self.secret = secret;
