@@ -489,8 +489,9 @@ impl Planner<'_> {
                 .cloned()
                 .unwrap_or(Value::Null)
         } else {
-            let compositor = std::fs::read_to_string(request.runtime.join("compositor/src/lib.rs"))
-                .unwrap_or_default();
+            let compositor =
+                std::fs::read_to_string(request.runtime.join("compositor/core/src/lib.rs"))
+                    .unwrap_or_default();
             compositor
                 .split("FLUTTER_ENGINE_ABI: &str = \"")
                 .nth(1)
