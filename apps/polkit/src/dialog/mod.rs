@@ -17,14 +17,13 @@ mod prompt;
 
 use std::time::Duration;
 
-use denial_look::mobile::TOUCH;
-use denial_look::{APP_ZOOM, CONTROL_FILL, Look, PRESSED_FILL, floating, lerp_rgb};
-use denial_look_gpui::{color, control_radius, solid};
+use denial_look::{Appearance, Look, floating};
+use denial_look_gpui::{color, solid};
 use gpui::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions};
 use gpui::{
-    App, AsyncApp, BoxShadow, Div, ElementId, Font, FontWeight, KeyBinding, SharedString, Stateful,
-    TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind,
-    WindowOptions, actions, canvas, div, point, prelude::*, px, size,
+    App, AsyncApp, BoxShadow, Div, ElementId, Font, FontWeight, KeyBinding, Pixels, SharedString,
+    Stateful, Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowHandle, WindowKind, WindowOptions, actions, canvas, div, point, prelude::*, px, size,
 };
 use gpui_platform::application;
 use serde_json::Value;
@@ -39,6 +38,15 @@ const CANVAS_MARGIN: f32 = 28.0;
 const PHONE_MARGIN: f32 = 8.0;
 /// A card that does not show within this long shows anyway.
 const REVEAL_DEADLINE: Duration = Duration::from_millis(900);
+/// Families for the command line, the first installed one wins.
+const MONOSPACE: &[&str] = &[
+    "JetBrains Mono",
+    "JetBrainsMono Nerd Font",
+    "DejaVu Sans Mono",
+    "Adwaita Mono",
+    "Noto Sans Mono",
+    "Liberation Mono",
+];
 /// The shell's blur threshold when the settings name none.
 const DEFAULT_THRESHOLD: f32 = 0.19;
 
@@ -79,7 +87,7 @@ pub fn run(kind: Kind) {
     application()
         .with_assets(denial_look_gpui::Assets)
         .run(move |cx: &mut App| {
-            denial_look_gpui::zoom_app();
+            // Drawn at the Flutter dialog's sizes, without the apps' zoom.
             denial_look_gpui::input::bind_keys(cx);
             // Denial's Back gesture arrives as KEY_BACK, which GPUI names `back`.
             cx.bind_keys([
@@ -87,12 +95,18 @@ pub fn run(kind: Kind) {
                 KeyBinding::new("back", Cancel, None),
                 KeyBinding::new("enter", Confirm, Some("Dialog")),
             ]);
-            let font = gpui::font(look.font_family(&cx.text_system().all_font_names()));
+            let names = cx.text_system().all_font_names();
+            let font = gpui::font(look.font_family(&names));
+            let mono = MONOSPACE
+                .iter()
+                .find(|family| names.iter().any(|name| name == *family))
+                .map(|family| SharedString::from(*family));
             let frame = Frame {
                 look,
                 material,
                 phone,
                 font,
+                mono,
             };
             let options = frame.window_options(namespace, title);
             match kind {
@@ -166,6 +180,9 @@ struct Material {
     shadow: f32,
     /// The card is glass on the phone, or would frost on the desktop.
     glass: bool,
+    /// Alpha of the toolbar material under the field and the buttons: the
+    /// app-panel opacity, opaque with transparency off.
+    toolbar: f32,
 }
 
 impl Material {
@@ -185,6 +202,7 @@ impl Material {
                 alpha: 1.0,
                 shadow: fallback_shadow,
                 glass: false,
+                toolbar: 1.0,
             };
         }
         let threshold = appearance["backdropBlurOpacityThreshold"]
@@ -216,6 +234,7 @@ impl Material {
             alpha,
             shadow,
             glass: true,
+            toolbar: look.panel_alpha,
         }
     }
 }
@@ -227,6 +246,8 @@ pub struct Frame {
     /// The overlay is the card, on a phone.
     pub phone: bool,
     pub font: Font,
+    /// The command line's family, when one of `MONOSPACE` is installed.
+    pub mono: Option<SharedString>,
 }
 
 impl Frame {
@@ -273,11 +294,43 @@ impl Frame {
     }
 
     /// The shell's panel radius, which the phone's glass under the card
-    /// takes too, in the app's zoomed units.
+    /// takes too.
     fn card_radius(&self) -> f32 {
         let roundness = self.look.window_radius / 20.0;
-        (28.0 * roundness).clamp(8.0, 44.0) / APP_ZOOM
+        (28.0 * roundness).clamp(8.0, 44.0)
     }
+
+    /// The window radius less the toolbar's 8 lp inset, at least 4.
+    fn toolbar_radius(&self) -> Pixels {
+        px((self.look.window_radius - 8.0).max(4.0))
+    }
+
+    /// The floating toolbar material the reply field and the buttons sit
+    /// on, as application search fields and toolbar actions have it.
+    fn toolbar<E: Styled>(&self, element: E) -> E {
+        let look = &self.look;
+        let dark = look.appearance == Appearance::Dark;
+        element
+            .rounded(self.toolbar_radius())
+            .bg(color(look.palette.glass, self.material.toolbar))
+            .border(px(0.75))
+            .border_color(color(
+                look.palette.foreground,
+                if dark { 0.12 } else { 0.10 },
+            ))
+            .shadow(vec![BoxShadow {
+                color: color(0x000000, if dark { 0.18 } else { 0.08 }),
+                offset: point(px(0.), px(6.)),
+                blur_radius: px(24.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+    }
+
+    /// Foreground at this alpha over the toolbar material while pressed or
+    /// hovered.
+    const PRESSED: f32 = 0.1;
+    const HOVERED: f32 = 0.06;
 
     /// The card, holding `content`, in the canvas: centered on the desktop;
     /// the whole overlay on a phone, which is fitted to its height.
@@ -320,7 +373,7 @@ impl Frame {
                 .w_full()
                 .flex()
                 .flex_col()
-                .child(card.relative().w_full().p(px(20.)).pb(px(16.)).child(fit));
+                .child(card.relative().w_full().p(px(22.)).pb(px(20.)).child(fit));
         }
         let viewport = window.viewport_size();
         let width = px(CARD_WIDTH)
@@ -347,14 +400,9 @@ impl Frame {
             )
     }
 
-    /// Height of a button.
-    fn control_height(&self) -> f32 {
-        if self.phone { TOUCH } else { 40.0 }
-    }
-
-    /// A button: the accent fill for the one that goes ahead, the control
-    /// fill for the others. `live` false shows it faint and inert; the
-    /// caller adds what a click does.
+    /// A button on the toolbar material, 44 high. The one that goes ahead
+    /// is told apart by an accent tint alone. `live` false shows its label
+    /// faint; the caller adds what a click does.
     fn button(
         &self,
         id: impl Into<ElementId>,
@@ -364,56 +412,47 @@ impl Frame {
     ) -> Stateful<Div> {
         let look = &self.look;
         let foreground = look.palette.foreground;
-        let button = div()
-            .id(id)
-            .h(px(self.control_height()))
-            .min_w(px(96.))
-            .px(px(18.))
+        let radius = self.toolbar_radius();
+        let face = div()
+            .id("face")
+            .size_full()
+            .px(px(16.))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(control_radius(look))
+            .rounded(radius)
             .whitespace_nowrap()
+            .text_size(px(14.))
             .font_weight(FontWeight::SEMIBOLD)
+            .text_color(color(foreground, if live { 1.0 } else { 0.45 }))
             .child(denial_look_gpui::say(label));
-        let button = if primary {
-            button
-                .bg(solid(look.accent))
-                .text_color(solid(look.on_accent))
+        let face = if live {
+            face.hover(move |s| s.bg(color(foreground, Self::HOVERED)))
+                .active(move |s| s.bg(color(foreground, Self::PRESSED)))
         } else {
-            button
-                .bg(color(foreground, CONTROL_FILL))
-                .text_color(solid(foreground))
+            face
         };
-        if !live {
-            return button.opacity(0.5);
-        }
-        let (pressed, under) = if primary {
-            (
-                solid(lerp_rgb(look.accent, foreground, PRESSED_FILL)),
-                solid(lerp_rgb(look.accent, foreground, PRESSED_FILL / 2.)),
-            )
-        } else {
-            (
-                color(foreground, PRESSED_FILL),
-                color(foreground, (CONTROL_FILL + PRESSED_FILL) / 2.),
-            )
-        };
-        button
-            .cursor_pointer()
-            .when(!self.phone, |button| button.hover(move |s| s.bg(under)))
-            .active(move |s| s.bg(pressed))
+        let tint = div()
+            .size_full()
+            .rounded(radius)
+            .when(primary, |tint| tint.bg(color(look.accent, 0.28)))
+            .child(face);
+        self.toolbar(div().id(id))
+            .h(px(44.))
+            .min_w(px(84.))
+            .flex_none()
+            .when(live, |button| button.cursor_pointer())
+            .child(tint)
     }
 
-    /// A row of buttons: at the end on the desktop, sharing the width on a
-    /// phone.
+    /// A row of buttons at the end.
     fn buttons(&self, buttons: impl IntoIterator<Item = Stateful<Div>>) -> Div {
-        let row = div().flex().gap(px(10.)).pt(px(8.));
-        if self.phone {
-            row.children(buttons.into_iter().map(|button| button.flex_1().min_w_0()))
-        } else {
-            row.justify_end().children(buttons)
-        }
+        div()
+            .flex()
+            .gap(px(10.))
+            .pt(px(8.))
+            .justify_end()
+            .children(buttons)
     }
 }
 

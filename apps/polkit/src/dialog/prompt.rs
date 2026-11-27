@@ -4,23 +4,34 @@
 //! attempts and the outcome; this shows what they say and relays the
 //! user's choice of account and replies.
 
-use std::path::PathBuf;
-
+use denial_look::Appearance;
 use denial_look::words::fill;
 use denial_look_gpui::input::{Submitted, TextInput};
-use denial_look_gpui::{color, control_radius, say, solid};
+use denial_look_gpui::{color, say, solid};
 use gpui::{
-    ClickEvent, Context, Div, Entity, FocusHandle, Focusable, FontWeight, ObjectFit, SharedString,
-    Stateful, Window, div, img, prelude::*, px,
+    Bounds, ClickEvent, ContentMask, Context, Div, Entity, FocusHandle, Focusable, FontWeight,
+    ObjectFit, SharedString, Stateful, Window, canvas, div, fill as paint, img, point, prelude::*,
+    px, size,
 };
 use serde_json::{Value, json};
 
 use super::link::Link;
-use super::{Cancel, Confirm, Frame, REVEAL_DEADLINE, Receive, monogram};
+use super::{Cancel, Confirm, Frame, REVEAL_DEADLINE, Receive};
 use crate::identity::{self, Profile};
 
-const AVATAR: f32 = 52.0;
-const SMALL_AVATAR: f32 = 32.0;
+/// The Flutter dialog's measures: the account's column on the leading
+/// side, its picture, and the gap to the description and reply beside it.
+const AVATAR: f32 = 72.0;
+const ACCOUNT_WIDTH: f32 = 96.0;
+const GAP: f32 = 16.0;
+const SMALL_AVATAR: f32 = 26.0;
+const IDENTITY_ROW: f32 = 46.0;
+const FIELD_HEIGHT: f32 = 48.0;
+/// A secret reply's dots: their radius and the distance between them.
+const DOT_RADIUS: f32 = 4.2;
+const DOT_SPACING: f32 = 14.0;
+/// Time limits and Caps Lock.
+const WARNING: u32 = 0xF0A030;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -70,13 +81,18 @@ pub struct Prompt {
     awaiting_verdict: bool,
     revealed: bool,
     closing: bool,
+    /// What the field says while empty, as last given to it.
+    shown_placeholder: SharedString,
 }
 
 impl Prompt {
     pub fn new(frame: Frame, link: Link, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let field = cx.new(|cx| {
-            let mut field = TextInput::new(say("Password"), &frame.look, 1, cx);
+            let mut field = TextInput::new(SharedString::default(), &frame.look, 1, cx);
+            field.set_text_size(15.0, cx);
             field.set_secret(true, cx);
+            // The dialog draws a secret reply's dots and its cursor itself.
+            field.set_caret(false, cx);
             field
         });
         cx.subscribe(&field, |this, _, _: &Submitted, cx| this.confirm(cx))
@@ -109,6 +125,7 @@ impl Prompt {
             awaiting_verdict: false,
             revealed: false,
             closing: false,
+            shown_placeholder: SharedString::default(),
         }
     }
 
@@ -233,11 +250,11 @@ impl Receive for Prompt {
                 self.echo = message["echo"].as_bool().unwrap_or(false);
                 self.awaiting_verdict = false;
                 self.phase = Phase::Prompting;
-                let (echo, placeholder) = (self.echo, self.placeholder());
+                let echo = self.echo;
                 self.field.update(cx, |field, cx| {
                     field.clear(cx);
-                    field.set_placeholder(placeholder, cx);
                     field.set_secret(!echo, cx);
+                    field.set_caret(echo, cx);
                 });
                 if !self.locked() {
                     window.focus(&self.field.focus_handle(cx), cx);
@@ -314,78 +331,153 @@ impl Prompt {
             .map(str::to_owned)
     }
 
-    fn account(&self, identity: &Identity) -> Div {
+    /// The account's picture, in a thin rim.
+    fn picture(&self, identity: Option<&Identity>, diameter: f32) -> gpui::AnyElement {
         let look = &self.frame.look;
-        div()
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .child(self.picture(identity, AVATAR))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .truncate()
-                            .child(identity.profile.display_name.clone()),
-                    )
-                    .when(identity.profile.display_name != identity.name, |column| {
-                        column.child(
-                            div()
-                                .text_size(px(13.))
-                                .text_color(solid(look.palette.secondary))
-                                .truncate()
-                                .child(identity.name.clone()),
-                        )
-                    }),
-            )
-    }
-
-    fn picture(&self, identity: &Identity, diameter: f32) -> gpui::AnyElement {
-        let name = identity.profile.display_name.clone();
-        match &identity.profile.picture {
-            Some(path) => img(PathBuf::from(path))
-                .size(px(diameter))
-                .flex_none()
+        let name = identity.map_or_else(String::new, |identity| {
+            identity.profile.display_name.clone()
+        });
+        let rim = if look.appearance == Appearance::Dark {
+            color(0xFFFFFF, 0.26)
+        } else {
+            color(0xFFFFFF, 0.95)
+        };
+        let (accent, on_accent) = (look.accent, look.on_accent);
+        let monogram = move || {
+            let letter: String = name
+                .chars()
+                .find(|c| c.is_alphanumeric())
+                .map(|c| c.to_uppercase().collect())
+                .unwrap_or_default();
+            div()
+                .size_full()
+                .rounded_full()
+                .bg(solid(accent))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(diameter * 0.42))
+                .line_height(px(diameter * 0.42))
+                .font_weight(FontWeight::BOLD)
+                .text_color(solid(on_accent))
+                .child(letter)
+                .into_any_element()
+        };
+        let inner = match identity.and_then(|identity| identity.profile.picture.clone()) {
+            Some(path) => img(path)
+                .size_full()
                 .rounded_full()
                 .object_fit(ObjectFit::Cover)
-                .with_fallback(move || monogram(&name, diameter).into_any_element())
+                .with_fallback(monogram)
                 .into_any_element(),
-            None => monogram(&name, diameter).into_any_element(),
-        }
+            None => monogram(),
+        };
+        div()
+            .relative()
+            .size(px(diameter))
+            .flex_none()
+            .child(inner)
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .rounded_full()
+                    .border(px(1.))
+                    .border_color(rim),
+            )
+            .into_any_element()
     }
 
+    /// The account's name, level with the reply; its account name under it
+    /// when the two differ.
+    fn account_name(&self, identity: &Identity) -> Div {
+        let look = &self.frame.look;
+        let name = identity.profile.display_name.clone();
+        div()
+            .w(px(ACCOUNT_WIDTH))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .items_center()
+            .text_center()
+            .child(
+                div()
+                    .w_full()
+                    .text_size(px(13.))
+                    .line_height(gpui::relative(1.25))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .line_clamp(2)
+                    .child(name.clone()),
+            )
+            .when(name != identity.name, |column| {
+                column.child(
+                    div()
+                        .w_full()
+                        .text_size(px(11.5))
+                        .text_color(color(look.palette.secondary, 0.7))
+                        .truncate()
+                        .child(identity.name.clone()),
+                )
+            })
+    }
+
+    /// The accounts Polkit offers, in the reply's place; picking one goes
+    /// on with it.
     fn identity_list(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let look = &self.frame.look;
+        let foreground = look.palette.foreground;
         let rows = self.identities.iter().map(|identity| {
             let uid = identity.uid;
             let selected = self.selected == Some(uid);
+            let name = identity.profile.display_name.clone();
             div()
                 .id(("identity", uid as usize))
-                .h(px(self.frame.control_height().max(SMALL_AVATAR + 12.)))
-                .px(px(10.))
+                .h(px(IDENTITY_ROW))
+                .flex_none()
+                .px(px(12.))
                 .flex()
                 .items_center()
                 .gap(px(12.))
-                .rounded(control_radius(look))
                 .cursor_pointer()
-                .when(selected, |row| {
-                    row.bg(color(look.palette.foreground, denial_look::CONTROL_FILL))
-                })
-                .active(|style| style.bg(color(look.palette.foreground, denial_look::PRESSED_FILL)))
-                .child(self.picture(identity, SMALL_AVATAR))
+                .hover(move |style| style.bg(color(foreground, 0.06)))
+                .active(move |style| style.bg(color(foreground, 0.1)))
+                .child(self.picture(Some(identity), SMALL_AVATAR))
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .truncate()
-                        .child(identity.profile.display_name.clone()),
+                        .flex()
+                        .gap(px(8.))
+                        .text_size(px(14.))
+                        .child(
+                            div()
+                                .flex_none()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(solid(if selected {
+                                    look.accent_text
+                                } else {
+                                    foreground
+                                }))
+                                .child(name.clone()),
+                        )
+                        .when(name != identity.name, |row| {
+                            row.child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(solid(look.palette.secondary))
+                                    .child(identity.name.clone()),
+                            )
+                        }),
                 )
                 .when(selected, |row| {
-                    row.child(div().size(px(10.)).rounded_full().bg(solid(look.accent)))
+                    row.child(
+                        div()
+                            .flex_none()
+                            .text_size(px(16.))
+                            .text_color(solid(look.accent_text))
+                            .child("✓"),
+                    )
                 })
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     this.choose(uid, cx);
@@ -395,87 +487,208 @@ impl Prompt {
                     }
                 }))
         });
-        div()
-            .id("identities")
+        self.frame
+            .toolbar(div().id("identities"))
+            .flex_1()
+            .min_w_0()
             .flex()
             .flex_col()
-            .gap(px(2.))
-            .max_h(px(220.))
+            .max_h(px(IDENTITY_ROW * 4.))
             .overflow_y_scroll()
             .children(rows)
     }
 
-    fn reply(&self, window: &Window) -> Div {
+    /// The reply field on the toolbar material. A secret reply shows as
+    /// dots this draws, with its own cursor.
+    fn reply(&self, window: &Window, cx: &Context<Self>) -> Div {
         let look = &self.frame.look;
         let locked = self.locked();
+        let field = self.field.read(cx);
+        let empty = field.text().is_empty();
         let error = self
             .notice
             .as_ref()
             .is_some_and(|(kind, _)| *kind == NoticeKind::Error);
-        let caps = !self.echo && window.capslock().on;
-        div()
-            .h(px(self.frame.control_height().max(44.)))
+        let secret = !self.echo;
+        let caps = secret && self.phase == Phase::Prompting && !locked && window.capslock().on;
+        let count = field.text().chars().count();
+        let focus = self.field.focus_handle(cx);
+        let (ink, accent) = (look.palette.foreground, look.accent);
+        let dots = canvas(
+            |_, _, _| {},
+            move |bounds: Bounds<gpui::Pixels>, _, window, _| {
+                window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                    let y = bounds.center().y;
+                    // Long replies scroll; the oldest dots leave past the
+                    // leading edge.
+                    let room = f32::from(bounds.size.width) - 14.0;
+                    let shift = (room - count as f32 * DOT_SPACING).min(0.0);
+                    let x = |index: usize| {
+                        bounds.origin.x + px(DOT_SPACING / 2. + index as f32 * DOT_SPACING + shift)
+                    };
+                    for index in 0..count {
+                        let center = point(x(index), y);
+                        window.paint_quad(
+                            paint(
+                                Bounds::centered_at(
+                                    center,
+                                    size(px(DOT_RADIUS * 2.), px(DOT_RADIUS * 2.)),
+                                ),
+                                solid(ink),
+                            )
+                            .corner_radii(px(DOT_RADIUS)),
+                        );
+                    }
+                    if focus.is_focused(window) {
+                        let caret_x = if count == 0 {
+                            bounds.origin.x + px(1.)
+                        } else {
+                            x(count - 1) + px(DOT_SPACING / 2. + 3.)
+                        };
+                        window.paint_quad(
+                            paint(
+                                Bounds::centered_at(
+                                    point(caret_x + px(1.), y),
+                                    size(px(2.), px(20.)),
+                                ),
+                                solid(accent),
+                            )
+                            .corner_radii(px(1.)),
+                        );
+                    }
+                });
+            },
+        )
+        .absolute()
+        .inset_0();
+        let field = div()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    // A secret's own characters stay unseen: the dots stand
+                    // in for them.
+                    .when(secret, |input| input.text_color(color(ink, 0.0)))
+                    .child(self.field.clone()),
+            )
+            .when(secret, |field| field.child(dots));
+        self.frame
+            .toolbar(div())
+            .flex_1()
+            .min_w_0()
+            .h(px(FIELD_HEIGHT))
             .flex()
             .items_center()
-            .gap(px(8.))
-            .px(px(14.))
-            .rounded(control_radius(look))
-            .bg(color(look.palette.foreground, denial_look::CONTROL_FILL))
-            .when(error, |field| {
-                field.border(px(1.)).border_color(solid(look.palette.error))
+            .pl(px(16.))
+            .pr(px(14.))
+            .when(error && empty, |field| {
+                field
+                    .border(px(1.5))
+                    .border_color(solid(look.palette.error))
             })
-            .when(locked || self.phase != Phase::Prompting, |field| {
-                field.opacity(0.6)
-            })
-            .child(div().flex_1().min_w_0().child(self.field.clone()))
+            .child(field)
             .when(caps, |field| {
                 field.child(
                     div()
                         .flex_none()
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded_full()
-                        .bg(color(look.palette.foreground, denial_look::CONTROL_FILL))
+                        .pl(px(8.))
                         .text_size(px(12.))
-                        .text_color(solid(look.palette.secondary))
-                        .child(say("Caps Lock")),
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(solid(WARNING))
+                        .child(format!("⇪ {}", say("Caps Lock"))),
                 )
             })
+    }
+
+    /// What the empty field says: nothing while it waits for typing, else
+    /// why it does not.
+    fn wanted_placeholder(&self, window: &Window, cx: &Context<Self>) -> SharedString {
+        if self.locked() {
+            say("Temporarily locked")
+        } else if self.phase != Phase::Prompting {
+            say("Preparing…")
+        } else if self.field.focus_handle(cx).is_focused(window) {
+            SharedString::default()
+        } else {
+            self.placeholder()
+        }
     }
 }
 
 impl Render for Prompt {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let placeholder = self.wanted_placeholder(window, cx);
+        if placeholder != self.shown_placeholder {
+            self.shown_placeholder = placeholder.clone();
+            self.field
+                .update(cx, |field, cx| field.set_placeholder(placeholder, cx));
+        }
         let look = &self.frame.look;
         let unavailable = self.phase == Phase::Unavailable;
         let choosing = self.phase == Phase::Choosing && self.identities.len() > 1;
-        let mut content = div().flex().flex_col().gap(px(12.));
-        if let Some(identity) = self.selected_identity().filter(|_| !choosing) {
-            content = content.child(self.account(identity));
-        }
-        content = content.child(
+        let identity = self.selected_identity();
+
+        // Two columns: the account on the leading side; the description,
+        // reply and actions beside it. The name shares a row with the reply.
+        let mut description = div().flex_1().min_w_0().flex().flex_col().child(
             div()
-                .text_size(px(15.))
+                .text_size(px(14.5))
                 .line_height(gpui::relative(1.42))
                 .line_clamp(5)
                 .child(self.question()),
         );
         if let Some(command) = &self.command {
-            content = content.child(
+            description = description.child(
                 div()
+                    .mt(px(10.))
                     .px(px(12.))
                     .py(px(9.))
-                    .rounded(control_radius(look))
+                    .rounded(px(10.))
                     .bg(color(look.palette.foreground, 0.07))
+                    .when_some(self.frame.mono.clone(), |line, family| {
+                        line.font_family(family)
+                    })
                     .text_size(px(12.5))
+                    .line_height(gpui::relative(1.2))
+                    .whitespace_nowrap()
                     .truncate()
                     .child(command.clone()),
             );
         }
-        if choosing {
-            content = content.child(self.identity_list(cx));
-        } else if !unavailable {
-            content = content.child(self.reply(window));
+        let mut content = div().flex().flex_col().child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(GAP))
+                .child(
+                    div()
+                        .w(px(ACCOUNT_WIDTH))
+                        .flex_none()
+                        .flex()
+                        .justify_center()
+                        .child(self.picture(identity, AVATAR)),
+                )
+                .child(description),
+        );
+        if !unavailable {
+            let reply = if choosing {
+                self.identity_list(cx).into_any_element()
+            } else {
+                self.reply(window, cx).into_any_element()
+            };
+            content = content.child(
+                div()
+                    .mt(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(GAP))
+                    .child(match identity {
+                        Some(identity) => self.account_name(identity),
+                        None => div().w(px(ACCOUNT_WIDTH)).flex_none(),
+                    })
+                    .child(reply),
+            );
         }
         let notice = self
             .notice
@@ -488,25 +701,17 @@ impl Render for Prompt {
             };
             content = content.child(
                 div()
-                    .text_size(px(13.))
+                    .pl(px(ACCOUNT_WIDTH + GAP + 4.))
+                    .pt(px(10.))
+                    .text_size(px(12.5))
                     .line_height(gpui::relative(1.35))
                     .line_clamp(3)
                     .text_color(solid(ink))
                     .child(text.clone()),
             );
         }
-        let busy = match self.phase {
-            Phase::Preparing => Some(say("Preparing…")),
-            Phase::Verifying => Some(say("Verifying…")),
-            _ => None,
-        };
-        let confirm_label = busy.unwrap_or_else(|| {
-            if choosing {
-                say("Continue")
-            } else {
-                say("Confirm")
-            }
-        });
+        // Verification keeps Confirm legible while inert.
+        let held = matches!(self.phase, Phase::Verifying | Phase::Preparing);
         let live = choosing || (self.phase == Phase::Prompting && !self.locked());
         let mut buttons = vec![
             self.frame
@@ -519,48 +724,43 @@ impl Render for Prompt {
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.cancel(cx))),
         ];
         if !unavailable {
+            let label = if choosing { "Continue" } else { "Confirm" };
             buttons.push(
                 self.frame
-                    .button("confirm", confirm_label, true, live)
+                    .button("confirm", label, true, live || held)
                     .when(live, |button| {
                         button.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.confirm(cx)))
                     }),
             );
         }
         let limit = self.time_limit().map(|limit| {
-            let locked = self.locked();
             div()
                 .flex_none()
                 .max_w(px(220.))
                 .px(px(9.))
                 .py(px(4.))
-                .rounded_full()
-                .bg(color(look.palette.error, 0.16))
+                .rounded(px(14.))
+                .bg(color(WARNING, 0.16))
                 .text_size(px(11.5))
+                .line_height(gpui::relative(1.25))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(solid(look.palette.error))
-                .line_clamp(2)
-                .child(if locked {
+                .text_color(solid(WARNING))
+                .line_clamp(3)
+                .child(if self.locked() {
                     format!("{} · {limit}", say("Temporarily locked"))
                 } else {
                     limit
                 })
         });
-        content = content.child(match limit {
-            Some(limit) if !self.frame.phone => div()
+        content = content.child(
+            div()
+                .mt(px(14.))
                 .flex()
                 .items_center()
-                .gap(px(10.))
-                .child(div().flex_1().min_w_0().child(limit))
-                .child(self.frame.buttons(buttons)),
-            Some(limit) => div()
-                .flex()
-                .flex_col()
-                .gap(px(6.))
-                .child(limit)
-                .child(self.frame.buttons(buttons)),
-            None => self.frame.buttons(buttons),
-        });
+                .gap(px(20.))
+                .child(div().flex_1().min_w_0().children(limit))
+                .child(self.frame.buttons(buttons).pt(px(0.))),
+        );
         let card = self.frame.canvas(self.revealed, content, window);
         card.track_focus(&self.focus)
             .key_context("Dialog")

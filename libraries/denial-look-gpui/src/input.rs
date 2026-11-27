@@ -97,6 +97,9 @@ pub struct TextInput {
     /// The text is a secret, such as a password: shown as one dot per
     /// character, and never copied out.
     secret: bool,
+    text_size: f32,
+    /// The field draws its own cursor.
+    caret: bool,
 }
 
 impl EventEmitter<Submitted> for TextInput {}
@@ -124,12 +127,27 @@ impl TextInput {
             scroll: ScrollHandle::new(),
             reveal: false,
             secret: false,
+            text_size: TEXT,
+            caret: true,
         }
     }
 
     /// What the empty field says.
     pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.placeholder = placeholder.into();
+        cx.notify();
+    }
+
+    /// The size of the text and the placeholder.
+    pub fn set_text_size(&mut self, size: f32, cx: &mut Context<Self>) {
+        self.text_size = size;
+        cx.notify();
+    }
+
+    /// Whether the field draws its cursor; off for a caller that draws its
+    /// own.
+    pub fn set_caret(&mut self, caret: bool, cx: &mut Context<Self>) {
+        self.caret = caret;
         cx.notify();
     }
 
@@ -858,7 +876,10 @@ impl Element for TextElement {
             origin.y += line.size(layout.line_height).height;
         }
         let focused = focus_handle.is_focused(window);
-        if focused && let Some(cursor) = prepaint.cursor.take() {
+        if focused
+            && self.input.read(cx).caret
+            && let Some(cursor) = prepaint.cursor.take()
+        {
             window.paint_quad(cursor);
         }
         self.input.update(cx, |input, _| {
@@ -904,7 +925,7 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .line_height(px(LINE))
-            .text_size(px(TEXT))
+            .text_size(px(self.text_size))
             .child(TextElement { input: cx.entity() })
     }
 }
