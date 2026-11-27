@@ -38,8 +38,35 @@ profile changes.
 | Name | Purpose |
 |---|---|
 | [`denial-contacts`](libraries/denial-contacts) | The contacts folder of vCard files, number matching as dmail does, inotify following |
-| [`denial-look`](libraries/denial-look) | Denial's application look: dark and light palettes, floors, radii, motion, mobile layout tokens, live settings |
-| [`denial-look-gpui`](libraries/denial-look-gpui) | The mobile materials as GPUI elements: island, glass group, chip, the text field, shared icons |
+| [`denial-look`](libraries/denial-look) | Denial's application look: dark and light palettes, floors, radii, motion timings, curves and springs, mobile layout tokens, live settings |
+| [`denial-look-gpui`](libraries/denial-look-gpui) | The mobile materials as GPUI elements: island, glass group, chip, the text field, shared icons, and `motion` |
+
+### Motion
+
+Animations are values a view keeps and draws from with the frame's
+`Instant`, never per-frame state elsewhere. `denial-look` has the
+timings (`motion::*`), the curves (`decelerate`, `ease_in`,
+`ease_out_back`, `cubic_bezier`), the effects as functions (`motion::shake`,
+`motion::pulse`) and `Spring`, the shell's damped springs
+(`springs::GENTLE`, `SNAPPY`, `SETTLE`, `BOUNCY`, or
+`SpringParams::ratio(k, ζ)` from Denial's `docs/LIQUID_MOTION.md`), made
+with `Look::spring` so Denial's duration scale applies. A `Tween` or a
+`Spring` finishes at once with reduced motion.
+
+`denial_look_gpui::motion` adds what GPUI views share:
+
+| Piece | For |
+|---|---|
+| `drive(window, running)` | End of `render`: the next frame only while something moves |
+| `Presence` | Items of a row that pop in and shrink away at its end: password dots, chips |
+| `Shake` | A refusal's sideways shake |
+| `Pulse` | A wave along a row while something is awaited |
+| `Blink`, `keep_blinking` | A text cursor's blink, two frames a second |
+
+GPUI moves, fades and resizes elements; it scales only images and what a
+canvas paints. Grow and shrink by painting; slide and fade elements. The
+Polkit dialog's reply field (`apps/polkit/src/dialog/prompt.rs`) uses every
+piece.
 
 ## Build
 

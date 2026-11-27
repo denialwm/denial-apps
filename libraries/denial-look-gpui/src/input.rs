@@ -876,7 +876,10 @@ impl Element for TextElement {
             origin.y += line.size(layout.line_height).height;
         }
         let focused = focus_handle.is_focused(window);
+        // A field focused in a window without the keyboard takes no typing:
+        // it shows no cursor.
         if focused
+            && window.is_window_active()
             && self.input.read(cx).caret
             && let Some(cursor) = prepaint.cursor.take()
         {

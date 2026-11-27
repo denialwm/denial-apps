@@ -17,17 +17,21 @@ always speak the same protocol.
 
 ## The dialogs
 
-Each dialog is a centered, undecorated wlr-layer-shell overlay with exclusive
-keyboard focus, named `dev.denial.Polkit` or `dev.denial.Access` so Denial's
-shell treats it as its own.
+Each dialog is a centered, undecorated wlr-layer-shell overlay, named
+`dev.denial.Polkit` or `dev.denial.Access` so Denial's shell treats it as its
+own. It stays above every window but asks for the keyboard on demand only:
+it takes keys once clicked or tapped, and typing meant for another window
+never lands in it. Escape, Back and Enter work once it has the keyboard.
 
 - **Desktop.** A 600 × 520 transparent canvas with the card in its middle,
-  520 wide. The compositor frosts the desktop under the overlay wherever its
-  alpha passes the user's backdrop-blur opacity threshold: the card's glass
-  tint stays above the threshold (at least the app-panel opacity, 0.34 and
-  threshold + 0.05) and its shadow below, so the card is glass and its
-  shadow is not. With transparency off the card is opaque raised, as
-  `APPLICATION_MATERIALS.md` has dialogs.
+  520 wide. The card is an app window, as Settings' is: the window backing
+  at the user's window opacity, the reply field and the buttons glass groups
+  on it. The compositor frosts the desktop under the overlay wherever its
+  alpha passes the user's backdrop-blur opacity threshold: the card's tint
+  stays above the threshold (at least threshold + 0.05) and its shadow
+  below, so the card is glass and its shadow is not. With transparency off
+  the card is opaque raised, as `APPLICATION_MATERIALS.md` has dialogs.
+  Super and a left-button drag move it, as they move windows.
 - **Phone** (`DENIAL_SHELL_PROFILE=mobile`). The overlay is the card: it
   spans the screen less an 8 lp gutter each side and takes the card's
   height once laid out. The shell centers it between the status bar and the

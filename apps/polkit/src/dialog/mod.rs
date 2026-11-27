@@ -1,8 +1,10 @@
 //! The two dialogs, drawn with GPUI: the authentication prompt (`prompt`)
 //! and denial-portal's Access request (`access`).
 //!
-//! Each is a centered, undecorated layer-shell overlay with exclusive
-//! keyboard focus, named `dev.denial.*` so the shell treats it as its own.
+//! Each is a centered, undecorated layer-shell overlay, named
+//! `dev.denial.*` so the shell treats it as its own. It stays above
+//! everything but takes the keyboard only when clicked or tapped: typing
+//! meant for another window never lands in it.
 //! On the desktop it is a transparent canvas the card sits in: Denial
 //! frosts the desktop under it wherever its alpha passes the user's
 //! opacity threshold, so the card is glass and its shadow is not. On a
@@ -82,8 +84,8 @@ pub fn run(kind: Kind) {
     };
     denial_look::words::register_chinese(crate::words::CHINESE);
     let look = Look::load();
-    let material = Material::new(&look, &appearance());
     let phone = std::env::var("DENIAL_SHELL_PROFILE").is_ok_and(|profile| profile == "mobile");
+    let material = Material::new(&look, &appearance(), phone);
     application()
         .with_assets(denial_look_gpui::Assets)
         .run(move |cx: &mut App| {
@@ -180,16 +182,19 @@ struct Material {
     shadow: f32,
     /// The card is glass on the phone, or would frost on the desktop.
     glass: bool,
-    /// Alpha of the toolbar material under the field and the buttons: the
-    /// app-panel opacity, opaque with transparency off.
+    /// Alpha of the toolbar material under the field and the buttons: a
+    /// glass group's, opaque with transparency off.
     toolbar: f32,
 }
 
 impl Material {
-    /// As the Flutter dialog resolved it. The desktop compositor frosts the
-    /// overlay per pixel, only where its alpha passes the user's threshold:
-    /// the card stays above it, its shadow below.
-    fn new(look: &Look, appearance: &Value) -> Self {
+    /// As Settings' window and dialogs have it. On the desktop the card is
+    /// an app window: the backing at the window opacity, its controls glass
+    /// groups on it. The compositor frosts the overlay per pixel, only where
+    /// its alpha passes the user's threshold: the card stays above it, its
+    /// shadow below. On a phone the shell draws the window glass under the
+    /// card, which is an island over it, as Settings' dialogs are.
+    fn new(look: &Look, appearance: &Value, phone: bool) -> Self {
         let dark = look.appearance == denial_look::Appearance::Dark;
         let fallback_shadow = if dark { 0.42 } else { 0.2 };
         let transparent = matches!(
@@ -212,15 +217,14 @@ impl Material {
             .unwrap_or(DEFAULT_THRESHOLD)
             .clamp(0.0, 1.0);
         let frosted = threshold < 1.0;
-        let panel = look.panel_alpha;
-        // Above the threshold, with a floor that keeps text legible; on a
-        // phone, the island floor the mobile materials keep.
-        let alpha = if frosted {
-            panel.max(0.34).max((threshold + 0.05).min(1.0))
+        let alpha = if phone {
+            look.island_fill().1
+        } else if frosted {
+            look.backing().1.max((threshold + 0.05).min(1.0))
         } else {
-            panel.max(0.92)
-        }
-        .max(look.palette.island_floor.min(1.0));
+            // Nothing frosts: the card alone keeps the text legible.
+            look.window_alpha.max(0.92)
+        };
         let budget = threshold - 0.015;
         let shadow = if !frosted {
             fallback_shadow
@@ -234,7 +238,7 @@ impl Material {
             alpha,
             shadow,
             glass: true,
-            toolbar: look.panel_alpha,
+            toolbar: look.group_alpha(),
         }
     }
 }
@@ -282,7 +286,9 @@ impl Frame {
                 exclusive_zone: None,
                 exclusive_edge: None,
                 margin,
-                keyboard_interactivity: KeyboardInteractivity::Exclusive,
+                // On top, but never a keyboard grab: an exclusive layer
+                // takes every key, wherever the user is typing.
+                keyboard_interactivity: KeyboardInteractivity::OnDemand,
             }),
             focus: true,
             show: true,
@@ -335,7 +341,9 @@ impl Frame {
     /// The card, holding `content`, in the canvas: centered on the desktop;
     /// the whole overlay on a phone, which is fitted to its height.
     /// `revealed` false keeps the canvas empty.
-    fn canvas(&self, revealed: bool, content: Div, window: &mut Window) -> Div {
+    /// `shake` moves the desktop card sideways; a phone's stays still, as
+    /// the shell's glass under it does.
+    fn canvas(&self, revealed: bool, shake: f32, content: Div, window: &mut Window) -> Div {
         let look = &self.look;
         let material = self.material;
         let mut card = div()
@@ -392,7 +400,9 @@ impl Frame {
             .items_center()
             .justify_center()
             .child(
-                card.w(width)
+                card.relative()
+                    .left(px(shake))
+                    .w(width)
                     .max_h(viewport.height - px(CANVAS_MARGIN * 2.))
                     .p(px(22.))
                     .pb(px(20.))

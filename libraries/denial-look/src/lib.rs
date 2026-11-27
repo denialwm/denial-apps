@@ -8,6 +8,7 @@
 //! ~/.local/state/denial/accent-color-v1, and `SettingsWatch` follows both.
 //! The language the apps' words are in comes from there too (`words`).
 
+pub mod spring;
 mod watch;
 pub mod words;
 
@@ -16,6 +17,7 @@ use std::time::Instant;
 
 use serde_json::Value;
 
+pub use spring::{Spring, SpringParams, springs};
 pub use watch::SettingsWatch;
 
 /// The two application appearances, from `appearance.colorSchemePreference`.
@@ -177,6 +179,43 @@ pub mod motion {
     pub const READ: u64 = 420;
     /// A short notice stays this long. Not scaled: it is read, not watched.
     pub const NOTICE: u64 = 1800;
+
+    /// Something small that appears, such as a password dot: it grows from
+    /// `APPEAR_FROM` of its size on `ease_out_back`.
+    pub const APPEAR: u64 = 240;
+    pub const APPEAR_FROM: f32 = 0.35;
+    /// It shrinks away on `ease_in`. Several leaving at once go last first,
+    /// `VANISH_STEP` apart, all gone within `VANISH_STAGGER` more.
+    pub const VANISH: u64 = 150;
+    pub const VANISH_STEP: u64 = 14;
+    pub const VANISH_STAGGER: u64 = 120;
+    /// A refusal, such as a wrong password: the card shakes sideways by up
+    /// to `SHAKE_DISTANCE`.
+    pub const SHAKE: u64 = 480;
+    pub const SHAKE_DISTANCE: f32 = 10.0;
+    /// A text cursor blinks this often. Not scaled: it is not motion.
+    pub const BLINK: u64 = 530;
+    /// Waiting, such as a password being checked: a wave runs along a row
+    /// of items, `PULSE_FLOOR` to full size, `PULSE_RATE` half-turns a
+    /// second, `PULSE_LAG` radians behind from item to item.
+    pub const PULSE_FLOOR: f32 = 0.62;
+    pub const PULSE_RATE: f32 = 1.7;
+    pub const PULSE_LAG: f32 = 0.55;
+
+    /// Where a shake is at progress `t`, from -1 to 1: three swings that
+    /// die away.
+    pub fn shake(t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        (t * std::f32::consts::PI * 6.0).sin() * (1.0 - t)
+    }
+
+    /// The size of item `index` of a waiting wave `seconds` after it began,
+    /// from `PULSE_FLOOR` to 1.
+    pub fn pulse(seconds: f32, index: usize) -> f32 {
+        let wave = 0.5
+            + 0.5 * (seconds * std::f32::consts::PI * PULSE_RATE - index as f32 * PULSE_LAG).sin();
+        PULSE_FLOOR + (1.0 - PULSE_FLOOR) * wave
+    }
 }
 
 /// How many of the screen's logical pixels one of an app's own is: Denial's
@@ -529,6 +568,11 @@ impl Look {
         }
     }
 
+    /// A spring at rest at `value`, on Denial's duration scale.
+    pub fn spring(&self, params: SpringParams, value: f32) -> Spring {
+        Spring::new(params, value, self.duration_scale)
+    }
+
     pub fn reduced_motion(&self) -> bool {
         self.duration_scale == 0.0
     }
@@ -611,10 +655,26 @@ pub fn ease_in_cubic(t: f32) -> f32 {
 /// cubic-bezier(0.2, 0.8, 0.2, 1): quick to leave, long to settle. Islands
 /// arriving on another screen move on it.
 pub fn decelerate(t: f32) -> f32 {
-    const X1: f32 = 0.2;
-    const Y1: f32 = 0.8;
-    const X2: f32 = 0.2;
-    const Y2: f32 = 1.0;
+    cubic_bezier(0.2, 0.8, 0.2, 1.0, t)
+}
+
+/// cubic-bezier(0.42, 0, 1, 1): starts slowly, leaves at full speed. Things
+/// that go away go on it.
+pub fn ease_in(t: f32) -> f32 {
+    cubic_bezier(0.42, 0.0, 1.0, 1.0, t)
+}
+
+/// Overshoots its end by about a tenth, then settles back: things that
+/// appear pop in on it.
+pub fn ease_out_back(t: f32) -> f32 {
+    const C1: f32 = 1.70158;
+    const C3: f32 = C1 + 1.0;
+    let t = t.clamp(0.0, 1.0) - 1.0;
+    1.0 + C3 * t * t * t + C1 * t * t
+}
+
+/// The CSS curve cubic-bezier(x1, y1, x2, y2) at `t`.
+pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32, t: f32) -> f32 {
     let bezier = |a: f32, b: f32, s: f32| {
         let r = 1.0 - s;
         3.0 * r * r * s * a + 3.0 * r * s * s * b + s * s * s
@@ -624,13 +684,13 @@ pub fn decelerate(t: f32) -> f32 {
     let (mut low, mut high) = (0.0, 1.0);
     for _ in 0..24 {
         let mid = (low + high) / 2.0;
-        if bezier(X1, X2, mid) < t {
+        if bezier(x1, x2, mid) < t {
             low = mid;
         } else {
             high = mid;
         }
     }
-    bezier(Y1, Y2, (low + high) / 2.0)
+    bezier(y1, y2, (low + high) / 2.0)
 }
 
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -899,5 +959,51 @@ mod tests {
         } });
         let (window, interface, _) = radii(old);
         assert_eq!((window, interface), (10.0, 24.0));
+    }
+}
+
+#[cfg(test)]
+mod curve_tests {
+    use super::*;
+
+    #[test]
+    fn curves_start_and_end_in_place() {
+        for curve in [decelerate, ease_in, ease_out_back, ease_out_cubic] {
+            assert!(curve(0.0).abs() < 1e-3);
+            assert!((curve(1.0) - 1.0).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn ease_out_back_overshoots_and_ease_in_lags() {
+        assert!((0.5..1.0).any_above(ease_out_back, 1.05));
+        assert!(ease_in(0.3) < 0.15);
+    }
+
+    #[test]
+    fn a_shake_dies_away() {
+        assert_eq!(motion::shake(0.0), 0.0);
+        assert!(motion::shake(1.0).abs() < 1e-6);
+        assert!(motion::shake(1.0 / 12.0) > 0.8);
+    }
+
+    #[test]
+    fn a_pulse_stays_between_its_floor_and_full_size() {
+        for step in 0..100 {
+            let size = motion::pulse(step as f32 * 0.05, step % 7);
+            assert!((motion::PULSE_FLOOR - 1e-6..=1.0 + 1e-6).contains(&size));
+        }
+    }
+
+    trait AnyAbove {
+        fn any_above(self, curve: fn(f32) -> f32, above: f32) -> bool;
+    }
+
+    impl AnyAbove for std::ops::Range<f32> {
+        fn any_above(self, curve: fn(f32) -> f32, above: f32) -> bool {
+            (0..=50).any(|step| {
+                curve(self.start + (self.end - self.start) * step as f32 / 50.0) > above
+            })
+        }
     }
 }

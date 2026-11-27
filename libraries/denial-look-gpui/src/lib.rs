@@ -5,6 +5,7 @@
 
 mod icons;
 pub mod input;
+pub mod motion;
 
 use denial_look::{CONTROL_FILL, INSET, Look, floating, mobile, nested_radius};
 use gpui::{BoxShadow, Div, Hsla, Pixels, Styled, div, point, prelude::*, px, relative, rgba};

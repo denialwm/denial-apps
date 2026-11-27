@@ -4,14 +4,17 @@
 //! attempts and the outcome; this shows what they say and relays the
 //! user's choice of account and replies.
 
+use std::time::Instant;
+
 use denial_look::Appearance;
 use denial_look::words::fill;
 use denial_look_gpui::input::{Submitted, TextInput};
+use denial_look_gpui::motion::{self, Blink, Presence, Pulse, Shake};
 use denial_look_gpui::{color, say, solid};
 use gpui::{
     Bounds, ClickEvent, ContentMask, Context, Div, Entity, FocusHandle, Focusable, FontWeight,
-    ObjectFit, SharedString, Stateful, Window, canvas, div, fill as paint, img, point, prelude::*,
-    px, size,
+    ObjectFit, SharedString, Stateful, Task, Window, canvas, div, fill as paint, img, point,
+    prelude::*, px, size,
 };
 use serde_json::{Value, json};
 
@@ -83,6 +86,19 @@ pub struct Prompt {
     closing: bool,
     /// What the field says while empty, as last given to it.
     shown_placeholder: SharedString,
+    /// A secret reply's dots as they come and go, and how many the sent
+    /// reply had: they stay, waving, while it is checked.
+    dots: Presence,
+    sent_dots: usize,
+    pulse: Pulse,
+    /// The card shakes when a reply is refused.
+    shake: Shake,
+    blink: Blink,
+    _blinking: Task<()>,
+    /// The reply field has the keyboard: it is focused and the compositor
+    /// gave the dialog the keyboard. The dialog asks for it on demand only,
+    /// so it opens without it.
+    typing: bool,
 }
 
 impl Prompt {
@@ -99,6 +115,8 @@ impl Prompt {
             .detach();
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+        let blinking =
+            motion::keep_blinking(cx, |this: &Self| this.caret_blinks().then_some(this.blink));
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(REVEAL_DEADLINE).await;
             let _ = this.update(cx, |this, cx| {
@@ -126,6 +144,13 @@ impl Prompt {
             revealed: false,
             closing: false,
             shown_placeholder: SharedString::default(),
+            dots: Presence::default(),
+            sent_dots: 0,
+            pulse: Pulse::default(),
+            shake: Shake::default(),
+            blink: Blink::default(),
+            _blinking: blinking,
+            typing: false,
         }
     }
 
@@ -162,7 +187,9 @@ impl Prompt {
         let Some(prompt) = self.prompt.filter(|_| self.phase == Phase::Prompting) else {
             return;
         };
-        let sent = self.link.respond(prompt, self.field.read(cx).text());
+        let text = self.field.read(cx).text();
+        self.sent_dots = if self.echo { 0 } else { text.chars().count() };
+        let sent = self.link.respond(prompt, text);
         self.field.update(cx, |field, cx| field.clear(cx));
         if sent.is_err() {
             return self.unavailable("Authentication is unavailable.", cx);
@@ -246,6 +273,7 @@ impl Receive for Prompt {
                     return;
                 };
                 self.prompt = Some(prompt);
+                self.sent_dots = 0;
                 self.label = label(&text("text"));
                 self.echo = message["echo"].as_bool().unwrap_or(false);
                 self.awaiting_verdict = false;
@@ -264,11 +292,15 @@ impl Receive for Prompt {
             Some("error") => {
                 self.notice = Some((NoticeKind::Error, text("text")));
                 // PAM may say several things about one rejected reply.
-                self.awaiting_verdict = false;
+                if std::mem::take(&mut self.awaiting_verdict) {
+                    self.shake.start(&self.frame.look);
+                }
             }
             Some("failed") => {
                 // The attempts are used up; the agent closes the dialog soon.
-                self.awaiting_verdict = false;
+                if std::mem::take(&mut self.awaiting_verdict) {
+                    self.shake.start(&self.frame.look);
+                }
                 let said = text("text");
                 return self.unavailable(
                     if said.is_empty() {
@@ -511,14 +543,26 @@ impl Prompt {
             .is_some_and(|(kind, _)| *kind == NoticeKind::Error);
         let secret = !self.echo;
         let caps = secret && self.phase == Phase::Prompting && !locked && window.capslock().on;
-        let count = field.text().chars().count();
-        let focus = self.field.focus_handle(cx);
         let (ink, accent) = (look.palette.foreground, look.accent);
+        let (dots, pulse) = (self.dots.clone(), self.pulse);
+        let now = Instant::now();
+        let caret = self.caret_blinks() && self.blink.visible(now);
         let dots = canvas(
             |_, _, _| {},
             move |bounds: Bounds<gpui::Pixels>, _, window, _| {
+                let dot = |window: &mut Window, center, size_of: f32| {
+                    let radius = DOT_RADIUS * size_of;
+                    window.paint_quad(
+                        paint(
+                            Bounds::centered_at(center, size(px(radius * 2.), px(radius * 2.))),
+                            solid(ink),
+                        )
+                        .corner_radii(px(radius)),
+                    );
+                };
                 window.with_content_mask(Some(ContentMask { bounds }), |window| {
                     let y = bounds.center().y;
+                    let count = dots.len();
                     // Long replies scroll; the oldest dots leave past the
                     // leading edge.
                     let room = f32::from(bounds.size.width) - 14.0;
@@ -526,20 +570,14 @@ impl Prompt {
                     let x = |index: usize| {
                         bounds.origin.x + px(DOT_SPACING / 2. + index as f32 * DOT_SPACING + shift)
                     };
-                    for index in 0..count {
-                        let center = point(x(index), y);
-                        window.paint_quad(
-                            paint(
-                                Bounds::centered_at(
-                                    center,
-                                    size(px(DOT_RADIUS * 2.), px(DOT_RADIUS * 2.)),
-                                ),
-                                solid(ink),
-                            )
-                            .corner_radii(px(DOT_RADIUS)),
-                        );
+                    for (index, size_of) in dots.leaving(now) {
+                        dot(window, point(x(index), y), size_of);
                     }
-                    if focus.is_focused(window) {
+                    for index in 0..count {
+                        let size_of = dots.size(index, now) * pulse.size(index, now);
+                        dot(window, point(x(index), y), size_of);
+                    }
+                    if caret {
                         let caret_x = if count == 0 {
                             bounds.origin.x + px(1.)
                         } else {
@@ -601,14 +639,53 @@ impl Prompt {
             })
     }
 
+    /// The dialog draws a blinking cursor: a secret reply is awaited and
+    /// typing reaches it.
+    fn caret_blinks(&self) -> bool {
+        self.typing && !self.echo && self.phase == Phase::Prompting && !self.locked()
+    }
+
+    /// Follows whether typing reaches the reply field. GPUI redraws when the
+    /// window gains or loses the keyboard.
+    fn follow_keyboard(&mut self, window: &Window, cx: &Context<Self>) {
+        let typing = window.is_window_active() && self.field.focus_handle(cx).is_focused(window);
+        if typing && !self.typing {
+            // The cursor shows as soon as typing reaches it.
+            self.blink.restart();
+        }
+        self.typing = typing;
+    }
+
+    /// Follows the reply's dots, the wave while it is checked and the
+    /// cursor's blink to this frame.
+    fn follow_dots(&mut self, cx: &Context<Self>) {
+        let verifying = self.phase == Phase::Verifying;
+        let count = if self.echo {
+            0
+        } else if verifying {
+            self.sent_dots
+        } else {
+            self.field.read(cx).text().chars().count()
+        };
+        if count != self.dots.len() {
+            // Typing keeps the cursor lit.
+            self.blink.restart();
+        }
+        self.dots.sync(count, &self.frame.look);
+        self.pulse.set(verifying && count > 0, &self.frame.look);
+    }
+
     /// What the empty field says: nothing while it waits for typing, else
     /// why it does not.
-    fn wanted_placeholder(&self, window: &Window, cx: &Context<Self>) -> SharedString {
-        if self.locked() {
+    fn wanted_placeholder(&self) -> SharedString {
+        if self.phase == Phase::Verifying && self.sent_dots > 0 {
+            // The sent reply's dots stand in the field.
+            SharedString::default()
+        } else if self.locked() {
             say("Temporarily locked")
         } else if self.phase != Phase::Prompting {
             say("Preparing…")
-        } else if self.field.focus_handle(cx).is_focused(window) {
+        } else if self.typing {
             SharedString::default()
         } else {
             self.placeholder()
@@ -618,7 +695,14 @@ impl Prompt {
 
 impl Render for Prompt {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let placeholder = self.wanted_placeholder(window, cx);
+        self.follow_keyboard(window, cx);
+        self.follow_dots(cx);
+        let now = Instant::now();
+        motion::drive(
+            window,
+            self.dots.running(now) || self.pulse.running() || self.shake.running(now),
+        );
+        let placeholder = self.wanted_placeholder();
         if placeholder != self.shown_placeholder {
             self.shown_placeholder = placeholder.clone();
             self.field
@@ -761,7 +845,9 @@ impl Render for Prompt {
                 .child(div().flex_1().min_w_0().children(limit))
                 .child(self.frame.buttons(buttons).pt(px(0.))),
         );
-        let card = self.frame.canvas(self.revealed, content, window);
+        let card = self
+            .frame
+            .canvas(self.revealed, self.shake.offset(now), content, window);
         card.track_focus(&self.focus)
             .key_context("Dialog")
             .on_action(cx.listener(|this, _: &Cancel, _, cx| this.cancel(cx)))

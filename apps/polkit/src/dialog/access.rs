@@ -373,7 +373,7 @@ impl Render for Access {
             ]));
         }
         self.frame
-            .canvas(self.revealed, content, window)
+            .canvas(self.revealed, 0.0, content, window)
             .track_focus(&self.focus)
             .key_context("Dialog")
             .on_action(cx.listener(|this, _: &Cancel, _, cx| this.answer(false, false, cx)))
