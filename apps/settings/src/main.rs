@@ -135,7 +135,24 @@ fn main() {
                 }
             })
             .detach();
-            cx.on_window_closed(|cx, _| cx.quit()).detach();
+            // A plugin request Settings started goes on after its window
+            // closes: the program ends once it has.
+            cx.on_window_closed(|cx, _| {
+                if !plugins::working() {
+                    cx.quit();
+                    return;
+                }
+                cx.spawn(async |cx| {
+                    while plugins::working() {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(500))
+                            .await;
+                    }
+                    cx.update(|cx| cx.quit());
+                })
+                .detach();
+            })
+            .detach();
             cx.activate(true);
         });
 }

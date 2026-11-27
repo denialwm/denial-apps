@@ -9,6 +9,8 @@ publish = false
 async-channel = "2.5"
 async-io = "2.6"
 denial-look = { path = "../../libraries/denial-look" }
+# The plugin manager, run here: Settings starts no program for it.
+denial-plugins = { path = "../../libraries/denial-plugins" }
 denial-look-gpui = { path = "../../libraries/denial-look-gpui" }
 futures-lite = "2.6"
 image = { version = "0.25", default-features = false, features = ["ico", "jpeg", "png", "webp"] }
@@ -29,7 +31,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 # needs Phonewave. What follows is that workspace's, kept the same as the
 # repository root's.
 [workspace]
-members = [".", "../polkit"]
+members = [".", "../polkit", "../../libraries/denial-plugins"]
 
 # zed's workspace patches; GPUI needs them in every dependent workspace.
 [patch.crates-io]

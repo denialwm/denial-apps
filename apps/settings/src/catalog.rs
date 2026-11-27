@@ -1269,7 +1269,7 @@ pub fn shown(page: &Page) -> bool {
         // A hotspot shares over Wi-Fi.
         Content::Unavailable if page.id == "hotspot" => WIFI.load(Ordering::Relaxed),
         Content::Monitor(_) => MONITOR.load(Ordering::Relaxed),
-        Content::Plugins => crate::plugins::command().is_some(),
+        Content::Plugins => crate::plugins::available(),
         Content::Lights => LIGHTS.load(Ordering::Relaxed),
         Content::Developer => DEVELOPER.load(Ordering::Relaxed),
         _ => true,

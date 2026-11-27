@@ -1,35 +1,45 @@
-//! Denial's plugins, through `denial-plugins`, the plugin manager of the
-//! Denial that runs. The manager decides what runs, why, what failed and
-//! what can be done now; Settings shows its answer and works nothing out
-//! (Denial's docs/PLUGIN_MANAGER.md, section 23). Every sentence comes
-//! with a code: Settings words the codes it knows, and shows the
-//! manager's English for the rest.
+//! Denial's plugins, through the plugin manager of the Denial that runs,
+//! which Settings links: requests run on threads of this process, never
+//! through another program. The manager decides what runs, why, what
+//! failed and what can be done now; Settings shows its answer and works
+//! nothing out (Denial's docs/PLUGIN_MANAGER.md, section 23). Every
+//! sentence comes with a code: Settings words the codes it knows, and
+//! shows the manager's English for the rest.
 
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use denial_plugins::{Context, Installation, Manager, Options};
 use serde::Deserialize;
 use serde_json::Value;
 
 /// The contract Settings reads.
 const CONTRACT: u64 = 1;
 
-/// The plugin manager, as the session names it or as installed; None on a
-/// phone without it, which then has no Plugins page.
-/// Looked up once: the home screen asks every frame.
-pub fn command() -> Option<PathBuf> {
-    static COMMAND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-    COMMAND
-        .get_or_init(|| {
-            let named = std::env::var_os("DENIAL_PLUGINS_BINARY").map(PathBuf::from);
-            named.filter(|path| path.is_file()).or_else(|| {
-                std::env::split_paths(&std::env::var_os("PATH")?)
-                    .map(|folder| folder.join("denial-plugins"))
-                    .find(|path| path.is_file())
-            })
-        })
-        .clone()
+/// Whether this Denial has plugin support; a phone without it has no
+/// Plugins page. Looked up once: the home screen asks every frame.
+pub fn available() -> bool {
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| Installation::command().is_some())
+}
+
+/// The manager of the Denial that runs, over the user's state.
+fn manager() -> Result<&'static Manager, String> {
+    static MANAGER: OnceLock<Option<Result<Manager, String>>> = OnceLock::new();
+    let manager = MANAGER.get_or_init(|| {
+        Manager::of_session().map(|manager| manager.map_err(|error| error.message))
+    });
+    match manager {
+        Some(Ok(manager)) => Ok(manager),
+        Some(Err(error)) => Err(error.clone()),
+        None => Err("The plugin manager is not installed".into()),
+    }
+}
+
+/// Whether a request Settings started still runs: Settings stays until it
+/// ends, also when its window closes.
+pub fn working() -> bool {
+    denial_plugins::working()
 }
 
 /// A sentence of the manager's, and the code that names it.
@@ -170,32 +180,21 @@ pub struct Found {
     pub path: String,
 }
 
-/// Runs the manager and reads its JSON answer; an error is what it said.
+/// Runs one command of the manager here and reads its answer; an error is
+/// what it said.
 fn ask(arguments: &[&str]) -> Result<Value, String> {
-    let command = command().ok_or("The plugin manager is not installed")?;
-    let output = Command::new(command)
-        .arg("--json")
-        .args(arguments)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !output.status.success() {
-        let said = String::from_utf8_lossy(&output.stderr);
-        // Its last line says why; the ones before are progress.
-        let why = said
-            .lines()
-            .rev()
-            .find_map(|line| line.strip_prefix("denial-plugins: "))
-            .unwrap_or_else(|| said.trim());
-        return Err(why.to_owned());
-    }
-    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+    let manager = manager()?;
+    let options = Options::parse(arguments).map_err(|error| error.message)?;
+    manager
+        .execute(&options, &Context::silent())
+        .map(|outcome| outcome.result)
+        .map_err(|error| error.message)
 }
 
 /// What runs, why, and what can be done. An older manager, which says none
 /// of it this way, is an error that names itself.
 pub fn status() -> Result<Summary, String> {
-    summary(&ask(&["status"])?)
+    summary(&ask(&["status", "--brief"])?)
 }
 
 fn summary(status: &Value) -> Result<Summary, String> {
@@ -206,7 +205,7 @@ fn summary(status: &Value) -> Result<Summary, String> {
     Summary::deserialize(summary).map_err(|error| error.to_string())
 }
 
-/// What `status` fails with on a Denial older than this page.
+/// What `status` fails with on a manager older than this page.
 pub const OLD: &str =
     "This Denial's plugin manager is older than Settings. Update Denial to manage plugins here.";
 
@@ -237,19 +236,23 @@ pub fn select(name: &str, on: bool) -> Result<(), String> {
 /// Starts a request that goes on by itself: `status` then reports it as
 /// its work, and as its failure should it fail.
 pub fn submit(request: &[&str]) -> Result<(), String> {
-    let mut arguments = vec!["submit"];
-    arguments.extend(request);
-    ask(&arguments).map(drop)
+    manager()?
+        .submit(request)
+        .map(drop)
+        .map_err(|error| error.message)
 }
 
 /// Prepares plugin support in the background, where it is not yet.
 pub fn prepare() -> Result<(), String> {
-    ask(&["bootstrap"]).map(drop)
+    manager()?
+        .bootstrap()
+        .map(drop)
+        .map_err(|error| error.message)
 }
 
 /// Asks a rebuild that waits for a pause to switch the desktop now.
 pub fn switch_now() -> Result<(), String> {
-    ask(&["rebuild-now"]).map(drop)
+    manager()?.switch_now().map_err(|error| error.message)
 }
 
 /// A folder is given by its path; anything else is a Git link.
@@ -288,7 +291,7 @@ pub fn add(location: &str, path: &str) -> Result<(), String> {
 
 /// What a request printed while it ran.
 pub fn log(job: &str) -> Result<String, String> {
-    let answer = ask(&["job-details", job])?;
+    let answer = manager()?.job_details(job).map_err(|error| error.message)?;
     Ok(answer["log"].as_str().unwrap_or_default().trim().to_owned())
 }
 

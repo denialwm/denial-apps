@@ -289,9 +289,12 @@ where its value lives (`src/settings/bound.rs`):
   depth mask of the new picture, as the shell's picker does.
 - The plugins (`src/plugins.rs`, `src/settings/plugins.rs`), listed where
   `denial-plugins` is installed (`$DENIAL_PLUGINS_BINARY`, else in `PATH`).
-  The manager decides what runs, why, what failed and what can be done now;
-  the page shows what `denial-plugins status --json` and `list --json` say
-  and works nothing out (Denial's docs/PLUGIN_MANAGER.md, section 23). It
+  Settings links the manager, `libraries/denial-plugins`, and runs its
+  requests on threads of its own, never the command; when the window closes
+  while one runs, Settings ends once it has. The manager decides what runs,
+  why, what failed and what can be done now; the page shows what `status`
+  and `list` say and works nothing out (Denial's docs/PLUGIN_MANAGER.md,
+  sections 23 and 25). It
   has what the desktop runs and why, the request that runs with its step
   and time, the last failure with its message and log, and Apply, Switch
   now, Undo and Standard desktop as the manager allows each. A plugin's
