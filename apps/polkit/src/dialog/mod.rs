@@ -1,17 +1,18 @@
 //! The two dialogs, drawn with GPUI: the authentication prompt (`prompt`)
 //! and denial-portal's Access request (`access`).
 //!
-//! Each is a centered, undecorated layer-shell overlay, named
-//! `dev.denial.*` so the shell treats it as its own. It stays above
-//! everything but takes the keyboard only when clicked or tapped: typing
-//! meant for another window never lands in it.
-//! On the desktop it is a transparent canvas the card sits in: Denial
-//! frosts the desktop under it wherever its alpha passes the user's
-//! opacity threshold, so the card is glass and its shadow is not. On a
-//! phone (`DENIAL_SHELL_PROFILE=mobile`) the overlay is the card itself and
-//! takes the card's height: the shell centers it above the keyboard, dims
-//! the rest and draws the phone's window glass under all of it. There the
-//! card is an island of the mobile materials, as Settings' dialogs are.
+//! Each is named `dev.denial.Polkit` or `dev.denial.Access` and takes the
+//! keyboard only when clicked or tapped: typing meant for another window
+//! never lands in it. Its window opens once the other end's first message
+//! is in, so it never shows empty, and takes the card's height.
+//!
+//! On the desktop it is an app window, as Settings is: Denial frames,
+//! rounds and frosts it, and opens it pinned above every window, centered
+//! and without the keyboard (its `own_dialogs`). On a phone
+//! (`DENIAL_SHELL_PROFILE=mobile`) it is a layer-shell overlay across the
+//! screen: the shell centers it above the keyboard, dims the rest and draws
+//! the phone's window glass under all of it. There the card is an island of
+//! the mobile materials, as Settings' dialogs are.
 
 mod access;
 mod link;
@@ -25,20 +26,19 @@ use gpui::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions}
 use gpui::{
     App, AsyncApp, BoxShadow, Div, ElementId, Font, FontWeight, KeyBinding, Pixels, SharedString,
     Stateful, Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowHandle, WindowKind, WindowOptions, actions, canvas, div, point, prelude::*, px, size,
+    WindowKind, WindowOptions, actions, canvas, div, point, prelude::*, px, size,
 };
 use gpui_platform::application;
 use serde_json::Value;
 
 actions!(polkit_dialog, [Cancel, Confirm]);
 
-/// The canvas a desktop overlay asks for, and the card inside it.
-const CANVAS: (f32, f32) = (600.0, 520.0);
-const CARD_WIDTH: f32 = 520.0;
-const CANVAS_MARGIN: f32 = 28.0;
+/// The desktop window's width, and its height until the card is laid out.
+const DESKTOP_SIZE: (f32, f32) = (520.0, 320.0);
 /// The gap a phone leaves at each side of the card.
 const PHONE_MARGIN: f32 = 8.0;
-/// A card that does not show within this long shows anyway.
+/// A window whose first message does not come within this long opens
+/// anyway.
 const REVEAL_DEADLINE: Duration = Duration::from_millis(900);
 /// Families for the command line, the first installed one wins.
 const MONOSPACE: &[&str] = &[
@@ -49,8 +49,6 @@ const MONOSPACE: &[&str] = &[
     "Noto Sans Mono",
     "Liberation Mono",
 ];
-/// The shell's blur threshold when the settings name none.
-const DEFAULT_THRESHOLD: f32 = 0.19;
 
 #[derive(Clone, Copy)]
 pub enum Kind {
@@ -85,7 +83,7 @@ pub fn run(kind: Kind) {
     denial_look::words::register_chinese(crate::words::CHINESE);
     let look = Look::load();
     let phone = std::env::var("DENIAL_SHELL_PROFILE").is_ok_and(|profile| profile == "mobile");
-    let material = Material::new(&look, &appearance(), phone);
+    let material = Material::new(&look, phone);
     application()
         .with_assets(denial_look_gpui::Assets)
         .run(move |cx: &mut App| {
@@ -111,25 +109,21 @@ pub fn run(kind: Kind) {
                 mono,
             };
             let options = frame.window_options(namespace, title);
+            // The window never asks to be activated: it waits to be clicked.
             match kind {
-                Kind::Prompt => {
-                    let window = cx
-                        .open_window(options, |window, cx| {
-                            cx.new(|cx| prompt::Prompt::new(frame, link, window, cx))
-                        })
-                        .expect("the authentication dialog's window");
-                    follow(window, incoming, cx);
-                }
-                Kind::Access => {
-                    let window = cx
-                        .open_window(options, |window, cx| {
-                            cx.new(|cx| access::Access::new(frame, link, window, cx))
-                        })
-                        .expect("the Access dialog's window");
-                    follow(window, incoming, cx);
-                }
+                Kind::Prompt => open(
+                    options,
+                    |window, cx| prompt::Prompt::new(frame, link, window, cx),
+                    incoming,
+                    cx,
+                ),
+                Kind::Access => open(
+                    options,
+                    |window, cx| access::Access::new(frame, link, window, cx),
+                    incoming,
+                    cx,
+                ),
             }
-            cx.activate(true);
         });
 }
 
@@ -140,15 +134,39 @@ trait Receive: 'static {
         Self: Sized;
 }
 
-/// Hands the other end's messages to the dialog. The other end ends the
-/// dialog by closing the socket.
-fn follow<V: Receive + Render>(
-    window: WindowHandle<V>,
+/// Opens the dialog's window once the other end's first message is in, or
+/// after `REVEAL_DEADLINE`, then hands the dialog every message. The other
+/// end ends the dialog by closing the socket.
+fn open<V: Receive + Render>(
+    options: WindowOptions,
+    build: impl FnOnce(&mut Window, &mut gpui::Context<V>) -> V + 'static,
     incoming: async_channel::Receiver<Value>,
     cx: &mut App,
 ) {
     cx.spawn(async move |cx: &mut AsyncApp| {
-        while let Ok(message) = incoming.recv().await {
+        let deadline = cx.background_executor().timer(REVEAL_DEADLINE);
+        let first =
+            futures_lite::future::or(async { incoming.recv().await.ok().map(Some) }, async {
+                deadline.await;
+                Some(None)
+            })
+            .await;
+        // Closed before saying anything.
+        let Some(first) = first else {
+            std::process::exit(0);
+        };
+        let window = cx
+            .open_window(options, |window, cx| cx.new(|cx| build(window, cx)))
+            .expect("the dialog's window");
+        let mut next = first;
+        loop {
+            let message = match next.take() {
+                Some(message) => message,
+                None => match incoming.recv().await {
+                    Ok(message) => message,
+                    Err(_) => break,
+                },
+            };
             let delivered = window.update(cx, |view, window, cx| view.receive(message, window, cx));
             if delivered.is_err() {
                 break;
@@ -159,85 +177,30 @@ fn follow<V: Receive + Render>(
     .detach();
 }
 
-/// Denial's appearance settings, for what `Look` does not keep.
-fn appearance() -> Value {
-    let path = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".config"))
-        })
-        .map(|dir| dir.join("denial/settings.json"));
-    path.and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .map(|settings| settings["appearance"].clone())
-        .unwrap_or(Value::Null)
-}
-
-/// The card's fill and shadow.
+/// The card's fill.
 #[derive(Clone, Copy)]
 struct Material {
     fill: u32,
     alpha: f32,
-    /// Black at this alpha under a desktop card; none on a phone.
-    shadow: f32,
-    /// The card is glass on the phone, or would frost on the desktop.
-    glass: bool,
     /// Alpha of the toolbar material under the field and the buttons: a
-    /// glass group's, opaque with transparency off.
+    /// glass group's.
     toolbar: f32,
 }
 
 impl Material {
     /// As Settings' window and dialogs have it. On the desktop the card is
-    /// an app window: the backing at the window opacity, its controls glass
-    /// groups on it. The compositor frosts the overlay per pixel, only where
-    /// its alpha passes the user's threshold: the card stays above it, its
-    /// shadow below. On a phone the shell draws the window glass under the
-    /// card, which is an island over it, as Settings' dialogs are.
-    fn new(look: &Look, appearance: &Value, phone: bool) -> Self {
-        let dark = look.appearance == denial_look::Appearance::Dark;
-        let fallback_shadow = if dark { 0.42 } else { 0.2 };
-        let transparent = matches!(
-            appearance["transparencyMode"].as_str(),
-            Some("glass" | "blur")
-        ) && look.window_alpha < 1.0;
-        if !transparent {
-            return Self {
-                fill: look.palette.raised,
-                alpha: 1.0,
-                shadow: fallback_shadow,
-                glass: false,
-                toolbar: 1.0,
-            };
-        }
-        let threshold = appearance["backdropBlurOpacityThreshold"]
-            .as_f64()
-            .map(|value| value as f32)
-            .filter(|value| value.is_finite())
-            .unwrap_or(DEFAULT_THRESHOLD)
-            .clamp(0.0, 1.0);
-        let frosted = threshold < 1.0;
-        let alpha = if phone {
-            look.island_fill().1
-        } else if frosted {
-            look.backing().1.max((threshold + 0.05).min(1.0))
+    /// the window: its backing at the window opacity, which Denial frosts,
+    /// with glass groups on it. On a phone the shell draws the window glass
+    /// under the card, which is an island over it.
+    fn new(look: &Look, phone: bool) -> Self {
+        let (fill, alpha) = if phone {
+            look.island_fill()
         } else {
-            // Nothing frosts: the card alone keeps the text legible.
-            look.window_alpha.max(0.92)
-        };
-        let budget = threshold - 0.015;
-        let shadow = if !frosted {
-            fallback_shadow
-        } else if budget < 0.03 {
-            0.0
-        } else {
-            fallback_shadow.min(budget * 0.7)
+            look.backing()
         };
         Self {
-            fill: look.palette.glass,
+            fill,
             alpha,
-            shadow,
-            glass: true,
             toolbar: look.group_alpha(),
         }
     }
@@ -256,22 +219,34 @@ pub struct Frame {
 
 impl Frame {
     fn window_options(&self, namespace: &str, title: &str) -> WindowOptions {
-        // A phone stretches the card across its screen; the dialog sets its
-        // height once it is laid out.
-        let (canvas, anchor, margin) = if self.phone {
+        // Both take the card's height once it is laid out.
+        let (bounds, kind) = if self.phone {
+            // Across the screen less the gutters.
             let margin = px(PHONE_MARGIN);
             (
                 size(px(0.), px(360.)),
-                Anchor::LEFT | Anchor::RIGHT,
-                Some((px(0.), margin, px(0.), margin)),
+                WindowKind::LayerShell(LayerShellOptions {
+                    namespace: namespace.to_owned(),
+                    layer: Layer::Overlay,
+                    anchor: Anchor::LEFT | Anchor::RIGHT,
+                    exclusive_zone: None,
+                    exclusive_edge: None,
+                    margin: Some((px(0.), margin, px(0.), margin)),
+                    // On top, but never a keyboard grab: an exclusive layer
+                    // takes every key, wherever the user is typing.
+                    keyboard_interactivity: KeyboardInteractivity::OnDemand,
+                }),
             )
         } else {
-            (size(px(CANVAS.0), px(CANVAS.1)), Anchor::empty(), None)
+            (
+                size(px(DESKTOP_SIZE.0), px(DESKTOP_SIZE.1)),
+                WindowKind::Normal,
+            )
         };
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(gpui::Bounds {
                 origin: point(px(0.), px(0.)),
-                size: canvas,
+                size: bounds,
             })),
             window_background: WindowBackgroundAppearance::Transparent,
             titlebar: Some(TitlebarOptions {
@@ -279,20 +254,10 @@ impl Frame {
                 ..Default::default()
             }),
             app_id: Some(namespace.to_owned()),
-            kind: WindowKind::LayerShell(LayerShellOptions {
-                namespace: namespace.to_owned(),
-                layer: Layer::Overlay,
-                anchor,
-                exclusive_zone: None,
-                exclusive_edge: None,
-                margin,
-                // On top, but never a keyboard grab: an exclusive layer
-                // takes every key, wherever the user is typing.
-                keyboard_interactivity: KeyboardInteractivity::OnDemand,
-            }),
-            focus: true,
+            kind,
+            focus: false,
             show: true,
-            is_movable: false,
+            is_movable: true,
             is_resizable: false,
             is_minimizable: false,
             ..Default::default()
@@ -338,76 +303,48 @@ impl Frame {
     const PRESSED: f32 = 0.1;
     const HOVERED: f32 = 0.06;
 
-    /// The card, holding `content`, in the canvas: centered on the desktop;
-    /// the whole overlay on a phone, which is fitted to its height.
-    /// `revealed` false keeps the canvas empty.
-    /// `shake` moves the desktop card sideways; a phone's stays still, as
-    /// the shell's glass under it does.
-    fn canvas(&self, revealed: bool, shake: f32, content: Div, window: &mut Window) -> Div {
+    /// The card, holding `content`: the whole window, which takes its
+    /// height. A phone's card is an island with the panel radius, as the
+    /// shell's glass under it; Denial frames, rounds and frosts the desktop
+    /// window itself. `shake` moves the content sideways within the card.
+    fn canvas(&self, shake: f32, content: Div, window: &mut Window) -> Div {
         let look = &self.look;
         let material = self.material;
+        let viewport = window.viewport_size();
+        // Fit the window to the card, once the card is laid out.
+        let fit = canvas(
+            move |bounds, window, _| {
+                let height = bounds.size.height.ceil();
+                if (height - viewport.height).abs() > px(0.5) && height > px(0.) {
+                    window.resize(size(viewport.width, height));
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         let mut card = div()
+            .relative()
+            .w_full()
             .flex()
             .flex_col()
+            .p(px(22.))
+            .pb(px(20.))
             .font(self.font.clone())
             .text_size(px(15.))
             .text_color(solid(look.palette.foreground))
-            .rounded(px(self.card_radius()))
             .bg(color(material.fill, material.alpha))
-            .child(content);
-        if material.glass || look.appearance == denial_look::Appearance::Light {
-            card = card
-                .border(px(floating::EDGE_WIDTH))
-                .border_color(color(look.palette.foreground, look.palette.edge_alpha));
-        }
-        if !revealed {
-            return div().size_full();
-        }
+            .child(content.relative().left(px(shake)))
+            .child(fit);
         if self.phone {
-            let viewport = window.viewport_size();
-            // Fit the overlay to the card, once the card is laid out.
-            let fit = canvas(
-                move |bounds, window, _| {
-                    let height = bounds.size.height.ceil();
-                    if (height - viewport.height).abs() > px(0.5) && height > px(0.) {
-                        window.resize(size(viewport.width, height));
-                    }
-                },
-                |_, _, _, _| {},
-            )
-            .absolute()
-            .size_full();
-            return div()
-                .w_full()
-                .flex()
-                .flex_col()
-                .child(card.relative().w_full().p(px(22.)).pb(px(20.)).child(fit));
+            card = card.rounded(px(self.card_radius()));
+            if material.alpha < 1.0 || look.appearance == Appearance::Light {
+                card = card
+                    .border(px(floating::EDGE_WIDTH))
+                    .border_color(color(look.palette.foreground, look.palette.edge_alpha));
+            }
         }
-        let viewport = window.viewport_size();
-        let width = px(CARD_WIDTH)
-            .min(viewport.width - px(CANVAS_MARGIN * 2.))
-            .max(px(0.));
-        let shadow = (material.shadow > 0.0).then(|| BoxShadow {
-            color: color(0x000000, material.shadow),
-            offset: point(px(0.), px(8.)),
-            blur_radius: px(28.),
-            spread_radius: px(0.),
-            inset: false,
-        });
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                card.relative()
-                    .left(px(shake))
-                    .w(width)
-                    .max_h(viewport.height - px(CANVAS_MARGIN * 2.))
-                    .p(px(22.))
-                    .pb(px(20.))
-                    .shadow(shadow.into_iter().collect()),
-            )
+        div().w_full().flex().flex_col().child(card)
     }
 
     /// A button on the toolbar material, 44 high. The one that goes ahead

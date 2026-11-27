@@ -3513,6 +3513,7 @@ dependencies = [
  "async-channel",
  "denial-look",
  "denial-look-gpui",
+ "futures-lite",
  "gpui",
  "gpui_platform",
  "libc",

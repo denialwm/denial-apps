@@ -17,27 +17,23 @@ always speak the same protocol.
 
 ## The dialogs
 
-Each dialog is a centered, undecorated wlr-layer-shell overlay, named
-`dev.denial.Polkit` or `dev.denial.Access` so Denial's shell treats it as its
-own. It stays above every window but asks for the keyboard on demand only:
-it takes keys once clicked or tapped, and typing meant for another window
-never lands in it. Escape, Back and Enter work once it has the keyboard.
+Each dialog is named `dev.denial.Polkit` or `dev.denial.Access` and takes
+the keyboard only once clicked or tapped: typing meant for another window
+never lands in it. Escape, Back and Enter work once it has the keyboard. Its
+window opens once the request is in (at most 0.9 s after it starts), so it
+never shows empty, and takes the card's height.
 
-- **Desktop.** A 600 × 520 transparent canvas with the card in its middle,
-  520 wide. The card is an app window, as Settings' is: the window backing
-  at the user's window opacity, the reply field and the buttons glass groups
-  on it. The compositor frosts the desktop under the overlay wherever its
-  alpha passes the user's backdrop-blur opacity threshold: the card's tint
-  stays above the threshold (at least threshold + 0.05) and its shadow
-  below, so the card is glass and its shadow is not. With transparency off
-  the card is opaque raised, as `APPLICATION_MATERIALS.md` has dialogs.
-  Super and a left-button drag move it, as they move windows.
-- **Phone** (`DENIAL_SHELL_PROFILE=mobile`). The overlay is the card: it
-  spans the screen less an 8 lp gutter each side and takes the card's
-  height once laid out. The shell centers it between the status bar and the
-  keyboard, dims the rest and draws the phone's window glass under all of
-  it, rounded with its panel radius, which the card takes too. The card is
-  an island of `MOBILE_APP_MATERIALS.md`, at least the island floor, as
+- **Desktop.** A 520 lp wide app window, as Settings is: the window backing
+  at the user's window opacity, which Denial frosts, the reply field and the
+  buttons glass groups on it. Denial knows the dialogs by their program
+  (`own_dialogs` in its compositor) and opens their windows pinned above
+  every window, centered and without the keyboard. They move as every
+  window does.
+- **Phone** (`DENIAL_SHELL_PROFILE=mobile`). A layer-shell overlay across
+  the screen less an 8 lp gutter each side. The shell centers it between
+  the status bar and the keyboard, dims the rest and draws the phone's
+  window glass under all of it, rounded with its panel radius, which the
+  card takes too. The card is an island of `MOBILE_APP_MATERIALS.md`, as
   Settings' dialogs are; its buttons share the row.
 
 The look comes from Denial's settings and the wallpaper accent through

@@ -19,7 +19,7 @@ use gpui::{
 use serde_json::{Value, json};
 
 use super::link::Link;
-use super::{Cancel, Confirm, Frame, REVEAL_DEADLINE, Receive};
+use super::{Cancel, Confirm, Frame, Receive};
 use crate::identity::{self, Profile};
 
 /// The Flutter dialog's measures: the account's column on the leading
@@ -82,7 +82,6 @@ pub struct Prompt {
     notice: Option<(NoticeKind, String)>,
     /// A reply went out and no verdict on it arrived yet.
     awaiting_verdict: bool,
-    revealed: bool,
     closing: bool,
     /// What the field says while empty, as last given to it.
     shown_placeholder: SharedString,
@@ -117,14 +116,6 @@ impl Prompt {
         window.focus(&focus, cx);
         let blinking =
             motion::keep_blinking(cx, |this: &Self| this.caret_blinks().then_some(this.blink));
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(REVEAL_DEADLINE).await;
-            let _ = this.update(cx, |this, cx| {
-                this.revealed = true;
-                cx.notify();
-            });
-        })
-        .detach();
         Self {
             frame,
             link,
@@ -141,7 +132,6 @@ impl Prompt {
             echo: false,
             notice: None,
             awaiting_verdict: false,
-            revealed: false,
             closing: false,
             shown_placeholder: SharedString::default(),
             dots: Presence::default(),
@@ -258,7 +248,6 @@ impl Receive for Prompt {
                         })
                     })
                     .collect();
-                self.revealed = true;
                 let Some(first) = self.identities.first() else {
                     return self.unavailable("No account can authorize this action.", cx);
                 };
@@ -845,9 +834,7 @@ impl Render for Prompt {
                 .child(div().flex_1().min_w_0().children(limit))
                 .child(self.frame.buttons(buttons).pt(px(0.))),
         );
-        let card = self
-            .frame
-            .canvas(self.revealed, self.shake.offset(now), content, window);
+        let card = self.frame.canvas(self.shake.offset(now), content, window);
         card.track_focus(&self.focus)
             .key_context("Dialog")
             .on_action(cx.listener(|this, _: &Cancel, _, cx| this.cancel(cx)))

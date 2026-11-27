@@ -11,7 +11,7 @@ use gpui::{
 use serde_json::{Map, Value, json};
 
 use super::link::Link;
-use super::{Cancel, Confirm, Frame, REVEAL_DEADLINE, Receive, monogram};
+use super::{Cancel, Confirm, Frame, Receive, monogram};
 use crate::apps;
 
 /// The choice that makes an answer "always" or "never".
@@ -47,21 +47,12 @@ pub struct Access {
     deny_label: String,
     choices: Vec<Choice>,
     answered: bool,
-    revealed: bool,
 }
 
 impl Access {
     pub fn new(frame: Frame, link: Link, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(REVEAL_DEADLINE).await;
-            let _ = this.update(cx, |this, cx| {
-                this.revealed = true;
-                cx.notify();
-            });
-        })
-        .detach();
         Self {
             frame,
             link,
@@ -76,7 +67,6 @@ impl Access {
             deny_label: String::new(),
             choices: Vec::new(),
             answered: false,
-            revealed: false,
         }
     }
 
@@ -277,7 +267,6 @@ impl Receive for Access {
             })
             .collect();
         self.asking = true;
-        self.revealed = true;
         cx.notify();
     }
 }
@@ -373,7 +362,7 @@ impl Render for Access {
             ]));
         }
         self.frame
-            .canvas(self.revealed, 0.0, content, window)
+            .canvas(0.0, content, window)
             .track_focus(&self.focus)
             .key_context("Dialog")
             .on_action(cx.listener(|this, _: &Cancel, _, cx| this.answer(false, false, cx)))
